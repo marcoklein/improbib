@@ -1,10 +1,11 @@
-import type { ElementType } from "..";
+import type { ElementType } from "../element-type";
 import { appLogger } from "../logger";
 import { processImprowikiPage } from "./process-improwiki-page";
 
-export async function resolveTranslationLinks(
-  elements: ElementType[]
-): Promise<ElementType[]> {
+export async function resolveTranslationLinks(output: {
+  elements: ElementType[];
+}) {
+  const { elements } = output;
   const logger = appLogger.getChild("resolveTranslationLinks");
   const urlToIdentifierMap: { [url: string]: string } = {};
 
@@ -88,5 +89,5 @@ export async function resolveTranslationLinks(
     }
   });
   logger.info("Translation link validation complete");
-  return elements;
+  output.elements = elements;
 }

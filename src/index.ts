@@ -1,28 +1,16 @@
-import {
-  ansiColorFormatter,
-  configure,
-  getConsoleSink,
-  getFileSink,
-} from "@logtape/logtape";
 import fs from "node:fs/promises";
 import path from "path";
+import type { ElementType } from "./element-type";
+import { mergeTranslationFields } from "./improwiki/merge-translation-fields";
+import { processImprowikiCardFields } from "./improwiki/process-improwiki-card.fields";
 import { processImprowikiEntryPage } from "./improwiki/process-improwiki-page";
 import { resolveTranslationLinks } from "./improwiki/resolve-translation-links";
-import { mergeEntities } from "./merge-entities";
+import { appLogger, initLogging } from "./logger";
+import { mergeElements } from "./merge-elements";
+import { transformAndTranslateTags } from "./transform-and-translate-tags";
+import { combinedTags } from "./improwiki/combined-tags";
 
-await configure({
-  sinks: {
-    console: getConsoleSink({ formatter: ansiColorFormatter }),
-    file: getFileSink("app.log"),
-  },
-  loggers: [
-    {
-      category: "app",
-      level: "debug",
-      sinks: ["console", "file"],
-    },
-  ],
-});
+await initLogging();
 
 const entryPages = [
   ...[
@@ -75,20 +63,6 @@ const entryPages = [
   ],
 ];
 
-export type ElementType = {
-  /**
-   * Url of the element that it got fetched from.
-   */
-  url: string;
-  tags: string[];
-  identifier: string;
-  name: string;
-  sourceName: string;
-  languageCode: string;
-  translationLinkEn?: string;
-  translationLinkDe?: string;
-} & Record<string, string | string[] | undefined>;
-
 let elements: ElementType[] = [];
 for (const entryPage of entryPages) {
   elements = [
@@ -104,48 +78,56 @@ for (const entryPage of entryPages) {
 }
 console.log("finished reading elements");
 
-const mergedElements: Record<string, ElementType> = {};
+const output: { meta: Record<string, any>; elements: ElementType[] } = {
+  meta: {},
+  elements,
+};
 
-for (const element of elements) {
-  const key = element.identifier;
-  if (mergedElements[key]) {
-    console.log(`Duplicated element: ${element.name}. Merging elements...`);
-    console.log(
-      `Existing element ${mergedElements[key].name} (${mergedElements[key].url})`
-    );
-    console.log(`New element ${element.name} (${element.url})`);
-    const existingElement = mergedElements[key];
-    mergedElements[key] = mergeEntities(existingElement, element);
-  } else {
-    mergedElements[key] = element;
-  }
-}
+mergeElements(output);
+await resolveTranslationLinks(output);
+await processImprowikiCardFields(output);
+mergeElements(output);
+mergeTranslationFields(output);
+mergeElements(output);
+transformAndTranslateTags(output);
 
 // consistency check
 const names = new Set<string>();
-for (const element of Object.values(mergedElements)) {
+for (const element of Object.values(output.elements)) {
   if (names.has(`${element.languageCode} --- ${element.name}`)) {
     console.error(`Duplicate name: ${element.name}`);
-    // throw new Error("Duplicate name");
+    throw new Error("Duplicate name");
   } else {
     names.add(`${element.languageCode} --- ${element.name}`);
   }
 }
 
-// resolve translationLinkEn
+// collect all distinct tag names
+const tagNames = [...new Set(output.elements.flatMap((e) => e.tags))];
+output.meta.tagNames = tagNames;
 
-const resolvedElements = await resolveTranslationLinks(
-  Object.values(mergedElements)
-);
+const tagIds = [...new Set(output.elements.flatMap((e) => e.tagIds))];
+output.meta.tagIds = tagIds;
+
+// verify translations
+const remainingTags = { ...combinedTags };
+for (const tagId of output.meta.tagIds) {
+  if (!(combinedTags as any)[tagId]) {
+    appLogger.warn("Translation missing for tag: {tagId}", { tagId });
+  } else {
+    delete (remainingTags as any)[tagId];
+  }
+}
+if (Object.keys(remainingTags).length) {
+  appLogger.warn("Delete these unused tags in translation: {remainingTags}", {
+    remainingTags,
+  });
+}
 
 const outputDir = path.join(process.cwd(), "output");
 const outputFile = path.join(outputDir, "elements.json");
 
 await fs.mkdir(outputDir, { recursive: true });
-await fs.writeFile(
-  outputFile,
-  JSON.stringify(resolvedElements, null, 2),
-  "utf-8"
-);
+await fs.writeFile(outputFile, JSON.stringify(output, null, 2), "utf-8");
 
 console.log(`Elements have been written to ${outputFile}`);

@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import type { ElementType } from "../element-type";
 import { fetchAndCacheWebsite } from "../fetch-and-cache-website";
 import { appLogger } from "../logger";
 
@@ -9,7 +10,8 @@ export async function processImprowikiPage(originalUrl: string) {
   const elementUrl = page.url; // url might differ from originalUrl due to redirects
   const $ = load(page.html);
   if ($(".wikipage").length !== 1) {
-    logger.warn(`No .wikipage found in: ${elementUrl}`);
+    // expected for all none-game websites
+    logger.debug(`No .wikipage found in: ${elementUrl}`);
     return undefined;
   }
 
@@ -101,11 +103,7 @@ export async function processImprowikiEntryPage(baseUrl: string, url: string) {
     .toArray()
     .map((url) => new URL(url, baseUrl).href);
 
-  const elements: ({
-    tags: string[];
-    identifier: string;
-    name: string;
-  } & Record<string, string | string[] | undefined>)[] = [];
+  const elements: ElementType[] = [];
 
   for (const originalUrl of elementUrls) {
     const result = await processImprowikiPage(originalUrl);

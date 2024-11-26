@@ -1,12 +1,15 @@
 import { appLogger } from "./logger";
 
 export function mergeEntities<
-  T extends Record<string, string | string[] | undefined>
->(objectA: T, objectB: T) {
+  T extends Record<string, string | string[] | undefined | number>
+>(objectA: T, objectB: T, keysToMerge: string[] = []) {
   const logger = appLogger.getChild("mergeEntities");
   const mergedObject = { ...objectA };
   logger.debug("Merging entities");
   for (const key in objectB) {
+    if (keysToMerge.length > 0 && !keysToMerge.includes(key)) {
+      continue;
+    }
     if (objectB[key] === undefined) {
       continue;
     }
@@ -22,7 +25,7 @@ export function mergeEntities<
     } else {
       if (objectA[key] !== objectB[key]) {
         logger.warn(
-          `Conflict in key ${key}: ${objectA[key]} !== ${objectB[key]}`
+          `Conflict in key ${key}: ${objectA[key]} !== ${objectB[key]} for ${objectA.name} (${objectA.identifier})`
         );
       }
       mergedObject[key] = objectB[key];
