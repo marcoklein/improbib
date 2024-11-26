@@ -5,10 +5,11 @@ import { mergeTranslationFields } from "./improwiki/merge-translation-fields";
 import { processImprowikiCardFields } from "./improwiki/process-improwiki-card.fields";
 import { processImprowikiEntryPage } from "./improwiki/process-improwiki-page";
 import { resolveTranslationLinks } from "./improwiki/resolve-translation-links";
+import { tagTranslations } from "./improwiki/tag-translations";
 import { appLogger, initLogging } from "./logger";
 import { mergeElements } from "./merge-elements";
+import { tagTransformations } from "./tag-transformations";
 import { transformAndTranslateTags } from "./transform-and-translate-tags";
-import { combinedTags } from "./improwiki/combined-tags";
 
 await initLogging();
 
@@ -24,7 +25,7 @@ const entryPages = [
     },
     {
       url: "https://improwiki.com/de/kennenlernspiele",
-      addTags: ["warmup"],
+      addTags: ["warmup", "icebreaker"],
     },
     {
       url: "https://improwiki.com/de/uebungen",
@@ -36,7 +37,7 @@ const entryPages = [
     },
     {
       url: "https://improwiki.com/de/wiki/improtheater/special/category/59/langformen",
-      addTags: ["longform"],
+      addTags: ["show", "longform"],
     },
   ],
   ...[
@@ -54,7 +55,7 @@ const entryPages = [
     },
     {
       url: "https://improwiki.com/icebreaker-games",
-      addTags: ["warmup"],
+      addTags: ["warmup", "icebreaker"],
     },
     {
       url: "https://improwiki.com/en/wiki/improv/special/category/106/improv-forms",
@@ -110,9 +111,9 @@ const tagIds = [...new Set(output.elements.flatMap((e) => e.tagIds))];
 output.meta.tagIds = tagIds;
 
 // verify translations
-const remainingTags = { ...combinedTags };
+const remainingTags = { ...tagTranslations };
 for (const tagId of output.meta.tagIds) {
-  if (!(combinedTags as any)[tagId]) {
+  if (!(tagTranslations as any)[tagId]) {
     appLogger.warn("Translation missing for tag: {tagId}", { tagId });
   } else {
     delete (remainingTags as any)[tagId];
@@ -123,6 +124,26 @@ if (Object.keys(remainingTags).length) {
     remainingTags,
   });
 }
+
+// verify transformations
+const remainingTransformations = { ...tagTransformations };
+for (const tag of tagNames) {
+  if ((tagTransformations as any)[tag]) {
+    delete (remainingTransformations as any)[tag];
+  }
+}
+if (Object.keys(remainingTransformations).length) {
+  appLogger.warn(
+    "Delete these unused transformations: {remainingTransformations}",
+    { remainingTransformations }
+  );
+}
+
+// add final inventory to meta tag
+output.meta.inventory = {
+  elementCount: output.elements.length,
+  tagCount: tagNames.length,
+};
 
 const outputDir = path.join(process.cwd(), "output");
 const outputFile = path.join(outputDir, "elements.json");

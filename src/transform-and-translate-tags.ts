@@ -1,4 +1,5 @@
 import type { ElementType } from "./element-type";
+import { tagTranslations } from "./improwiki/tag-translations";
 import { findTranslationId } from "./improwiki/find-translation-id";
 import { appLogger } from "./logger";
 import { tagTransformations } from "./tag-transformations";
@@ -37,6 +38,8 @@ export function transformAndTranslateTags(output: {
       ),
     ];
   }
+
+  output.meta.tagTranslations = tagTranslations;
 
   output.meta.untranslatedTags = [...untranslatedTags];
 }
