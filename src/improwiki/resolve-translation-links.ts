@@ -2,9 +2,12 @@ import type { ElementType } from "../element-type";
 import { appLogger } from "../logger";
 import { processImprowikiPage } from "./process-improwiki-page";
 
-export async function resolveTranslationLinks(output: {
-  elements: ElementType[];
-}) {
+export async function resolveTranslationLinks(
+  baseUrl: string,
+  output: {
+    elements: ElementType[];
+  }
+) {
   const { elements } = output;
   const logger = appLogger.getChild("resolveTranslationLinks");
   const urlToIdentifierMap: { [url: string]: string } = {};
@@ -22,7 +25,10 @@ export async function resolveTranslationLinks(output: {
         logger.info(
           `No matching element found for translationLinkEn: ${element.translationLinkEn} . Loading that element...`
         );
-        const result = await processImprowikiPage(element.translationLinkEn);
+        const result = await processImprowikiPage(
+          baseUrl,
+          element.translationLinkEn
+        );
         if (result) {
           elements.push(result);
           element.translationLinkEnIdentifier = result.identifier;
@@ -46,7 +52,10 @@ export async function resolveTranslationLinks(output: {
         logger.info(
           `No matching element found for translationLinkDe: ${element.translationLinkDe} . Loading that element...`
         );
-        const result = await processImprowikiPage(element.translationLinkDe);
+        const result = await processImprowikiPage(
+          baseUrl,
+          element.translationLinkDe
+        );
         if (result) {
           elements.push(result);
           element.translationLinkDeIdentifier = result.identifier;

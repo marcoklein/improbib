@@ -3,7 +3,10 @@ import type { ElementType } from "../element-type";
 import { fetchAndCacheWebsite } from "../fetch-and-cache-website";
 import { appLogger } from "../logger";
 
-export async function processImprowikiPage(originalUrl: string) {
+export async function processImprowikiPage(
+  baseUrl: string,
+  originalUrl: string
+) {
   const logger = appLogger.getChild("processImprowikiPage");
   logger.debug(`Fetching ${originalUrl}`);
   const page = await fetchAndCacheWebsite(originalUrl);
@@ -21,6 +24,17 @@ export async function processImprowikiPage(originalUrl: string) {
 
   const title = $(".wikipage .container h1").first().text().trim();
   const htmlContent = $(".wikipage .wikiarticle .row .col-lg-9").html() ?? "";
+  // ensure links are absolute
+  $(".wikipage .wikiarticle .row .col-lg-9 a").each((_, el) => {
+    const url = $(el).attr("href");
+    if (url) {
+      const newUrl = new URL(url, baseUrl).href;
+      $(el).attr("href", newUrl);
+    }
+  });
+  const linksInHtmlContent = $(".wikipage .wikiarticle .row .col-lg-9 a")
+    .map((_, el) => $(el).attr("href"))
+    .toArray();
 
   const elementName = title?.replaceAll("#", "").trim();
 
@@ -84,6 +98,8 @@ export async function processImprowikiPage(originalUrl: string) {
     translationLinkDe,
     languageCode,
     sourceName,
+    linksInHtmlContent,
+    htmlContent: htmlContent,
     ...(languageCode === "en" ? licenseEn : licenseDe),
     ...cardFields,
   };
@@ -106,7 +122,7 @@ export async function processImprowikiEntryPage(baseUrl: string, url: string) {
   const elements: ElementType[] = [];
 
   for (const originalUrl of elementUrls) {
-    const result = await processImprowikiPage(originalUrl);
+    const result = await processImprowikiPage(baseUrl, originalUrl);
     if (result) {
       elements.push(result);
     }

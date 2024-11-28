@@ -4,6 +4,7 @@ import type { ElementType } from "./element-type";
 import { mergeTranslationFields } from "./improwiki/merge-translation-fields";
 import { processImprowikiCardFields } from "./improwiki/process-improwiki-card.fields";
 import { processImprowikiEntryPage } from "./improwiki/process-improwiki-page";
+import { processMarkdown } from "./improwiki/process-markdown";
 import { resolveTranslationLinks } from "./improwiki/resolve-translation-links";
 import { tagTranslations } from "./improwiki/tag-translations";
 import { appLogger, initLogging } from "./logger";
@@ -64,17 +65,18 @@ const entryPages = [
   ],
 ];
 
+const baseUrl = "https://improwiki.com";
 let elements: ElementType[] = [];
 for (const entryPage of entryPages) {
   elements = [
     ...elements,
-    ...(
-      await processImprowikiEntryPage("https://improwiki.com", entryPage.url)
-    ).map((element) => ({
-      ...entryPage,
-      ...element,
-      tags: [...new Set(element.tags.concat(entryPage.addTags))],
-    })),
+    ...(await processImprowikiEntryPage(baseUrl, entryPage.url)).map(
+      (element) => ({
+        ...entryPage,
+        ...element,
+        tags: [...new Set(element.tags.concat(entryPage.addTags))],
+      })
+    ),
   ];
 }
 console.log("finished reading elements");
@@ -85,12 +87,13 @@ const output: { meta: Record<string, any>; elements: ElementType[] } = {
 };
 
 mergeElements(output);
-await resolveTranslationLinks(output);
+await resolveTranslationLinks(baseUrl, output);
 await processImprowikiCardFields(output);
 mergeElements(output);
 mergeTranslationFields(output);
 mergeElements(output);
 transformAndTranslateTags(output);
+await processMarkdown(output);
 
 // consistency check
 const names = new Set<string>();
@@ -146,9 +149,61 @@ output.meta.inventory = {
 };
 
 const outputDir = path.join(process.cwd(), "output");
+await fs.mkdir(outputDir, { recursive: true });
+
+// create processing directory
+const processingDir = path.join(outputDir, "processing");
+await fs.mkdir(processingDir, { recursive: true });
+const headings: { name: string; count: number }[] = [];
+const headingCounts: Record<string, number> = {};
+
+appLogger.info("Processing elements");
+for (const element of output.elements) {
+  const markdownContent = element.markdown as string;
+  const headingMatches = markdownContent.match(/^#+\s(.+)$/gm);
+  if (headingMatches) {
+    for (const heading of headingMatches) {
+      const headingText = heading.replace(/^#+\s/, "").toLowerCase();
+      headingCounts[headingText] = (headingCounts[headingText] || 0) + 1;
+    }
+    headings.push(
+      ...headingMatches.map((heading) => {
+        const headingText = heading.replace(/^#+\s/, "");
+        return {
+          name: headingText,
+          count: headingCounts[headingText],
+        };
+      })
+    );
+  }
+}
+
+appLogger.info("Headings collected");
+
+const sortedHeadings = Object.entries(headingCounts)
+  .map(([name, count]) => ({ name, count }))
+  .sort((a, b) => b.count - a.count)
+  .map(({ name, count }) => `${name} (${count})`);
+
+const headingsFile = path.join(processingDir, "headings.txt");
+await fs.writeFile(headingsFile, sortedHeadings.join("\n"), "utf-8");
+
+// extract html and markdown into separate files
+for (const element of output.elements) {
+  const filesDir = path.join(outputDir, "files");
+  await fs.mkdir(filesDir, { recursive: true });
+  const htmlFile = path.join(filesDir, `${element.identifier}.html`);
+  const markdownFile = path.join(filesDir, `${element.identifier}.md`);
+  await fs.writeFile(htmlFile, element.htmlContent as string, "utf-8");
+  await fs.writeFile(markdownFile, element.markdown as string, "utf-8");
+  element.htmlContentPath = htmlFile;
+  element.markdownPath = markdownFile;
+  element.html = "See htmlContentPath";
+  element.markdown = "See markdownPath";
+}
+
 const outputFile = path.join(outputDir, "elements.json");
 
-await fs.mkdir(outputDir, { recursive: true });
 await fs.writeFile(outputFile, JSON.stringify(output, null, 2), "utf-8");
 
 console.log(`Elements have been written to ${outputFile}`);
