@@ -1,5 +1,5 @@
+import { appLogger } from "../../logger";
 import type { ElementType } from "./element-type";
-import { appLogger } from "./logger";
 import { mergeEntities } from "./merge-entities";
 
 export function mergeElements(result: { elements: ElementType[] }) {

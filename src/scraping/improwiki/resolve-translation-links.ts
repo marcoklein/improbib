@@ -1,5 +1,5 @@
-import type { ElementType } from "../element-type";
-import { appLogger } from "../logger";
+import { appLogger } from "../../logger";
+import type { ElementType } from "../shared/element-type";
 import { processImprowikiPage } from "./process-improwiki-page";
 
 export async function resolveTranslationLinks(

@@ -6,7 +6,7 @@ import {
   getLogger,
 } from "@logtape/logtape";
 
-export const appLogger = getLogger(["app"]);
+export const appLogger = getLogger(["impromat-scraper"]);
 
 export async function initLogging() {
   await configure({
@@ -16,8 +16,13 @@ export async function initLogging() {
     },
     loggers: [
       {
-        category: "app",
+        category: "impromat-scraper",
         level: "info",
+        sinks: ["console", "file"],
+      },
+      {
+        category: "meta",
+        level: "warning",
         sinks: ["console", "file"],
       },
     ],

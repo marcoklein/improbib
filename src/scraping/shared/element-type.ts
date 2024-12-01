@@ -10,4 +10,5 @@ export type ElementType = {
   languageCode: string;
   translationLinkEn?: string;
   translationLinkDe?: string;
+  markdown?: string;
 } & Record<string, string | string[] | number | undefined>;

@@ -1,6 +1,6 @@
-import type { ElementType } from "../element-type";
-import { appLogger } from "../logger";
-import { mergeEntities } from "../merge-entities";
+import { appLogger } from "../../logger";
+import type { ElementType } from "../shared/element-type";
+import { mergeEntities } from "../shared/merge-entities";
 
 /**
  * Merges English and German fields of all elements.

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "path";
-import { appLogger } from "./logger";
+import { appLogger } from "../../logger";
 
 interface Page {
   url: string;

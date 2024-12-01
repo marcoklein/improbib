@@ -2,6 +2,7 @@
   "name": "impromat-scraper",
   "module": "src/index.ts",
   "type": "module",
+  "main": "src/index.ts",
   "devDependencies": {
     "@types/bun": "latest",
     "@types/turndown": "^5.0.5"

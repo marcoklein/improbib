@@ -1,5 +1,5 @@
-import type { ElementType } from "../element-type";
-import { appLogger } from "../logger";
+import type { ElementType } from "../shared/element-type";
+import { appLogger } from "../../logger";
 
 export async function processImprowikiCardFields(resultDictionary: {
   meta: Record<string, any>;

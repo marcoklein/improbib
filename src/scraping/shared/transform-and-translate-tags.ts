@@ -1,8 +1,8 @@
-import { appLogger } from "./logger";
-import type { ElementType } from "./scraping/shared/element-type";
-import { findTranslationId } from "./scraping/improwiki/find-translation-id";
-import { tagTranslations } from "./scraping/improwiki/tag-translations";
-import { tagTransformations } from "./scraping/shared/tag-transformations";
+import { appLogger } from "../../logger";
+import type { ElementType } from "./element-type";
+import { findTranslationId } from "../improwiki/find-translation-id";
+import { tagTranslations } from "../improwiki/tag-translations";
+import { tagTransformations } from "./tag-transformations";
 
 export function transformAndTranslateTags(output: {
   meta: Record<string, any>;

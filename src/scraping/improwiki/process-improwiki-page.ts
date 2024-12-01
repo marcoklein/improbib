@@ -1,7 +1,6 @@
 import { load } from "cheerio";
-import type { ElementType } from "../element-type";
-import { fetchAndCacheWebsite } from "../fetch-and-cache-website";
-import { appLogger } from "../logger";
+import { appLogger } from "../../logger";
+import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 
 export async function processImprowikiPage(
   baseUrl: string,
@@ -21,7 +20,6 @@ export async function processImprowikiPage(
   logger.debug(`Processing ${elementUrl}`);
 
   // parse html information
-
   const title = $(".wikipage .container h1").first().text().trim();
   const htmlContent = $(".wikipage .wikiarticle .row .col-lg-9").html() ?? "";
   // ensure links are absolute
@@ -62,8 +60,8 @@ export async function processImprowikiPage(
   });
 
   // add context information
-
   const hasher = new Bun.CryptoHasher("md5");
+
   // from improbib
   hasher.update(`element;${elementName};${elementUrl}`);
   logger.debug(`Hashing ${elementName} ${elementUrl}`);
@@ -75,6 +73,7 @@ export async function processImprowikiPage(
   const identifier = hasher.digest("hex");
   const languageCode = elementUrl.includes("/en/") ? "en" : "de";
 
+  // add license
   const sourceName = "improwiki";
   const licenseEn = {
     licenseName: "CC BY-SA 3.0 DE",
@@ -104,29 +103,4 @@ export async function processImprowikiPage(
     ...cardFields,
   };
   return element;
-}
-
-export async function processImprowikiEntryPage(baseUrl: string, url: string) {
-  const logger = appLogger.getChild("processImprowikiPage");
-  const entryPage = await fetchAndCacheWebsite(url);
-  logger.info(`Processing entry page ${entryPage.url}`);
-
-  const $ = load(entryPage.html);
-
-  const elementUrls = $(".startpage > .container")
-    .find("a")
-    .map((_, el) => $(el).attr("href"))
-    .toArray()
-    .map((url) => new URL(url, baseUrl).href);
-
-  const elements: ElementType[] = [];
-
-  for (const originalUrl of elementUrls) {
-    const result = await processImprowikiPage(baseUrl, originalUrl);
-    if (result) {
-      elements.push(result);
-    }
-  }
-
-  return elements;
 }

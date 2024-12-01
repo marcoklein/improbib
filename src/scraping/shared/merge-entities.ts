@@ -1,4 +1,4 @@
-import { appLogger } from "./logger";
+import { appLogger } from "../../logger";
 
 export function mergeEntities<
   T extends Record<string, string | string[] | undefined | number>
