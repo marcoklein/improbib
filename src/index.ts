@@ -12,7 +12,3 @@ export class ImprowikiScraper {
     return await scrapeImprowiki();
   }
 }
-
-// const scraper = new ImprowikiScraper();
-// await scraper.enableLogging();
-// await scraper.scrape();

@@ -9,8 +9,10 @@ import { resolveTranslationLinks } from "./scraping/improwiki/resolve-translatio
 import { tagTranslations } from "./scraping/improwiki/tag-translations";
 import type { ElementType } from "./scraping/shared/element-type";
 import { mergeElements } from "./scraping/shared/merge-elements";
+import type { OutputElementType } from "./scraping/shared/output-element-type";
 import { tagTransformations } from "./scraping/shared/tag-transformations";
 import { transformAndTranslateTags } from "./scraping/shared/transform-and-translate-tags";
+import { improbibSchema } from "./validation/schema";
 
 export async function scrapeImprowiki() {
   const entryPages = [
@@ -144,7 +146,18 @@ export async function scrapeImprowiki() {
   // add final inventory to meta tag
   output.meta.inventory = {
     elementCount: output.elements.length,
-    tagCount: tagNames.length,
+    elementCountEn: output.elements.filter((e) => e.languageCode === "en")
+      .length,
+    elementCountDe: output.elements.filter((e) => e.languageCode === "de")
+      .length,
+    translatedDeToEnCount: output.elements.filter(
+      (e) => e.translationLinkDeIdentifier
+    ).length,
+    translatedEnToDeCount: output.elements.filter(
+      (e) => e.translationLinkEnIdentifier
+    ).length,
+    distinctTagCount: tagNames.length,
+    distinctTagIdsCount: tagNames.length,
   };
 
   const outputDir = path.join(process.cwd(), "output");
@@ -233,5 +246,7 @@ export async function scrapeImprowiki() {
 
   console.log(`Elements have been written to ${outputFile}`);
 
-  return output;
+  const parsed = improbibSchema.parse(output);
+
+  return parsed;
 }

@@ -1,9 +1,14 @@
 import { appLogger } from "../../logger";
-import type { ElementType } from "./element-type";
 import { findTranslationId } from "../improwiki/find-translation-id";
 import { tagTranslations } from "../improwiki/tag-translations";
+import type { ElementType } from "./element-type";
 import { tagTransformations } from "./tag-transformations";
 
+/**
+ * Creates a new set of translated tags.
+ *
+ * @param output
+ */
 export function transformAndTranslateTags(output: {
   meta: Record<string, any>;
   elements: ElementType[];
@@ -21,6 +26,7 @@ export function transformAndTranslateTags(output: {
     );
   }
 
+  // created tagIds
   for (const element of elements) {
     element["tagIds"] = [
       ...new Set(
@@ -39,7 +45,17 @@ export function transformAndTranslateTags(output: {
     ];
   }
 
-  output.meta.tagTranslations = tagTranslations;
+  // add translated tags to element
+  for (const element of elements) {
+    element["translatedTags"] = (element.tagIds as string[]).map(
+      (tagId) =>
+        tagTranslations[tagId as keyof typeof tagTranslations][
+          element.languageCode as "de" | "en"
+        ]
+    );
+    element["translatedTags"] = [...new Set(element["translatedTags"])];
+  }
 
+  output.meta.tagTranslations = tagTranslations;
   output.meta.untranslatedTags = [...untranslatedTags];
 }

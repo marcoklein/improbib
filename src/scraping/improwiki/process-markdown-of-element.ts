@@ -39,11 +39,12 @@ export function processMarkdownOfElement(element: ElementType) {
   );
   element.markdown = element.markdown.replaceAll(REMOVE_RELATED, "");
 
+  element.markdown = element.markdown.replaceAll(REPLACE_LINKS, "$1");
+
   element.markdown = element.markdown.replaceAll(
     REMOVE_TABLE_OF_CONTENTS,
     "$3"
   );
-  element.markdown = element.markdown.replaceAll(REPLACE_LINKS, "$1");
 
   const changedCharacterPercentage =
     (unmodifiedMarkdown.length - element.markdown.length) /
