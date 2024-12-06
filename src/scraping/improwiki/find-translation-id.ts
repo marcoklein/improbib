@@ -1,4 +1,4 @@
-import { tagTranslations } from "./tag-translations";
+import { tagTranslations } from "../shared/tag-translations";
 
 export function findTranslationId(text: string): string | null {
   if ((tagTranslations as any)[text]) {

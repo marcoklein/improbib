@@ -2,6 +2,7 @@ import { ImprowikiScraper } from ".";
 
 const scraper = new ImprowikiScraper();
 
+await scraper.enableLogging();
 const result = await scraper.scrape();
 
 const tagIdGroups = result.elements.map((element) => element.tagIds);

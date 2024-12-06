@@ -1,6 +1,6 @@
 import { appLogger } from "../../logger";
 import { findTranslationId } from "../improwiki/find-translation-id";
-import { tagTranslations } from "../improwiki/tag-translations";
+import { tagTranslations } from "./tag-translations";
 import type { ElementType } from "./element-type";
 import { tagTransformations } from "./tag-transformations";
 
@@ -47,6 +47,7 @@ export function transformAndTranslateTags(output: {
 
   // add translated tags to element
   for (const element of elements) {
+    appLogger.debug("element {element}", { element });
     element["translatedTags"] = (element.tagIds as string[]).map(
       (tagId) =>
         tagTranslations[tagId as keyof typeof tagTranslations][

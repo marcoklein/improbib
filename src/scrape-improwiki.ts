@@ -6,13 +6,12 @@ import { processImprowikiCardFields } from "./scraping/improwiki/process-improwi
 import { processImprowikiEntryPage } from "./scraping/improwiki/process-improwiki-entry-page";
 import { processMarkdown } from "./scraping/improwiki/process-markdown";
 import { resolveTranslationLinks } from "./scraping/improwiki/resolve-translation-links";
-import { tagTranslations } from "./scraping/improwiki/tag-translations";
+import { tagTranslations } from "./scraping/shared/tag-translations";
 import type { ElementType } from "./scraping/shared/element-type";
 import { mergeElements } from "./scraping/shared/merge-elements";
-import type { OutputElementType } from "./scraping/shared/output-element-type";
 import { tagTransformations } from "./scraping/shared/tag-transformations";
 import { transformAndTranslateTags } from "./scraping/shared/transform-and-translate-tags";
-import { improbibSchema } from "./validation/schema";
+import { improbibSchema } from "./validation/improbib-schema";
 
 export async function scrapeImprowiki() {
   const entryPages = [
@@ -190,6 +189,28 @@ export async function scrapeImprowiki() {
       );
     }
   }
+
+  appLogger.info("Remove elements with too short markdown");
+
+  const filteredElements = output.elements.filter(
+    (element) => element.markdown!.length <= 20
+  );
+
+  if (filteredElements.length > 0) {
+    output.meta.filteredElements = filteredElements.map((element) => ({
+      url: element.url,
+      name: element.name,
+      markdown: element.markdown,
+      reasonText: "Markdown too short",
+    }));
+    appLogger.info("Filtered elements due to short markdown:", {
+      filteredElements,
+    });
+  }
+
+  output.elements = output.elements.filter(
+    (element) => element.markdown!.length > 20
+  );
 
   appLogger.info("Headings collected");
 

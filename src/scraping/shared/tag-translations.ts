@@ -34,7 +34,6 @@ export const tagTranslations = {
   chainGames: { de: "Kettenspiele", en: "Chain Games" },
   switches: { de: "Switches", en: "Switches" },
   teamPlay: { de: "Teamplay", en: "Team Play" },
-  dialogueForms: { de: "Dialogformen", en: "Dialogue Forms" },
   talking: { de: "Reden", en: "Talking" },
   speech: { de: "Sprache", en: "Speech" },
   physicalness: { de: "Körperlichkeit", en: "Physicalness" },
@@ -82,7 +81,7 @@ export const tagTranslations = {
   trust: { de: "Vertrauen", en: "Trust" },
   dance: { de: "Tanz", en: "Dance" },
   choreography: { de: "Choreographie", en: "Choreography" },
-  dialogueForm: { de: "Dialog", en: "Dialogue Form" },
+  dialogueForm: { de: "Dialog", en: "Dialogue" },
   improvGroups: { de: "Improv Groups", en: "Improv Groups" },
   organization: { de: "Organisation", en: "Organization" },
 
