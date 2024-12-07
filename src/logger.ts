@@ -2,7 +2,6 @@ import {
   ansiColorFormatter,
   configure,
   getConsoleSink,
-  getFileSink,
   getLogger,
 } from "@logtape/logtape";
 
@@ -12,18 +11,22 @@ export async function initLogging() {
   await configure({
     sinks: {
       console: getConsoleSink({ formatter: ansiColorFormatter }),
-      file: getFileSink("app.log"),
+      // file: getFileSink("app.log"),
+    },
+    filters: {
+      infoAndAbove: "info",
     },
     loggers: [
       {
         category: "impromat-scraper",
         level: "info",
-        sinks: ["console", "file"],
+        filters: ["infoAndAbove"],
+        sinks: ["console"],
       },
       {
         category: "meta",
         level: "warning",
-        sinks: ["console", "file"],
+        sinks: ["console"],
       },
     ],
   });
