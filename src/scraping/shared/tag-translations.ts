@@ -1,5 +1,5 @@
 export const tagTranslations = {
-  beginner: { de: "Anfänger", en: "Freshman" },
+  beginner: { de: "Anfänger", en: "Beginner" },
   advanced: { de: "Fortgeschritten", en: "Advanced" },
   pro: { de: "Profi", en: "Pro" },
 
