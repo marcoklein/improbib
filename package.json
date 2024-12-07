@@ -1,8 +1,12 @@
 {
-  "name": "impromat-scraper",
+  "name": "improbib",
   "module": "src/index.ts",
   "type": "module",
   "main": "src/index.ts",
+  "scripts": {
+    "start": "bun src/analyze.ts",
+    "dev": "bun --watch run src/analyze.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/turndown": "^5.0.5"

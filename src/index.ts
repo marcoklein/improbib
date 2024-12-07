@@ -1,9 +1,7 @@
 import { initLogging } from "./logger";
 import { scrapeImprowiki } from "./scrape-improwiki";
 
-export class OutputReader {}
-
-export class ImprowikiScraper {
+export class Improbib {
   async enableLogging() {
     await initLogging();
   }
