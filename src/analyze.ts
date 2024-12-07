@@ -1,6 +1,6 @@
-import { ImprowikiScraper } from ".";
+import { Improbib } from ".";
 
-const scraper = new ImprowikiScraper();
+const scraper = new Improbib();
 
 await scraper.enableLogging();
 const result = await scraper.scrape();

@@ -16,7 +16,7 @@ export const tagTransformations = {
   switches: ["switches"],
   Vertrauensübungen: ["trust"],
   attention: ["attention"],
-  freshman: ["freshman"],
+  freshman: ["beginner"],
   calm: ["calm"],
   energetic: ["energetic"],
   "Slapstick-Hektik-Action": ["Slapstick"],

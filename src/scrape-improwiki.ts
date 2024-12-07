@@ -261,6 +261,11 @@ export async function scrapeImprowiki() {
     }
   }
 
+  // sort elements by id
+  output.elements = output.elements.sort((a, b) =>
+    a.identifier.localeCompare(b.identifier)
+  );
+
   const outputFile = path.join(outputDir, "elements.json");
 
   await fs.writeFile(outputFile, JSON.stringify(output, null, 2), "utf-8");
@@ -268,6 +273,12 @@ export async function scrapeImprowiki() {
   console.log(`Elements have been written to ${outputFile}`);
 
   const parsed = improbibSchema.parse(output);
+
+  await fs.writeFile(
+    path.join(outputDir, "improbib.json"),
+    JSON.stringify(parsed, null, 2),
+    "utf-8"
+  );
 
   return parsed;
 }
