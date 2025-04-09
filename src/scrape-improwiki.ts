@@ -164,7 +164,8 @@ export async function scrapeImprowiki() {
 
   // create processing directory
   const processingDir = path.join(outputDir, "processing");
-  await fs.rmdir(processingDir, { recursive: true });
+  if (await fs.exists(processingDir))
+    await fs.rmdir(processingDir, { recursive: true });
   await fs.mkdir(processingDir, { recursive: true });
   const headings: { name: string; count: number }[] = [];
   const headingCounts: Record<string, number> = {};
