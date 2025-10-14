@@ -22,6 +22,9 @@ export const improbibSchema = z.object({
         translatedTags: z.array(z.string().min(2).max(40)).nonempty(),
         licenseSpdxIdentifier: z.string().includes("CC-BY-SA-3.0-DE"),
         licenseName: z.string(),
+
+        playerCountMin: z.number().optional(),
+        playerCountMax: z.number().optional(),
       })
     )
     .min(400)

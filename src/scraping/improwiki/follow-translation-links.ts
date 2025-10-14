@@ -2,7 +2,7 @@ import { appLogger } from "../../logger";
 import type { ElementType } from "../shared/element-type";
 import { processImprowikiPage } from "./process-improwiki-page";
 
-export async function resolveTranslationLinks(
+export async function followTranslationLinksOfElement(
   baseUrl: string,
   output: {
     elements: ElementType[];

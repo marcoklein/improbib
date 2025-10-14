@@ -25,3 +25,5 @@ Run in development mode:
 ```sh
 bun run dev
 ```
+
+All website calls are cached in the `.cache` folder.

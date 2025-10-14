@@ -2,6 +2,12 @@ import { appLogger } from "../../logger";
 import type { ElementType } from "./element-type";
 import { mergeEntities } from "./merge-entities";
 
+/**
+ * Merges all duplicated elements by the identifier.
+ * Directly operates on the given elements input.
+ *
+ * @param result
+ */
 export function mergeElements(result: { elements: ElementType[] }) {
   const logger = appLogger.getChild("mergeElements");
   const mergedElements: Record<string, ElementType> = {};

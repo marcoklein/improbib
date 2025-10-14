@@ -5,7 +5,7 @@ import { mergeTranslationFields } from "./scraping/improwiki/merge-translation-f
 import { processImprowikiCardFields } from "./scraping/improwiki/process-improwiki-card-fields";
 import { processImprowikiEntryPage } from "./scraping/improwiki/process-improwiki-entry-page";
 import { processMarkdown } from "./scraping/improwiki/process-markdown";
-import { resolveTranslationLinks } from "./scraping/improwiki/resolve-translation-links";
+import { followTranslationLinksOfElement } from "./scraping/improwiki/follow-translation-links";
 import { tagTranslations } from "./scraping/shared/tag-translations";
 import type { ElementType } from "./scraping/shared/element-type";
 import { mergeElements } from "./scraping/shared/merge-elements";
@@ -87,7 +87,7 @@ export async function scrapeImprowiki() {
   };
 
   mergeElements(output);
-  await resolveTranslationLinks(baseUrl, output);
+  await followTranslationLinksOfElement(baseUrl, output);
   await processImprowikiCardFields(output);
   mergeElements(output);
   mergeTranslationFields(output);
