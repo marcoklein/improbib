@@ -4,7 +4,11 @@ import type { ElementType } from "../shared/element-type";
 import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 import { processImprowikiPage } from "./process-improwiki-page";
 
-export async function processImprowikiEntryPage(baseUrl: string, url: string) {
+export async function processImprowikiEntryPage(
+  baseUrl: string,
+  url: string,
+  shouldFetch?: (url: string) => Promise<boolean>
+) {
   const logger = appLogger.getChild("processImprowikiEntryPage");
   const entryPage = await fetchAndCacheWebsite(url);
   logger.info(`Processing entry page ${entryPage.url}`);
@@ -18,12 +22,25 @@ export async function processImprowikiEntryPage(baseUrl: string, url: string) {
     .filter((href): href is string => !!href)
     .map((href) => new URL(href, baseUrl).href);
 
+  let toFetch: string[] = elementUrls;
+  let skipped = 0;
+
+  if (shouldFetch) {
+    const results = await Promise.all(
+      elementUrls.map(async (u) => ({ url: u, fetch: await shouldFetch(u) }))
+    );
+    toFetch = results.filter((r) => r.fetch).map((r) => r.url);
+    skipped = results.length - toFetch.length;
+    logger.info(
+      `  ${toFetch.length} new/changed, ${skipped} unchanged`
+    );
+  }
+
   const startTime = Date.now();
   const elements: ElementType[] = [];
   let fetched = 0;
-  let cached = 0;
 
-  for (const originalUrl of elementUrls) {
+  for (const originalUrl of toFetch) {
     const result = await processImprowikiPage(baseUrl, originalUrl);
     if (result) {
       elements.push(result);
@@ -31,9 +48,9 @@ export async function processImprowikiEntryPage(baseUrl: string, url: string) {
     fetched++;
     const elapsed = (Date.now() - startTime) / 1000;
     const rate = fetched / (elapsed / 60);
-    if (fetched % 10 === 0 || fetched === elementUrls.length) {
+    if (fetched % 10 === 0 || fetched === toFetch.length) {
       logger.info(
-        `Progress: ${fetched}/${elementUrls.length} pages (${Math.round(rate)}/min)`
+        `Progress: ${fetched}/${toFetch.length} pages (${Math.round(rate)}/min)`
       );
     }
   }

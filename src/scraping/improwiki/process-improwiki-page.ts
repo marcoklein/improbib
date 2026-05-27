@@ -121,6 +121,7 @@ export async function processImprowikiPage(
     sourceName,
     linksInHtmlContent,
     htmlContent: htmlContent,
+    fetchedAt: page.date.toISOString(),
     ...(languageCode === "en" ? licenseEn : licenseDe),
     ...cardFields,
   };
