@@ -55,7 +55,7 @@ export async function scrapeImprowiki() {
         addTags: ["warmup"],
       },
       {
-        url: "https://improwiki.com/icebreaker-games",
+        url: "https://improwiki.com/en/category/icebreaker-games",
         addTags: ["warmup", "icebreaker"],
       },
       {

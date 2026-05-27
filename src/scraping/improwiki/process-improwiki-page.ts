@@ -9,60 +9,82 @@ export async function processImprowikiPage(
   const logger = appLogger.getChild("processImprowikiPage");
   logger.debug(`Fetching ${originalUrl}`);
   const page = await fetchAndCacheWebsite(originalUrl);
-  const elementUrl = page.url; // url might differ from originalUrl due to redirects
+  const elementUrl = page.url;
   const $ = load(page.html);
-  if ($(".wikipage").length !== 1) {
-    // expected for all none-game websites
-    logger.debug(`No .wikipage found in: ${elementUrl}`);
+
+  const title = $("h1.font-comic").first().text().trim();
+  if (!title) {
+    logger.debug(`No title found in: ${elementUrl}`);
     return undefined;
   }
 
   logger.debug(`Processing ${elementUrl}`);
 
-  // parse html information
-  const title = $(".wikipage .container h1").first().text().trim();
-  const htmlContent = $(".wikipage .wikiarticle .row .col-lg-9").html() ?? "";
-  // ensure links are absolute
-  $(".wikipage .wikiarticle .row .col-lg-9 a").each((_, el) => {
-    const url = $(el).attr("href");
-    if (url) {
-      const newUrl = new URL(url, baseUrl).href;
-      $(el).attr("href", newUrl);
+  const htmlContent = $(".article-content").html() ?? "";
+  $(".article-content a").each((_, el) => {
+    const href = $(el).attr("href");
+    if (href) {
+      $(el).attr("href", new URL(href, baseUrl).href);
     }
   });
-  const linksInHtmlContent = $(".wikipage .wikiarticle .row .col-lg-9 a")
+  const linksInHtmlContent = $(".article-content a")
     .map((_, el) => $(el).attr("href"))
     .toArray();
 
-  const elementName = title?.replaceAll("#", "").trim();
+  const elementName = title.replaceAll("#", "").trim();
 
-  const tags = $(".wikipage .text-left a")
-    .map((_, element) => $(element).text().trim())
-    .toArray()
-    .filter((text) => text.includes("#"))
-    .map((text) => text.replaceAll("#", "").trim());
+  const languageCode = elementUrl.includes("/en/") ? "en" : "de";
 
-  const lastUpdate = $("small").text().split(":")[1].split("by")[0].trim();
+  const tags: string[] = [];
+  const categoriesHeading =
+    languageCode === "en" ? 'h3:contains("Categories")' : 'h3:contains("Kategorien")';
+  const categoriesEl = $(categoriesHeading).first();
+  if (categoriesEl.length) {
+    const siblingDiv = categoriesEl.next();
+    siblingDiv.find("a").each((_, el) => {
+      tags.push($(el).text().trim());
+    });
+  }
 
-  const translationLinkEn = $("li:contains('englische Version')")
-    .find("a")
-    .attr("href");
+  const lastUpdateEl = $(
+    languageCode === "en"
+      ? 'p:contains("Last edited")'
+      : 'p:contains("Zuletzt bearbeitet")'
+  ).first();
+  let lastUpdate = "";
+  if (lastUpdateEl.length) {
+    const text = lastUpdateEl.text();
+    const match = text.match(/(\d{2}\.\d{2}\.\d{4})/);
+    if (match) lastUpdate = match[1];
+  }
 
-  const translationLinkDe = $("li:contains('german version')")
-    .find("a")
-    .attr("href");
+  const currentUrl = elementUrl;
+  const translationLinkEn =
+    $('link[rel="alternate"][hreflang="en"]').attr("href") || undefined;
+  const translationLinkDe =
+    $('link[rel="alternate"][hreflang="de"]').attr("href") || undefined;
 
   const cardFields: Record<string, string> = {};
-  $(".card-body dl.row dt").each(function () {
-    const key = "card_" + $(this).text().trim();
-    const value = $(this).next("dd").text().trim();
-    cardFields[key] = value;
-  });
+  const catHeading =
+    languageCode === "en"
+      ? $('h3:contains("Categories")').first()
+      : $('h3:contains("Kategorien")').first();
+  if (catHeading.length) {
+    const sidebarCard = catHeading.parent();
+    sidebarCard.find("h3").each(function () {
+      let key = $(this).text().trim();
+      if (key === "Kategorien" || key === "Categories") return;
+      const sibling = $(this).next();
+      const value =
+        sibling.is("p") || sibling.is("div")
+          ? sibling.text().trim()
+          : sibling.find("a").first().text().trim() || sibling.text().trim();
+      key = key.replace(" of ", " ");
+      cardFields["card_" + key] = value;
+    });
+  }
 
-  // add context information
   const hasher = new Bun.CryptoHasher("md5");
-
-  // from improbib
   hasher.update(`element;${elementName};${elementUrl}`);
   logger.debug(`Hashing ${elementName} ${elementUrl}`);
   if (!elementUrl) {
@@ -71,9 +93,7 @@ export async function processImprowikiPage(
   }
 
   const identifier = hasher.digest("hex");
-  const languageCode = elementUrl.includes("/en/") ? "en" : "de";
 
-  // add license
   const sourceName = "improwiki";
   const licenseEn = {
     licenseName: "CC BY-SA 3.0 DE",
@@ -93,8 +113,10 @@ export async function processImprowikiPage(
     name: elementName,
     tags: [...new Set(tags)],
     lastUpdate,
-    translationLinkEn,
-    translationLinkDe,
+    translationLinkEn:
+      translationLinkEn === currentUrl ? undefined : translationLinkEn,
+    translationLinkDe:
+      translationLinkDe === currentUrl ? undefined : translationLinkDe,
     languageCode,
     sourceName,
     linksInHtmlContent,

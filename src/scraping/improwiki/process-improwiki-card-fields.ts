@@ -39,7 +39,7 @@ export async function processImprowikiCardFields(resultDictionary: {
   // parse individual fields
   for (const element of elements) {
     // number of players
-    const playerCountRegex = /(\d+)\s+bis\s+(\d+)/;
+    const playerCountRegex = /(\d+)\s+(?:bis|to)\s+(\d+)/;
 
     const inputString =
       element["card_Number Players"] ?? element["card_Anzahl Spieler"];
