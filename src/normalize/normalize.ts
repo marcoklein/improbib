@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import type { ElementType } from "../scraping/shared/element-type";
 import { createOpencodeGoClient } from "./llm-client";
 import { normalizedSourceSchema, type NormalizedElement } from "./normalized-schema";
+import { buildRelatedIdentifiers } from "./cross-source-matching";
 
 interface LoadResult {
   meta: Record<string, any>;
@@ -167,5 +168,40 @@ export async function normalizeAll(): Promise<void> {
     } catch (err: any) {
       console.error(`Failed to normalize ${source}: ${err.message}`);
     }
+  }
+
+  // Cross-source matching: compute relatedIdentifiers across all sources
+  console.log("\nComputing cross-source matches...");
+  const allCandidates: { identifier: string; name: string; sourceName: string; languageCode: string }[] = [];
+
+  for (const source of ["improwiki", "learnimprov", "ircwiki"]) {
+    const f = Bun.file(path.join(outDir, `${source}.json`));
+    if (!(await f.exists())) continue;
+    const data = await f.json();
+    for (const el of data.elements || []) {
+      allCandidates.push({
+        identifier: el.identifier,
+        name: el.name,
+        sourceName: el.sourceName,
+        languageCode: el.languageCode,
+      });
+    }
+  }
+
+  const related = buildRelatedIdentifiers(allCandidates);
+  const matchCount = [...related.values()].reduce((s, ids) => s + ids.length, 0) / 2;
+  console.log(`Found ${matchCount} cross-source match pairs`);
+
+  // Update each source file with relatedIdentifiers
+  for (const source of ["improwiki", "learnimprov", "ircwiki"]) {
+    const srcPath = path.join(outDir, `${source}.json`);
+    const f = Bun.file(srcPath);
+    if (!(await f.exists())) continue;
+    const data = await f.json();
+    for (const el of data.elements || []) {
+      el.relatedIdentifiers = related.get(el.identifier) || [];
+    }
+    await Bun.write(srcPath, JSON.stringify(data, null, 2));
+    console.log(`  Updated ${source} with cross-source references`);
   }
 }
