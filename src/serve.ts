@@ -110,10 +110,22 @@ Bun.serve({
 
     if (url.pathname === "/api/normalize") {
       console.log(`[${new Date().toISOString()}] Manual normalize trigger via API...`);
-      scanner.normalizeAll().catch((err: Error) =>
-        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message)
-      );
+      scanner.normalizeAll().then(() => {
+        console.log(`[${new Date().toISOString()}] Normalize complete.`);
+      }).catch((err: Error) => {
+        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack);
+      });
       return jsonResponse({ status: "normalization started" }, req);
+    }
+
+    if (url.pathname === "/api/opencode-check") {
+      const result = Bun.spawnSync(["opencode", "--version"], { stdout: "pipe", stderr: "pipe" });
+      return jsonResponse({
+        opencode: result.exitCode === 0,
+        version: new TextDecoder().decode(result.stdout).trim() || null,
+        error: new TextDecoder().decode(result.stderr).trim() || null,
+        authExists: existsSync(path.join(process.env.HOME || "/root", ".local/share/opencode/auth.json")),
+      }, req);
     }
 
     return new Response("Not Found", { status: 404 });
