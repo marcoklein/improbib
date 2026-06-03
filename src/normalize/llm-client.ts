@@ -60,8 +60,9 @@ async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
       .join("");
 
     if (!text) {
-      const eventTypes = events.map((e: any) => e.type).join(", ");
-      throw new Error(`No text in model output. Events: ${eventTypes}. stderr: ${stderr.slice(0, 300)}`);
+      const errorEvents = events.filter((e: any) => e.type === "error");
+      const errorDetails = errorEvents.map((e: any) => JSON.stringify(e)).join("; ");
+      throw new Error(`No text in model output. Events: ${eventTypes}. Errors: ${errorDetails}. stderr: ${stderr.slice(0, 200)}`);
     }
 
     return text;
