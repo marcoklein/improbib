@@ -170,6 +170,9 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# Personal project notes
+TODO.md
+
 # IntelliJ based IDEs
 .idea
 

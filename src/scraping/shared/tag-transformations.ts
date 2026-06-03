@@ -73,7 +73,7 @@ export const tagTransformations = {
   ÜbungenAssoziieren: ["Übung", "Assoziieren"],
   "ÜbungenAngebot/Annahme": ["Übung", "Angebot", "Annahme"],
   ÜbungenAkzeptieren: ["Übung", "Annahme"],
-  Begriffserklärungen: [],
+  Begriffserklärungen: ["other"],
   ÜbungenAtmung: ["Übung", "Atmung"],
   "ÜbungenMusik und Gesang": ["Übung", "Musik", "Gesang"],
   Expression: ["Expression"],

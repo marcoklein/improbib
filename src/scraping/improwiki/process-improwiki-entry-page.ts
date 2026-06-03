@@ -7,8 +7,12 @@ import { processImprowikiPage } from "./process-improwiki-page";
 export async function processImprowikiEntryPage(
   baseUrl: string,
   url: string,
-  shouldFetch?: (url: string) => Promise<boolean>
+  options?: {
+    shouldFetch?: (url: string) => Promise<boolean>;
+    maxPagesPerListing?: number;
+  }
 ) {
+  const { shouldFetch, maxPagesPerListing } = options ?? {};
   const logger = appLogger.getChild("processImprowikiEntryPage");
   const entryPage = await fetchAndCacheWebsite(url);
   logger.info(`Processing entry page ${entryPage.url}`);
@@ -34,6 +38,10 @@ export async function processImprowikiEntryPage(
     logger.info(
       `  ${toFetch.length} new/changed, ${skipped} unchanged`
     );
+  }
+
+  if (maxPagesPerListing !== undefined && toFetch.length > maxPagesPerListing) {
+    toFetch = toFetch.slice(0, maxPagesPerListing);
   }
 
   const startTime = Date.now();
