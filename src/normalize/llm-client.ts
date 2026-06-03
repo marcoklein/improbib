@@ -44,7 +44,7 @@ async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
     const stderr = await new Response(proc.stderr).text();
     const exitCode = await proc.exited;
 
-    if (exitCode !== 0 || stderr.trim()) {
+    if (exitCode !== 0) {
       throw new Error(`opencode exited ${exitCode}: ${stderr.slice(0, 500)}`);
     }
 
