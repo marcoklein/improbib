@@ -32,4 +32,4 @@ jobs:
       - name: Deploy to Dokku
         run: |
           git remote add dokku dokku@impromat.app:improbib
-          git push dokku main
+          git push dokku main --force
