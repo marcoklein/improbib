@@ -4,6 +4,17 @@ const storagePath = process.env.STORAGE_PATH || process.cwd();
 await mkdir(storagePath, { recursive: true });
 process.chdir(storagePath);
 
+// Write opencode auth file from env var for normalization
+if (process.env.OPENCODE_GO_API_KEY) {
+  const authDir = `${process.env.HOME || "/root"}/.local/share/opencode`;
+  await mkdir(authDir, { recursive: true });
+  const authFile = Bun.file(`${authDir}/auth.json`);
+  await Bun.write(authFile, JSON.stringify({
+    "opencode-go": { type: "api", key: process.env.OPENCODE_GO_API_KEY },
+  }));
+  console.log(`[${new Date().toISOString()}] Auth file written.`);
+}
+
 import { Improbib } from ".";
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
