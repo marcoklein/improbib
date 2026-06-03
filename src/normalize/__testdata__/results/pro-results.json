@@ -1,0 +1,749 @@
+{
+  "meta": {
+    "model": "deepseek-v4-pro",
+    "modelId": "opencode-go/deepseek-v4-pro",
+    "opencodeVersion": "1.15.5",
+    "timestamp": "2026-06-03T16:52:27.640Z",
+    "runId": "2026-06-03T16-52-27-640Z",
+    "elementCount": 15,
+    "promptChars": 21166,
+    "outputChars": 23901,
+    "elapsedSeconds": 192.1
+  },
+  "results": [
+    {
+      "elementId": "freeze-tag",
+      "name": "Freeze Tag",
+      "category": "well-structured-game",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Freeze Tag is a fast-paced improv game where two players start a scene, anyone calls \"Freeze!\" to lock them in position, and a new player taps in, assumes the frozen pose, and launches an entirely new, unrelated scene. It trains spontaneity, physicality, and the core improv principle of accepting what you are given and building on it. Also known as \"Freeze\", \"Zap\", \"Chain Impro\" or \"Tap Out\".",
+        "howToPlay": "1. Two players begin a scene with full physical commitment — moving, using the space, no \"talking heads\".\n2. Any waiting player shouts \"Freeze!\" or \"Stop!\" when the stage picture is strong or interesting.\n3. Both stage players freeze instantly in their exact poses — no drift, no relaxation.\n4. A waiting player steps forward, gently taps out one frozen player, and takes over that exact pose. The tapped-out player leaves the stage.\n5. The new player immediately begins a completely new scene, justifying the pose with fresh characters, setting, and story — totally unrelated to the previous scene.\n6. Repeat until the group decides to end.",
+        "variations": [
+          {
+            "name": "Blind Freeze",
+            "description": "Waiting players stand with their backs to the stage. They call \"stop\", turn around, and must work with whatever picture they find. Prevents pre-planning and pushes pure spontaneity."
+          },
+          {
+            "name": "Elimination Freeze",
+            "description": "Competitive version. Players who hesitate, lack ideas, or stall in justification are eliminated. The last remaining player is the \"freeze king\". Works especially well in shows."
+          },
+          {
+            "name": "Object Freeze",
+            "description": "Poses must involve interaction with an invisible object. Every new scene defines what object is being held or manipulated by the body posture."
+          }
+        ],
+        "tips": [
+          "Avoid the obvious continuation — a raised arm doesn't always have to be a traffic cop. Take the idea one step further.",
+          "Give extreme and dynamic poses as gifts when you are on stage. Static standing offers no inspiration to the next player.",
+          "Time the freeze when the stage picture is especially strong or a conflict has just peaked — not too early, not too late.",
+          "Watch colleagues' poses carefully from the sideline. Inaccurate pose reproduction leads to a wooden new scene start."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "Freeze Tag is a fast-paced improv game where players steal a frozen body posture and breathe new life into it in a completely different scene. It's a classic warm-up and performance game that trains spontaneity and the 'yes, and' principle.",
+        "howToPlay": "1. All players form a loose half-circle at the edge of the stage. Two players step out and begin a scene with full physical commitment.\n2. The two players move, use the space and react to each other. No 'talking heads'.\n3. Any waiting player can shout 'Freeze!' or 'Stop!' when the picture on stage is strong or interesting.\n4. Both stage players freeze instantly in their exact poses. No drift, no relaxation.\n5. A waiting player walks on, gently taps out one of the frozen players and takes over that exact pose.\n6. The new player justifies the pose with a completely fresh scene. Story, setting and characters have nothing to do with what came before.",
+        "variations": [
+          {
+            "name": "Blind Freeze",
+            "description": "Waiting players stand with their back to the stage. Whoever feels the time is right calls 'stop', turns around and has to work with whatever picture they find, pushing pure spontaneity."
+          },
+          {
+            "name": "Elimination Freeze",
+            "description": "Competitive version where anyone who lacks a quick idea, hesitates too long or stalls is out. At the end one 'freeze king' remains."
+          },
+          {
+            "name": "Object Freeze",
+            "description": "Focus is on poses involving interaction with an invisible object. Every new scene must define an object held or moved by the body posture."
+          }
+        ],
+        "tips": [
+          "Avoid the obvious continuation. If someone is frozen with a raised arm, the policeman directing traffic is the first idea everyone has. Try to take a step further.",
+          "Give extreme poses as gifts. Putting yourself in uncomfortable or dynamic positions is a wonderful gift to your colleagues.",
+          "A good freeze hits when the picture is especially strong or when a conflict has just reached its peak.",
+          "Watch carefully. Whoever stands at the side of the stage shouldn't only be thinking about their own next idea."
+        ],
+        "referencedElements": [
+          "Zap",
+          "Chain Impro",
+          "Tap Out",
+          "Blind Freeze",
+          "Elimination Freeze",
+          "Object Freeze"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.75,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "half-life",
+      "name": "Half-Life",
+      "category": "inline-variant",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Half-Life (also known as Fast Forward) is an improv game where a scene is first played in one minute, then repeated in ever-shorter time frames — 30, 15, 7, 3, and finally 1 second. The rapid compression forces players to strip each repetition down to the essential beats, and the resulting slapstick effect reliably generates laughs even from weak starting material.",
+        "howToPlay": "1. Ask the audience for a dramatic situation to start the scene.\n2. Play a scene with as much action as possible — location changes, dialogue, drama.\n3. After one minute, repeat the same scene in 30 seconds, hitting all the key anchor points.\n4. Repeat again in 15 seconds, then 7, then 3, then 1 second, each time compressing to the essentials.",
+        "variations": [
+          {
+            "name": "Variable Start Length",
+            "description": "The starting scene can have any length, and the first compression then cuts it down to one minute."
+          }
+        ],
+        "tips": [
+          "Ask the audience for a suggestion based on a dramatic situation — it gives the scene stakes from the start.",
+          "The starting scene should contain as much action as possible: changes of location, dialogue, drama — the more material, the funnier the compressions.",
+          "Always keep the key anchor points of the original scene in the shorter follow-up rounds. The game lives from the repetition of exactly these defining beats."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "Half-Life (also known as Fast Forward) is an improv game where a scene is played within one minute and then repeated in progressively shorter time frames of 30, 15, 7, 3, and finally 1 second. The shortening forces players to reduce the scene to its essentials, creating a guaranteed laugh through slapstick compression.",
+        "howToPlay": "1. Ask the audience for a suggestion based on a dramatic situation.\n2. Play a starting scene within one minute, filled with as much action as possible: changes of location, dialogue, and drama.\n3. Repeat the scene in 30 seconds, keeping the key anchor points of the original scene.\n4. Repeat the scene in 15 seconds, further compressing to essentials.\n5. Repeat the scene in 7 seconds.\n6. Repeat the scene in 3 seconds.\n7. Repeat the scene in 1 second.",
+        "variations": [
+          {
+            "name": "Flexible Start",
+            "description": "The starting scene can have any length, and the first compression then cuts it down to one minute."
+          }
+        ],
+        "tips": [
+          "It helps to ask the audience for a suggestion based on a dramatic situation.",
+          "The starting scene should contain as much action as possible: changes of location, dialogue, drama and so on.",
+          "Always keep the key anchor points of the original scene in the shorter follow-up rounds. The game lives from the repetition of exactly these defining beats.",
+          "The audience enjoys watching the players struggle, race against the clock and end up completely out of breath."
+        ],
+        "referencedElements": [
+          "Fast Forward"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 0,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "yes-no",
+      "name": "Yes - No",
+      "category": "minimal-content",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Yes - No is a simple paired improv exercise where one player can only say \"Yes\" and the other only \"No\". Despite having just one word each, they carry out a full conversation using tone, volume, rhythm, pauses, and body language. Roles are swapped partway through.",
+        "howToPlay": "1. Form pairs. One player may only say \"Yes\", the other only \"No\".\n2. Have a full conversation despite the limitation, using tone, volume, rhythm, pauses, and body language to convey meaning.\n3. After a while, switch roles so each player experiences both constraints.",
+        "variations": [],
+        "tips": [
+          "Communication is mostly non-verbal — this exercise makes that vivid by restricting vocabulary to a single word each.",
+          "Use tone, volume, rhythm, and pauses to differentiate between question, statement, anger, excitement, and other meanings."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "An improv exercise where players form pairs. One can only say 'Yes', the other only 'No'. Despite this verbal limitation, they have a full conversation using tone, volume, rhythm, pauses, and body language. After a while, roles switch.",
+        "howToPlay": "1. Form pairs.\n2. One player can only say 'Yes', the other only 'No'.\n3. Have a full conversation using only these words, relying on tone, volume, rhythm, pauses, and body language to communicate meaning.\n4. After a while, switch roles so the 'Yes' player becomes 'No' and vice versa.",
+        "variations": [],
+        "tips": [
+          "Use tone, volume, rhythm, pauses, and body language to convey meaning beyond the single word.",
+          "This exercise trains vocal expression and status play.",
+          "Communication is mostly non-verbal — embrace that realization."
+        ],
+        "referencedElements": []
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.5,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "mirror-exercises",
+      "name": "Mirror Exercises",
+      "category": "short-exercise",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Mirror Exercises is a classic paired improv warm-up where two players face each other and one mirrors the other's slow movements exactly. The goal is for an outside observer to be unable to tell who is leading and who is following. It trains observation, patience, and physical synchronization.",
+        "howToPlay": "1. Two players face each other. One leads with slow, deliberate movements while the other mirrors exactly.\n2. The goal is for an observer to not be able to tell who leads.\n3. Switch roles after a while.\n4. Eventually, try leading and following simultaneously with no designated leader.",
+        "variations": [],
+        "tips": [],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "A classic improv exercise where two players face each other. One leads with slow movements while the other mirrors exactly, with the goal that an observer cannot tell who is leading. Over time, players switch roles and eventually try leading and following simultaneously with no designated leader.",
+        "howToPlay": "1. Two players face each other.\n2. One player leads with slow, deliberate movements while the other mirrors exactly, as if looking in a mirror.\n3. The goal is for an observer to not be able to tell who is leading.\n4. After a while, switch roles so the other player leads.\n5. Eventually, try leading and following simultaneously with no designated leader.",
+        "variations": [],
+        "tips": [
+          "Move slowly and deliberately so the partner can follow precisely.",
+          "The goal is for an observer to not be able to tell who is leading.",
+          "This exercise trains observation, patience, and physical synchronization."
+        ],
+        "referencedElements": []
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "talk-at-touch",
+      "name": "Talk at touch",
+      "category": "medium-game",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Talk at touch is a two-player improv game where speaking is only allowed while one player is physically touching the other, and only the player who initiated the touch may talk. Permanent contact like holding hands is prohibited. The constant alternation between mute physical play and spoken sections creates comedy from the necessity to touch in order to communicate.",
+        "howToPlay": "1. Two players perform a scene, optionally with an audience suggestion.\n2. A player may only speak while touching the other player, and only the touching player may talk.\n3. Permanent contact such as holding hands is prohibited — touch must be initiated anew each time.\n4. This produces a rhythm of mute physical sections alternating with spoken dialogue.",
+        "variations": [
+          {
+            "name": "Bidirectional Touch",
+            "description": "A touch is valid in both directions: as soon as contact exists, both players may speak regardless of who initiated it. When contact breaks, both must be silent and can only play pantomime."
+          }
+        ],
+        "tips": [],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "An improv game where two players perform a scene but are only allowed to speak while physically touching each other. Only the person who initiates the touch may speak. Permanent contact such as holding hands is prohibited. This creates a rhythm alternating between mute pantomime and spoken sections.",
+        "howToPlay": "1. Two players perform a scene, optionally with input from the audience.\n2. Players may only speak while one player is touching the other.\n3. Only the person who initiates the touch is allowed to speak.\n4. Permanent contact such as holding hands is prohibited.\n5. Players alternate between mute pantomime sections and spoken sections, creating comedy from the necessity to touch in order to communicate.",
+        "variations": [
+          {
+            "name": "Bidirectional Touch",
+            "description": "A touch is valid in both directions — as soon as contact is made, both may speak regardless of who initiated the touch. As soon as contact breaks, both must be silent and can only play pantomime."
+          }
+        ],
+        "tips": [
+          "The comedy arises from the necessity of players to touch each other in order to communicate.",
+          "Use the mute sections for physical storytelling and pantomime.",
+          "Avoid permanent contact like holding hands — the alternating rhythm of touch and release is key."
+        ],
+        "referencedElements": []
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "swinging-pendulum",
+      "name": "Swinging Pendulum of Death",
+      "category": "external-refs",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Swinging Pendulum of Death is a complex three-player improv game with strong narrative structure. Each player is given a distinct character, location, and conflict. The game cycles through three locations, with one character dying at each, then repeatedly revisits locations at random — requiring the actor who died there to drop dead instantly while the others deal with the aftermath.",
+        "howToPlay": "1. Assign each of three actors a location, a conflict, and a character.\n2. Start at the first actor's location. The other two adapt to fit that scenario. Play the scene until that actor's character dies.\n3. The judge calls a new location. The actor who just died returns as a new character. Play the scene until the second actor's character dies.\n4. Repeat for the third location until the third character dies.\n5. Once all three deaths are established, the judge calls locations at random. The actor who died in that location immediately drops dead, and the others continue the aftermath. Repeat until the game ends.",
+        "variations": [],
+        "tips": [],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "The Swinging Pendulum of Death is a complex and entertaining improv game for 3 actors. Each actor is given a location, conflict, and character. Scenes are played at each location where one character dies, then the game cycles through locations at random as the dead character immediately drops dead and the others deal with the aftermath.",
+        "howToPlay": "1. Each of the 3 actors is given a location, a conflict, and a character, based on audience suggestions.\n2. The game starts at the first location. The actor whose character belongs to that location is established, and the other two actors play supporting characters. The scene must be built up to the point that the main character dies.\n3. A judge calls out one of the other two locations. The dead actor 'comes back to life' as a new character within the new location, and the scene is advanced until another character dies.\n4. Repeat for the third location, where the previously dead character comes to life again and the scene is played until the third character dies.\n5. After all three deaths are established, the judge calls any location at random. The actor who died in that location must immediately drop dead, and the others pick up where the scene left off, dealing with the aftermath of the death.\n6. Continue calling locations at random until the end of the game.",
+        "variations": [],
+        "tips": [
+          "This game is complicated but can be extremely entertaining if done well.",
+          "Each scene must be advanced to the point that the designated character dies.",
+          "When a location is called after all deaths, the actor who died there must drop dead immediately and the others must react to the aftermath."
+        ],
+        "referencedElements": []
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "superscene",
+      "name": "Superscene",
+      "category": "long-form-show",
+      "source": "improwiki",
+      "lang": "en",
+      "expected": {
+        "description": "Superscene is a long-form improv show format for three to five players, structured as a competitive storytelling tournament. Each player acts as a director for their own story, casting the others as actors. After all directors have presented one scene, the audience votes by applause to eliminate one story each round until a single \"Superscene\" remains.",
+        "howToPlay": "1. Three to five players participate. Each takes a turn as \"director\" of their own story.\n2. The director introduces the scene, asks the audience for guidelines, and may impose additional requirements (rhyme, genre, ABC-game, etc.).\n3. The other players perform the scene. The director ends it at a chosen moment.\n4. After all directors have presented, each briefly promotes their story to the audience.\n5. The audience votes by applause on each scene. The scene with the least applause is eliminated.\n6. The remaining directors receive additional audience guidelines for the next round. Play another round without the eliminated story.\n7. Repeat until one story remains — the \"Superscene\".",
+        "variations": [],
+        "tips": [
+          "Directors should only promote their own story — never comment on or disparage others.",
+          "End each scene with a cliff-hanger to make the audience curious and invested in seeing the sequel.",
+          "The goal is to arouse and maintain the audience's interest in the progress of the story across rounds.",
+          "Despite the competitive format, this is about creative cooperation — all players should give their best in every scene, regardless of whose story it is."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "Superscene is an improv game for three to five players where each takes a turn as director of their own story scene. After all scenes are performed, the audience votes by applause, eliminating one story each round until a single 'Superscene' remains as the audience's favorite.",
+        "howToPlay": "1. Three to five players participate. Each is responsible for one story as its director.\n2. The first director introduces their scene and asks the audience for guidelines (e.g., location, genre, or other constraints).\n3. The other players perform the scene. At a given time, the director ends the scene.\n4. The next player becomes director, introduces their scene with new guidelines, and it is performed. This continues until all players have directed once.\n5. All directors briefly promote their story and explain why the audience should see its sequel.\n6. The audience votes by applause on each scene. The scene with the least applause is eliminated.\n7. For the second round, each remaining director receives additional guidelines from the audience and optional suggestions from other players. Scenes are performed and voted on again, with one eliminated.\n8. Repeat until one story remains — the 'Superscene'.",
+        "variations": [],
+        "tips": [
+          "Directors only promote their own story — they should not comment on or disparage others.",
+          "It is sensible to end each scene with a cliff-hanger.",
+          "The director does not cut off the continuing scene by the rules any more.",
+          "Even though directors are supposedly competitors, all should still try to give their best in every scene."
+        ],
+        "referencedElements": [
+          "ABC-game"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.25,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "gefuehlspunkte",
+      "name": "Gefühlspunkte",
+      "category": "german-content",
+      "source": "improwiki",
+      "lang": "de",
+      "expected": {
+        "description": "Bei Gefühlspunkte werden zwei gut sichtbare Punkte auf die Bühne geklebt und jedem wird per Publikumszuruf ein gegensätzliches Gefühl zugeordnet (z.B. Hass und Liebe). Die Spieler improvisieren eine zusammenhängende Szene an einem vom Publikum vorgegebenen Ort, wobei sie ihre Figur je nach Nähe zu einem Gefühlspunkt in der entsprechenden Emotion einfärben — direkt auf dem Punkt erfolgt der völlige Gefühlsausbruch.",
+        "howToPlay": "1. Zwei gut sichtbare Punkte werden auf der Bühne markiert.\n2. Das Publikum ordnet jedem Punkt ein gegensätzliches Gefühl zu (z.B. Hass und Liebe, Eifersucht und Gleichgültigkeit).\n3. Das Publikum gibt einen Ort für die Szene vor.\n4. Die Spieler entwickeln eine zusammenhängende Geschichte und bewegen sich frei auf der Bühne.\n5. Je näher ein Spieler einem Gefühlspunkt kommt, desto stärker spielt er die entsprechende Emotion aus. Auf dem Punkt selbst erfolgt der völlige Gefühlsausbruch.",
+        "variations": [],
+        "tips": [
+          "Nicht nur die Extreme auf den Gefühlspunkten spielen, sondern auch die Abstufungen und Übergänge der Gefühle zwischen den Punkten.",
+          "Zusätzlich zum Ort kann das Publikum auch Gegenstände oder Raumdetails an den Gefühlspunkten vorgeben (z.B. ein Sessel am Hass-Punkt, ein Fernseher am Liebes-Punkt).",
+          "Größere Bewegungen zwischen den Gefühlspunkten sollten begründet erfolgen und nicht willkürlich wirken."
+        ],
+        "referencedElements": [
+          "Gefühlsquadrat"
+        ]
+      },
+      "actual": {
+        "description": "Zwei gut sichtbare Punkte werden auf die Bühne geklebt. Jedem Punkt wird durch Publikumszuruf ein Gefühl zugeordnet. Die Spieler entwickeln eine zusammenhängende Geschichte, wobei sich die Charaktere frei auf der Bühne bewegen können und je nach Standort zum Gefühlspunkt ihre Figur in der entsprechenden Emotion einfärben. Die Emotion wird stärker, je näher der Spieler dem Punkt kommt.",
+        "howToPlay": "1. Zwei gut sichtbare Punkte auf die Bühne kleben.\n2. Jedem Punkt wird durch Publikumszuruf ein Gefühl zugeordnet, am besten gegensätzliche (z.B. Hass–Liebe, Eifersucht–Gleichgültigkeit, Trauer–Freude).\n3. Das Publikum gibt einen Ort vor, an dem die Szene entstehen soll.\n4. Die Spieler entwickeln eine zusammenhängende Geschichte und bewegen sich frei auf der Bühne.\n5. Je nach Standort des Spielers (Nähe zu einem Gefühlspunkt) wird die Figur unterschiedlich in der entsprechenden Emotion gespielt.\n6. Die Emotion wird immer stärker, je näher der Spieler dem Gefühlspunkt kommt. Auf dem Gefühlspunkt gibt es den völligen Gefühlsausbruch.",
+        "variations": [],
+        "tips": [
+          "Es ist wichtig, nicht nur die Extreme auf den Gefühlspunkten zu spielen, sondern auch die Abstufungen der Gefühle zwischen diesen.",
+          "Zusätzlich zum Ort kann man sich auch noch Gegenstände oder Raum- oder Ortsdetails geben lassen, die an dem betreffenden Gefühlspunkt vorhanden sind.",
+          "Die größeren Bewegungen zwischen den Gefühlspunkten sollten begründet erfolgen und nicht willkürlich erscheinen."
+        ],
+        "referencedElements": [
+          "Gefühlsquadrat"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.6666666666666666,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "distanz-schlaegerei",
+      "name": "Distanz-Schlägerei",
+      "category": "german-exercise",
+      "source": "improwiki",
+      "lang": "de",
+      "expected": {
+        "description": "Distanz-Schlägerei ist eine pantomimische Aufwärmübung, bei der zwei Spieler in sicherer Entfernung einen Kampf simulieren. Der Angreifer attackiert mit wechselnden Körperteilen aus der Distanz, der Verteidiger reagiert spontan, als wäre er wirklich getroffen worden. Die Übung kann paarweise oder in der ganzen Gruppe gespielt werden.",
+        "howToPlay": "1. Zwei Spieler stellen sich in angemessener Entfernung gegenüber auf.\n2. Einer ist der Angreifer, der andere der Verteidiger. Der Angreifer nutzt wechselnd Füße, Arme, Kopf und Schultern, um plötzlich und immer wieder zu attackieren — stets aus sicherer Entfernung.\n3. Der Verteidiger reagiert spontan, als wäre er wirklich getroffen worden.\n4. Variante: Die ganze Gruppe kämpft gleichzeitig, \"jeder gegen jeden\".",
+        "variations": [],
+        "tips": [
+          "Die Übung eignet sich gut zum Aufwärmen, zum Hemmungen- und Frust-Abbauen und trainiert den körperlichen Ausdruck.",
+          "Trotz der Distanz muss der Verteidiger überzeugend und spontan auf jeden Angriff reagieren."
+        ],
+        "referencedElements": [
+          "Zeitlupenschlägerei"
+        ]
+      },
+      "actual": {
+        "description": "Zwei Spieler stehen sich in angemessener Entfernung gegenüber. Einer ist der Angreifer, der andere der Verteidiger. Der Angreifer attackiert plötzlich mit Füßen, Armen, Kopf oder Schulter, jedoch immer in sicherer Entfernung. Der Angegriffene reagiert spontan, als ob er wirklich getroffen worden wäre. Die Übung dient zum Aufwärmen, Hemmungen- und Frust-Abbauen und trainiert den Ausdruck.",
+        "howToPlay": "1. Zwei Spieler stellen sich in angemessener Entfernung gegenüber.\n2. Einer ist der Angreifer, der andere der Verteidiger.\n3. Der Angreifer nutzt wechselnd Füße, Arme, Kopf, Schulter, um plötzlich und immer wieder den Verteidiger zu attackieren — jedoch immer in sicherer Entfernung.\n4. Der Angegriffene reagiert spontan so, als wenn er wirklich getroffen worden wäre.\n5. Optional kann das Spiel paarweise oder mit der ganzen Gruppe 'jeder gegen jeden' gespielt werden.",
+        "variations": [],
+        "tips": [
+          "Die Übung ist zum Aufwärmen geeignet und gut zum Hemmungen- und Frust-Abbauen.",
+          "Die Distanz muss immer sicher bleiben — kein tatsächlicher Körperkontakt.",
+          "Die Reaktionen des Verteidigers sollten spontan und realistisch wirken."
+        ],
+        "referencedElements": [
+          "Zeitlupenschlägerei"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.5,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "harold-french",
+      "name": "Harold-French",
+      "category": "learnimprov-structured",
+      "source": "learnimprov",
+      "lang": "en",
+      "expected": {
+        "description": "Harold-French (also called Herald or Sheila) is a version of the Harold long-form improv format where all scenes take place in a single environment. The Harold itself is a classic structure of three sets of three scenes connected by a common theme, created by Del Close. Scene transitions are controlled by offstage ensemble members through various \"wipe\" techniques.",
+        "howToPlay": "1. Get a broad general theme from the audience (single word or phrase).\n2. The ensemble opens with a group riff on the theme — free associations, a group song, or similar.\n3. Play 3 open scenes informed by but not directly related to each other.\n4. Perform a predetermined group handle (another structured bit).\n5. Repeat this cycle 3 times total, for 9 open scenes. By the last round, stories should begin to weave together.\n6. Scene transitions are controlled by offstage members through wipes: clap, front wipe, tap out, lights dim, or coach call.",
+        "variations": [
+          {
+            "name": "Monoscene",
+            "description": "A Harold that takes place in one environment."
+          },
+          {
+            "name": "Blind Harold",
+            "description": "Participants are seated and blindfolded in the dark."
+          },
+          {
+            "name": "The Bat",
+            "description": "Unblindfolded Harold performed in the dark."
+          },
+          {
+            "name": "Armando",
+            "description": "Scenes are interceded by true story monologues from a designated monologist."
+          },
+          {
+            "name": "Triple Play",
+            "description": "3 by 3 scenes with no interceding handles."
+          }
+        ],
+        "tips": [
+          "The theme should be as broad as possible. Nouns are discouraged. For example, \"toothbrush\" could be wrangled into the theme \"cleaning\".",
+          "A smart group will put their best storyteller as their balladeer, not the best singer."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "French Harold (also called Herald or Sheila) is a long-form improv structure that takes place in one environment. It consists of a series of scenes loosely associated to one common theme, typically following a format of 3 sets of 3 scenes interceded by group handles. The format was created by Del Close.",
+        "howToPlay": "1. Ask the audience for a general theme.\n2. Any number of improvisers riff off the theme as a group (free associations, group song, etc.) as an opening handle.\n3. Perform 3 open scenes, not related to each other but informed by the theme.\n4. Play another group handle.\n5. Repeat the cycle of 3 scenes followed by a handle two more times, for a total of 9 open scenes.\n6. By the last round, stories should start to weave together.\n7. Scene transitions are determined by offstage ensemble members using wipes (clap, front wipe, tap out, ass wipe, technical, director cut).",
+        "variations": [
+          {
+            "name": "Monoscene",
+            "description": "A Harold that takes place in one environment."
+          },
+          {
+            "name": "Blind Harold",
+            "description": "A Harold performed blindfolded in the dark."
+          },
+          {
+            "name": "The Bat",
+            "description": "An unblindfolded Harold performed in the dark."
+          },
+          {
+            "name": "Armando",
+            "description": "A Harold where scenes are interceded by true story monologues."
+          },
+          {
+            "name": "Sybil",
+            "description": "A Harold performed by a single performer."
+          },
+          {
+            "name": "The Narce",
+            "description": "A single performer Harold."
+          },
+          {
+            "name": "Triple Play",
+            "description": "3 by 3 scenes with no interceding handles."
+          }
+        ],
+        "tips": [
+          "The audience does not participate further with suggestions after the initial theme.",
+          "All 11 to 12 scenes should be based on the chosen theme.",
+          "Transitions are determined by offstage ensemble members, not called from a booth.",
+          "By the last round of scenes, stories should start to weave together."
+        ],
+        "referencedElements": [
+          "Monoscene",
+          "Blind Harold",
+          "The Bat",
+          "Armando",
+          "Sybil",
+          "The Narce",
+          "Triple Play",
+          "Del Close",
+          "Herald",
+          "Sheila"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "balladeer-doo-wop",
+      "name": "Balladeer-Doo Wop",
+      "category": "musical-form",
+      "source": "learnimprov",
+      "lang": "en",
+      "expected": {
+        "description": "Balladeer-Doo Wop (also known as Minstrel or Musical MC) is a long-form musical improv structure directed by a singing balladeer. The accompanist and singer introduce characters, locations, or events through short songs while actors perform silently on stage. The ballads control scene changes, rescues, and closures — there are no blackouts.",
+        "howToPlay": "1. An accompanist and singer (the balladeer) start with a short song (30–60 seconds) introducing a character, location, or foreshadowing an event.\n2. While the balladeer sings, players act on stage silently. When the ballad ends, they begin speaking.\n3. The balladeer uses subsequent ballads to change scenes, rescue struggling scenes, or bring scenes to a conclusion.\n4. No blackouts — all scene transitions are controlled by the balladeer.\n5. Each ballad can use a different musical genre: rap, rock, opera, etc.",
+        "variations": [
+          {
+            "name": "Doo Wop",
+            "description": "The balladeer is replaced by a group song in the style of Doo Wop. The group song can be any form of group make-a-song — Hoe Down, March Song, Madrigal, or Chant."
+          }
+        ],
+        "tips": [
+          "Put your best storyteller as the balladeer, not necessarily the best singer.",
+          "If the balladeer gets into trouble, the players must step in with a scene to recover.",
+          "Musical bits should be short — thirty seconds to a minute is usually enough to pass on story information."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "Balladeer (also known as Minstrel, Musical MC, or Doo Wop) is an improv format where a singer and accompanist direct scenes through short improvised songs. The balladeer introduces characters, locations, or events through song while actors perform silently on stage, then begin vocalizing as the ballad ends. The ballad is used to change scenes, rescue struggling scenes, or bring closure.",
+        "howToPlay": "1. The accompanist and the singer start with a short song (30 seconds to 1 minute) that may introduce a character, location, or foreshadow an event.\n2. Simultaneously, players act on-stage silently while the balladeer sings.\n3. As the ballad ends, the on-stage players start to vocalize and perform the scene.\n4. The balladeer uses subsequent ballads to change scenes, rescue a struggling scene, or bring closure to a scene that has reached a conclusion.\n5. No blackouts are used — all changes are made by the balladeer.\n6. If the balladeer gets into trouble, the players need to step in with a scene.",
+        "variations": [
+          {
+            "name": "Doo Wop",
+            "description": "The balladeer is replaced by a group song in the style of Doo Wop. The group song could be any manner of group make-a-song such as Hoe Down, March Song, Madrigal, or Chant."
+          }
+        ],
+        "tips": [
+          "A new musical genre can be used for each new ballad: rap, rock, opera.",
+          "The musical bits are meant to be short — thirty seconds to a minute.",
+          "A smart group puts their best storyteller as balladeer, not the best singer.",
+          "If the balladeer gets into trouble, the players need to step in with a scene."
+        ],
+        "referencedElements": [
+          "Minstrel",
+          "Musical MC",
+          "Doo Wop",
+          "Hoe Down",
+          "March Song",
+          "Madrigal",
+          "Chant"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "translation-healthcare",
+      "name": "Translation-Healthcare",
+      "category": "handle-overlay",
+      "source": "learnimprov",
+      "lang": "en",
+      "expected": {
+        "description": "Translation-Healthcare is a handle overlaid on an open scene where a translator facilitates a healthcare interaction between a provider and a patient who speaks a made-up gibberish language. Unlike typical translation scenes, the translation is performed for another character on stage — not the audience — so the audience observes both sides. The format emphasizes character work, narrative arc, and avoiding cultural stereotypes.",
+        "howToPlay": "1. A host sets up a non-existent gibberish language (robot, economist, whale, toaster, etc.) and the healthcare scenario.\n2. One performer plays the patient speaking gibberish. Another plays the healthcare provider. A third translates between them.\n3. The patient communicates in gibberish with full physicality, emotion, and want; the translator interprets for the provider, and vice versa.\n4. Performers maintain a narrative arc exploring the healthcare interaction — not just the translation gimmick.",
+        "variations": [
+          {
+            "name": "Translated Opera",
+            "description": "As described, with the gibberish sung."
+          },
+          {
+            "name": "Translated Film",
+            "description": "As described, using movie thematics."
+          },
+          {
+            "name": "Bad Translator",
+            "description": "Real language translated by a non-speaker of that language."
+          },
+          {
+            "name": "Mechanical Translator",
+            "description": "Real language translated using Google Translate or similar."
+          },
+          {
+            "name": "Future In Laws",
+            "description": "Meet the parents/in-laws through a translator."
+          }
+        ],
+        "tips": [
+          "Set up a non-existent language (robot, economist, whale) rather than using gibberish for real languages, which can lead to stereotyping.",
+          "Create complete characters with movement and wants — don't let the translation gimmick replace the narrative arc.",
+          "Short translation for long gibberish (or vice versa) is a classic comedy gimmick."
+        ],
+        "referencedElements": [
+          "Gibberish"
+        ]
+      },
+      "actual": {
+        "description": "Translation-Healthcare is an improv handle overlaid on an open scene where a translator facilitates a healthcare interaction. The patient (or healthcare worker) speaks a non-existent gibberish language while the translator interprets. Performers must create complete characters with movement and wants in addition to the gibberish, maintaining a narrative arc around the healthcare interaction.",
+        "howToPlay": "1. The host sets up a non-existent language for the patient or healthcare worker (e.g., robot, economist, whale, toaster) — avoid using gibberish for existing languages to prevent stereotyping.\n2. The translator facilitates communication between the healthcare worker and the patient, translating the gibberish for the other performer while the audience observes.\n3. The performers create complete characters with movement and wants in addition to the gibberish.\n4. Maintain a narrative arc that explores the healthcare interaction throughout the scene.",
+        "variations": [
+          {
+            "name": "Translated Opera",
+            "description": "Singing gibberish in an operatic style."
+          },
+          {
+            "name": "Translated Film",
+            "description": "Using movie thematics with the translation format."
+          },
+          {
+            "name": "Bad Translator",
+            "description": "A real language is translated by a non-speaker."
+          },
+          {
+            "name": "Mechanical Translator",
+            "description": "Using a Google Translate style mechanical translation."
+          },
+          {
+            "name": "Future In Laws",
+            "description": "Meet the parents or in-laws scenario with translation."
+          }
+        ],
+        "tips": [
+          "It is recommended to set up a non-existent language — using gibberish for existing languages can lead to stereotyping.",
+          "The performers must create complete characters with movement and wants in addition to the gibberish.",
+          "Gimmicks that work well: short translation for long gibberish (or vice versa), problems with idioms, differences in emotional content, dirty words."
+        ],
+        "referencedElements": [
+          "Translated Opera",
+          "Translated Film",
+          "Bad Translator",
+          "Mechanical Translator",
+          "Future In Laws"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.6666666666666666,
+        "refRecall": 0
+      }
+    },
+    {
+      "elementId": "what-did-you-want",
+      "name": "What did you want to be when you grew up?",
+      "category": "ask-for-edge",
+      "source": "learnimprov",
+      "lang": "en",
+      "expected": {
+        "description": "\"What did you want to be when you grew up?\" is an audience ask-for prompt from learnimprov.com. It is a question used to solicit suggestions from the audience to inspire an improv scene, not a game or exercise in itself.",
+        "howToPlay": null,
+        "variations": [],
+        "tips": [],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "An audience ask-for prompt: 'What did you want to be when you grew up?' This is not a game or exercise but a question posed to the audience to generate suggestions for improvisational scenes.",
+        "howToPlay": null,
+        "variations": [],
+        "tips": [],
+        "referencedElements": []
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "deconstruction",
+      "name": "Deconstruction",
+      "category": "long-form-theory",
+      "source": "ircwiki",
+      "lang": "en",
+      "expected": {
+        "description": "The Deconstruction is a long-form improv structure developed by Del Close and The Family. It starts with a long two-person opening scene that introduces characters and a central problem, then \"deconstructs\" that scene through thematic scenes, commentary scenes, and an accelerating run of ever-shorter callbacks, before returning to the opening scene for a final resolution.",
+        "howToPlay": "1. Opening Scene (6–8 min): A long two-person scene establishing relationship and a problem — present but not solve it.\n2. Two Thematic Scenes (2–3 min each): Scenes exploring what the opening scene was ABOUT, taking one character's wants/flaws into new contexts.\n3. Return to Opening Scene (1.5–2 min): Clarify and solidify the central theme.\n4. Five Commentary Scenes (1.5–2 min each): Game-heavy scenes that comment on what was unusual or flawed about the opening characters.\n5. Second Return to Opening (1–1.5 min): Heighten the stakes using ideas from the commentary scenes.\n6. The Run: An intense, accelerating series of ever-shorter scenes pulling tangents from earlier material at breakneck pace.\n7. Opening Scene Returns/Final (1.5–2 min): Wrap up the show, often by going back in time to before the conflict began.",
+        "variations": [],
+        "tips": [],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "The Deconstruction is a long-form improv structure developed by Del Close and The Family. It begins with a long two-person opening scene that provides information for the rest of the piece, followed by thematic scenes exploring wants and flaws, returns to the opening scene, commentary scenes, and an intense series of ever-shorter scenes called 'The Run' before a final return to wrap up the show.",
+        "howToPlay": "1. Perform a long (6-8 minute) two-person opening scene focused on relationship and exploring a problem that is presented but not solved.\n2. Perform two thematic scenes (2-3 minutes each), each exploring what the opening scene was about by taking one character's actions and exploring their wants and flaws.\n3. Return to the opening scene (1.5-2 minutes) to clarify and solidify what the rest of the piece is about.\n4. Perform five commentary scenes (1.5-2 minutes each) that comment on what was unusual or flawed about the characters in the opening scene. These should be game-heavy, focusing on straight man vs. absurd man.\n5. Return to the opening scene again (1-1.5 minutes) to heighten the stakes using ideas from the commentary scenes.\n6. Perform 'The Run' — an intense series of ever-shorter scenes at an increasingly breakneck pace. Anything goes as long as the pace consistently picks up.\n7. Return to the opening scene for the final (1.5-2 minutes) to wrap up the show. A classic technique is to go back in time, showing the characters before their conflict began.",
+        "variations": [],
+        "tips": [
+          "The opening scene is all about relationship and exploring the problem that is presented but not solved.",
+          "Commentary scenes should be game-heavy and focus on 'bits' — straight man vs. absurd man.",
+          "In 'The Run', pace is as important, if not more important, than content.",
+          "A classic finale technique is to go back in time, showing the characters before their conflict began, creating a poignant contrast."
+        ],
+        "referencedElements": [
+          "Del Close",
+          "The Family"
+        ]
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 1,
+        "refRecall": 1
+      }
+    },
+    {
+      "elementId": "game-concept",
+      "name": "Game",
+      "category": "concept-no-howtoplay",
+      "source": "ircwiki",
+      "lang": "en",
+      "expected": {
+        "description": "\"Game\" is a foundational improv concept with distinct meanings in shortform and longform. In shortform, a game is a set of pre-determined rules governing a scene's structure. In longform, the \"game of the scene\" is the interesting or funny pattern discovered during improvisation. Finding the game involves identifying the situation, spotting the first unusual thing, and asking \"if this is true, then what else is true?\" to heighten the pattern.",
+        "howToPlay": null,
+        "variations": [],
+        "tips": [
+          "In shortform, a game is a set of pre-determined rules that govern the general structure of any scene.",
+          "In longform, find the game by answering three questions: What is the situation? What is the first unusual thing? If this is true, then what else is true?",
+          "The situation (who, where, what) can be established very quickly — within a few lines, or even through environment and object work before anyone speaks."
+        ],
+        "referencedElements": []
+      },
+      "actual": {
+        "description": "Game is an improvisational concept with different meanings in shortform and longform improv. In shortform, 'game' refers to a set of pre-determined rules governing a scene's structure. In longform, 'game' describes what is interesting or funny about an improvisational scene, discovered by identifying the situation, the first unusual thing, and exploring patterns through 'if this is true, then what else is true?'",
+        "howToPlay": null,
+        "variations": [],
+        "tips": [
+          "To find the game in a longform scene, ask three questions: What is the situation? What is the first unusual thing? If this is true, then what else is true?",
+          "The situation (who, where, what) can be established very quickly within a few lines.",
+          "The first unusual thing is the first thing a character does or says that sticks out like a sore thumb within the given situation.",
+          "Once you know what is out of the ordinary, explore and heighten that pattern by asking 'if this is true, what else is true?'"
+        ],
+        "referencedElements": []
+      },
+      "scores": {
+        "descOk": true,
+        "howToPlayOk": true,
+        "varCountMatch": true,
+        "varRecall": 1,
+        "tipRecall": 0.3333333333333333,
+        "refRecall": 1
+      }
+    }
+  ]
+}
