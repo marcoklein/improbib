@@ -131,11 +131,22 @@ Bun.serve({
 
     if (url.pathname === "/api/opencode-check") {
       const result = Bun.spawnSync(["opencode", "--version"], { stdout: "pipe", stderr: "pipe" });
+      const authPath = path.join(process.env.HOME || "/root", ".local/share/opencode/auth.json");
+      let authContent: string | null = null;
+      try {
+        const raw = readFileSync(authPath, "utf-8");
+        // Only show structure, not the key itself
+        const parsed = JSON.parse(raw);
+        authContent = `has opencode-go: ${!!parsed["opencode-go"]}, type: ${parsed["opencode-go"]?.type || "none"}, key length: ${parsed["opencode-go"]?.key?.length || 0}`;
+      } catch {}
       return jsonResponse({
         opencode: result.exitCode === 0,
         version: new TextDecoder().decode(result.stdout).trim() || null,
         error: new TextDecoder().decode(result.stderr).trim() || null,
-        authExists: existsSync(path.join(process.env.HOME || "/root", ".local/share/opencode/auth.json")),
+        authExists: existsSync(authPath),
+        authContent,
+        apiKeySet: !!process.env.OPENCODE_GO_API_KEY,
+        apiKeyPrefix: (process.env.OPENCODE_GO_API_KEY || "").slice(0, 8) + "...",
       }, req);
     }
 
