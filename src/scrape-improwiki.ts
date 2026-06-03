@@ -27,7 +27,9 @@ async function shouldFetch(
   return sitemapLastmod > existingLastmod;
 }
 
-export async function scrapeImprowiki() {
+export async function scrapeImprowiki(
+  options?: { maxPagesPerListing?: number }
+) {
   const { elements: existingElements, urlMap } =
     await loadExistingElements("improwiki");
 
@@ -106,7 +108,10 @@ export async function scrapeImprowiki() {
     const newElements = await processImprowikiEntryPage(
       baseUrl,
       entryPage.url,
-      (url) => shouldFetch(url, urlMap, sitemap)
+      {
+        shouldFetch: (url) => shouldFetch(url, urlMap, sitemap),
+        maxPagesPerListing: options?.maxPagesPerListing,
+      }
     );
 
     elements = [

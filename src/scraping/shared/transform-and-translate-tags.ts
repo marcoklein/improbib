@@ -48,12 +48,14 @@ export function transformAndTranslateTags(output: {
   // add translated tags to element
   for (const element of elements) {
     appLogger.debug("element {element}", { element });
-    element["translatedTags"] = (element.tagIds as string[]).map(
-      (tagId) =>
-        tagTranslations[tagId as keyof typeof tagTranslations][
-          element.languageCode as "de" | "en"
-        ]
-    );
+    element["translatedTags"] = (element.tagIds as string[]).map((tagId) => {
+      const translation =
+        tagTranslations[tagId as keyof typeof tagTranslations];
+      if (!translation) {
+        return tagId;
+      }
+      return translation[element.languageCode as "de" | "en"] ?? tagId;
+    });
     element["translatedTags"] = [...new Set(element["translatedTags"])];
   }
 

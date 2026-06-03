@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import { initLogging } from "./logger";
 import { scrapeImprowiki } from "./scrape-improwiki";
 import { scrapeLearnImprov } from "./scraping/learnimprov/scrape-learnimprov";
+import { scrapeIrcWiki } from "./scraping/ircwiki/scrape-ircwiki";
+import { assemble } from "./assemble";
 import { improbibSchema } from "./validation/improbib-schema";
 
 export class Improbib {
@@ -9,10 +11,12 @@ export class Improbib {
     await initLogging();
   }
 
-  async scrape() {
-    await scrapeImprowiki();
-    await scrapeLearnImprov();
+  async scrape(options?: { maxPagesPerListing?: number }) {
+    await scrapeImprowiki(options);
+    await scrapeLearnImprov(options);
+    await scrapeIrcWiki(options);
     console.log("All sources scraped.");
+    await assemble();
   }
 
   async scrapeImprowiki() {
@@ -21,6 +25,14 @@ export class Improbib {
 
   async scrapeLearnImprov() {
     return await scrapeLearnImprov();
+  }
+
+  async scrapeIrcWiki() {
+    return await scrapeIrcWiki();
+  }
+
+  async assemble() {
+    return await assemble();
   }
 }
 

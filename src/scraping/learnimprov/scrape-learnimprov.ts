@@ -27,7 +27,9 @@ async function shouldFetch(
   return sitemapLastmod > existingLastmod;
 }
 
-export async function scrapeLearnImprov() {
+export async function scrapeLearnImprov(
+  options?: { maxPagesPerListing?: number }
+) {
   const { elements: existingElements, urlMap } =
     await loadExistingElements("learnimprov");
 
@@ -73,9 +75,13 @@ export async function scrapeLearnImprov() {
 
     if (toFetch.length === 0) continue;
 
+    const urls = options?.maxPagesPerListing
+      ? toFetch.slice(0, options.maxPagesPerListing)
+      : toFetch;
+
     let fetched = 0;
 
-    for (const postUrl of toFetch) {
+    for (const postUrl of urls) {
       const element = await processLearnImprovPost(
         postUrl,
         listingPage.addTags
@@ -84,8 +90,8 @@ export async function scrapeLearnImprov() {
         newElements.push(element);
       }
       fetched++;
-      if (fetched % 10 === 0 || fetched === toFetch.length) {
-        console.log(`  Progress: ${fetched}/${toFetch.length} posts`);
+      if (fetched % 10 === 0 || fetched === urls.length) {
+        console.log(`  Progress: ${fetched}/${urls.length} posts`);
       }
     }
   }

@@ -10,12 +10,16 @@ interface Page {
 
 const pendingFetches = new Map<string, Promise<Page>>();
 
-const DELAY_MS = 500;
+const DEFAULT_DELAY_MS = 500;
 
 let lastFetchTime = 0;
 let backoffMs = 0;
 
-export async function fetchAndCacheWebsite(url: string): Promise<Page> {
+export async function fetchAndCacheWebsite(
+  url: string,
+  options?: { delayMs?: number }
+): Promise<Page> {
+  const delayMs = options?.delayMs ?? DEFAULT_DELAY_MS;
   const logger = appLogger.getChild("fetchAndCacheWebsite");
 
   if (pendingFetches.has(url)) {
@@ -48,7 +52,7 @@ export async function fetchAndCacheWebsite(url: string): Promise<Page> {
 
     while (true) {
       const now = Date.now();
-      const wait = Math.max(0, DELAY_MS + backoffMs - (now - lastFetchTime));
+      const wait = Math.max(0, delayMs + backoffMs - (now - lastFetchTime));
       if (wait > 0) {
         await new Promise((r) => setTimeout(r, wait));
       }
