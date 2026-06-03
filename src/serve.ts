@@ -72,7 +72,7 @@ setInterval(async () => {
 console.log(`[${new Date().toISOString()}] Starting HTTP server on port ${PORT}...`);
 Bun.serve({
   port: PORT,
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
 
     if (url.pathname === "/" || url.pathname === "/status") {
