@@ -94,11 +94,18 @@ Bun.serve({
       const normFiles = serveDir(normDir);
       const improbableExists = existsSync(path.join(storage, "output", "improbib.json"));
 
+      let normalizeProgress = null;
+      try {
+        const { getNormalizeProgress } = await import("./normalize/normalize");
+        normalizeProgress = getNormalizeProgress();
+      } catch {}
+
       return jsonResponse({
         storage,
         sources: files.filter((f) => f.endsWith(".json")),
         normalizedSources: normFiles.filter((f) => f.endsWith(".json")),
         improbableBuilt: improbableExists,
+        normalizeProgress,
       }, req);
     }
 

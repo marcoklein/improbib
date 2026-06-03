@@ -38,6 +38,23 @@ function hashContent(html: string): string {
   return createHash("md5").update(html).digest("hex");
 }
 
+export interface NormalizeProgress {
+  sourceName: string;
+  current: number;
+  total: number;
+  extracted: number;
+  cached: number;
+  startedAt: string;
+  status: "running" | "done" | "error";
+  error?: string;
+}
+
+let currentProgress: NormalizeProgress | null = null;
+
+export function getNormalizeProgress(): NormalizeProgress | null {
+  return currentProgress;
+}
+
 export async function normalizeSource(sourceName: string, options?: { maxElements?: number }): Promise<void> {
   const { meta, elements: allElements } = await loadRaw(sourceName);
   const previous = await loadPreviousNormalized(sourceName);
@@ -46,6 +63,13 @@ export async function normalizeSource(sourceName: string, options?: { maxElement
   const elements = options?.maxElements
     ? allElements.slice(0, options.maxElements)
     : allElements;
+
+  currentProgress = {
+    sourceName, current: 0, total: elements.length,
+    extracted: 0, cached: 0,
+    startedAt: new Date().toISOString(),
+    status: "running",
+  };
 
   console.log(`Normalizing ${sourceName}: ${elements.length}${options?.maxElements ? ` of ${allElements.length}` : ""} elements`);
 
@@ -114,6 +138,10 @@ export async function normalizeSource(sourceName: string, options?: { maxElement
       normalized.push(normalizedEl);
       extracted++;
 
+      currentProgress.current = i + 1;
+      currentProgress.extracted = extracted;
+      currentProgress.cached = previous.size;
+
       if ((i + 1) % 10 === 0 || i === elements.length - 1) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const rate = ((i + 1) / parseFloat(elapsed)).toFixed(1);
@@ -121,11 +149,15 @@ export async function normalizeSource(sourceName: string, options?: { maxElement
       }
     } catch (err: any) {
       console.warn(`  SKIP ${el.name}: ${err.message}`);
-      // Keep previous if available, otherwise skip
       if (prev) normalized.push(prev);
       else skipped++;
+      currentProgress.current = i + 1;
+      currentProgress.extracted = extracted;
+      currentProgress.cached = previous.size;
     }
   }
+
+  currentProgress.status = "done";
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   const derivedCount = normalized.reduce((s, e) => s + e.derivedElements.length, 0);
