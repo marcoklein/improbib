@@ -36,12 +36,17 @@ async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
 
   try {
     const proc = Bun.spawn(
-      ["sh", "-c", `cat ${promptFile} | opencode run --model ${model} --format json --dangerously-skip-permissions 2>/dev/null`],
+      ["sh", "-c", `cat ${promptFile} | opencode run --model ${model} --format json --dangerously-skip-permissions`],
       { stdout: "pipe", stderr: "pipe" },
     );
 
     const output = await new Response(proc.stdout).text();
-    await proc.exited;
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0 || stderr.trim()) {
+      throw new Error(`opencode exited ${exitCode}: ${stderr.slice(0, 500)}`);
+    }
 
     const events = output
       .split("\n")
@@ -54,7 +59,11 @@ async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
       .map((e: any) => e.part?.text || e.text || "")
       .join("");
 
-    if (!text) throw new Error("No text in model output");
+    if (!text) {
+      const eventTypes = events.map((e: any) => e.type).join(", ");
+      throw new Error(`No text in model output. Events: ${eventTypes}. stderr: ${stderr.slice(0, 300)}`);
+    }
+
     return text;
   } finally {
     Bun.file(promptFile).delete().catch(() => {});
