@@ -40,11 +40,7 @@ export class Improbib {
       const { normalizeAll } = await import("./normalize/normalize");
       await normalizeAll();
     } catch (err: any) {
-      if (err.code === "ERR_MODULE_NOT_FOUND") {
-        console.log("Normalization module not available (opencode may not be installed).");
-      } else {
-        console.error("Normalization failed:", err.message);
-      }
+      console.error("Normalization failed:", err.message, err.stack);
     }
   }
 }

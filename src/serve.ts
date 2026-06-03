@@ -109,13 +109,24 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/normalize") {
-      console.log(`[${new Date().toISOString()}] Manual normalize trigger via API...`);
+      console.log(`[${new Date().toISOString()}] Manual normalize trigger...`);
       scanner.normalizeAll().then(() => {
         console.log(`[${new Date().toISOString()}] Normalize complete.`);
       }).catch((err: Error) => {
-        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack);
+        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack?.slice(0, 500));
       });
       return jsonResponse({ status: "normalization started" }, req);
+    }
+
+    if (url.pathname === "/api/test-normalize") {
+      try {
+        const { createOpencodeGoClient } = await import("./normalize/llm-client");
+        const client = createOpencodeGoClient();
+        const result = await client.normalizeElement("Test Game", "<p>Players form a circle. One starts a word, the next continues.</p>", "en");
+        return jsonResponse({ ok: true, result }, req);
+      } catch (err: any) {
+        return jsonResponse({ ok: false, error: err.message, stack: err.stack?.slice(0, 500) }, req);
+      }
     }
 
     if (url.pathname === "/api/opencode-check") {
