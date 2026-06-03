@@ -44,39 +44,73 @@ Scrapes source websites, extracts metadata and raw HTML, resolves cross-page lin
 
 This layer is already built. Existing ADRs document the decisions.
 
-## Layer 1.5: Content Normalization
+## Layer 1.5: Content Normalization ✅ Implemented
+
+See [ADR-0008](../adrs/0008-normalization-layer.md) for detailed decisions.
 
 ### Problem
 
-Source content is inconsistently structured. A single page may contain a game description, inline variations, tips, cross-references to other games, and pedagogical notes — all as unstructured markdown. Feeding this directly into graph derivation produces unreliable extraction.
+Source content is inconsistently structured. A single page may contain a game description, inline variations, tips, cross-references to other games, and pedagogical notes — all as unstructured HTML. Feeding this directly into graph derivation produces unreliable extraction.
 
-### What it does
+### Pipeline
 
-For each element, an LLM pass structures the raw markdown into clean fields:
+```
+output/raw/{source}.json
+  │
+  ▼
+turndown (HTML → markdown)
+  │
+  ▼
+LLM extraction (opencode-go/deepseek-v4-flash via CLI)
+  │
+  ▼
+Zod validation → NormalizedElement
+  │
+  ▼
+output/normalized/{source}.json
+```
+
+### Extracted fields
 
 | Field | Content |
 |---|---|
 | `description` | 1–3 sentence summary of what the element is |
-| `howToPlay` | Step-by-step instructions |
+| `howToPlay` | Numbered step-by-step instructions, or `null` for theory/concepts |
 | `variations` | Named variations described inline, with their own short descriptions |
 | `tips` | Pedagogical notes, common pitfalls, teacher advice |
 | `referencedElements` | Names of other elements mentioned in the text |
 
-The original markdown is preserved unchanged. The structured fields augment it.
+The original HTML is preserved unchanged (`htmlContent`). The structured fields augment it under `normalized`.
 
-### Inline variations → candidate sub-elements
+### Quality assurance: golden test set
 
-When a source page describes a variation that has no dedicated page of its own, normalization promotes it to a **derived sub-element**. Example:
+A 15-element test set (`src/normalize/__testdata__/golden-set.ts`) covers edge cases across all three sources and both languages. Each entry has a hand-verified `expectedOutput` serving as ground truth. A benchmark runner (`run-benchmark.ts`) compares model outputs against these expectations.
 
-- Source page: "Freeze Tag" describes "Emotional Freeze Tag" as a one-paragraph variation
-- Normalization output: `Emotional Freeze Tag` becomes a candidate element with `derivedFrom: "Freeze Tag"` and `sourcedFrom` pointing to the original Freeze Tag page
-- Human QA can accept or reject this promotion
+Benchmark results (opencode 1.15.5):
 
-Derived elements are clearly marked to distinguish them from elements that have dedicated source pages. Downstream, the graph can choose to include or exclude them.
+| Model | Overall | Description | howToPlay | Var Recall | Tip Recall |
+|-------|---------|-------------|-----------|------------|------------|
+| deepseek-v4-pro | 93% | 100% | 100% | 93% | 71% |
+| deepseek-v4-flash | 91% | 100% | 100% | 100% | 51% |
+
+### Change detection
+
+Each normalized element stores `contentHash = md5(htmlContent)`. On re-normalization, elements whose hash matches the previous run are preserved unchanged. New or modified elements trigger a fresh LLM call.
+
+### Inline variations → derived sub-elements
+
+Variations described in the parent page with substantial descriptions (>40 chars) are promoted to `derivedElements`. These are clearly marked — they lack dedicated source pages. The graph layer can choose to include or exclude them.
+
+### Cross-source hints
+
+After normalizing all sources, a token-overlap name matcher (`cross-source-matching.ts`) computes `relatedIdentifiers` — elements from different sources that likely refer to the same game/exercise. This is a hint, not a merge. The actual deduplication decision belongs to the graph layer.
 
 ### Output
 
-`output/normalized/{source}.json` — same elements as the raw layer, augmented with structured fields and candidate sub-elements.
+`output/normalized/{source}.json` — all raw fields preserved, augmented with:
+- `normalized` (description, howToPlay, variations, tips, referencedElements, contentHash, extractedAt)
+- `derivedElements` (candidate sub-elements from inline variations)
+- `relatedIdentifiers` (cross-source match hints)
 
 ## Layer 2: Knowledge Graph
 
@@ -110,7 +144,7 @@ Derived elements are clearly marked to distinguish them from elements that have 
 
 ### Derivation Steps
 
-1. **Heuristics** (deterministic): tag classification into taxonomy dimensions, naming-pattern variant detection, cross-source deduplication by name similarity, player count, translation links — all from existing scraped data.
+1. **Heuristics** (deterministic): tag classification into taxonomy dimensions, naming-pattern variant detection, cross-source deduplication by name similarity (using `relatedIdentifiers` from Layer 1.5 as starting points), player count, translation links — all from existing normalized data.
 
 2. **LLM extraction** (one batch per element): mechanics list, skills list, variation relationships, prerequisite relationships, typical duration, energy level. Consumes normalized structured fields, not raw markdown.
 
@@ -191,9 +225,9 @@ output/graph-draft.json  ──(+ overrides)──▶  output/graph.json
 
 ## Open Questions
 
-1. **LLM model**: Local (Ollama) vs API (Claude, GPT)? Content normalization + graph extraction is a one-time batch per element (~500–1000 elements). API cost is modest even with larger models.
+1. **LLM model**: ~~Local (Ollama) vs API (Claude, GPT)?~~ Resolved: using opencode-go/deepseek-v4-flash via CLI (free on OpenCode Go plan, no additional API keys needed). Pro model kept as benchmark reference.
 
-2. **Derived sub-elements**: Should inline variations be promoted to first-class element nodes (with `derivedFrom` edges), or kept as structured data on the parent? _Current lean: promote, clearly marked, with human QA approval._
+2. **Derived sub-elements**: Should inline variations be promoted to first-class element nodes (with `derivedFrom` edges), or kept as structured data on the parent? _Promoted, clearly marked in `derivedElements`. Graph layer decides whether to include them._
 
 3. **Language handling**: The graph has DE and EN elements connected by `translationOf`. Should mechanics and skills be language-agnostic concepts, or language-specific? _Current lean: language-agnostic — a mechanic is a concept, not a string._
 
@@ -201,7 +235,7 @@ output/graph-draft.json  ──(+ overrides)──▶  output/graph.json
 
 5. **External sequencing data**: Should the graph also ingest existing workshop curricula or show setlists (from books, blogs, YouTube) to mine sequencing edges? _Deferred to a future phase._
 
-6. **Re-scrape behavior**: When sources are re-scraped, how do we handle elements that changed? _New/changed elements get re-normalized and re-extracted. Unchanged elements keep their reviewed graph edges. The change detection uses the existing MD5 identifier._
+6. **Re-scrape behavior**: When sources are re-scraped, how do we handle elements that changed? _New/changed elements get re-normalized and re-extracted. Unchanged elements keep their reviewed graph edges. The change detection uses `contentHash = md5(htmlContent)` from Layer 1.5._
 
 ## Key Design Principles
 
