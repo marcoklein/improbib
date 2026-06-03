@@ -52,6 +52,7 @@ async function runScrape() {
   try {
     await scanner.scrape();
     console.log(`[${new Date().toISOString()}] Scrape complete.`);
+    console.log(`[${new Date().toISOString()}] Run normalization: bun run src/normalize/normalize.ts`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] Scrape failed:`, err);
   }
@@ -77,12 +78,15 @@ Bun.serve({
     if (url.pathname === "/" || url.pathname === "/status") {
       const storage = process.env.STORAGE_PATH || process.cwd();
       const rawDir = path.join(storage, "output", "raw");
+      const normDir = path.join(storage, "output", "normalized");
       const files = serveDir(rawDir);
+      const normFiles = serveDir(normDir);
       const improbableExists = existsSync(path.join(storage, "output", "improbib.json"));
 
       return jsonResponse({
         storage,
         sources: files.filter((f) => f.endsWith(".json")),
+        normalizedSources: normFiles.filter((f) => f.endsWith(".json")),
         improbableBuilt: improbableExists,
       }, req);
     }
@@ -96,6 +100,20 @@ Bun.serve({
       const fileName = path.basename(url.pathname);
       const res = serveFile(path.join(process.cwd(), "output", "raw", fileName), req);
       if (res) return res;
+    }
+
+    if (url.pathname.startsWith("/normalized/")) {
+      const fileName = path.basename(url.pathname);
+      const res = serveFile(path.join(process.cwd(), "output", "normalized", fileName), req);
+      if (res) return res;
+    }
+
+    if (url.pathname === "/api/normalize") {
+      console.log(`[${new Date().toISOString()}] Manual normalize trigger via API...`);
+      scanner.normalizeAll().catch((err: Error) =>
+        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message)
+      );
+      return jsonResponse({ status: "normalization started" }, req);
     }
 
     return new Response("Not Found", { status: 404 });

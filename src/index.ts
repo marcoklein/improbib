@@ -34,6 +34,19 @@ export class Improbib {
   async assemble() {
     return await assemble();
   }
+
+  async normalizeAll() {
+    try {
+      const { normalizeAll } = await import("./normalize/normalize");
+      await normalizeAll();
+    } catch (err: any) {
+      if (err.code === "ERR_MODULE_NOT_FOUND") {
+        console.log("Normalization module not available (opencode may not be installed).");
+      } else {
+        console.error("Normalization failed:", err.message);
+      }
+    }
+  }
 }
 
 export async function readImprobibJson(filePath: string) {
