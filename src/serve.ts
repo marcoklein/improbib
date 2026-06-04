@@ -76,13 +76,7 @@ async function runScrape(force: boolean = false) {
   try {
     await scanner.scrape();
     console.log(`[${new Date().toISOString()}] Scrape complete.`);
-    console.log(`[${new Date().toISOString()}] Running normalization...`);
-    normalizeRunning = true;
-    await scanner.normalizeAll().catch((err: Error) => {
-      console.error(`[${new Date().toISOString()}] Normalization failed:`, err.message);
-    });
-    normalizeRunning = false;
-    console.log(`[${new Date().toISOString()}] Normalization complete.`);
+    console.log(`[${new Date().toISOString()}] To normalize: curl -X POST https://improbib.host.impromat.app:5000/api/normalize`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] Scrape failed:`, err);
   } finally {
@@ -198,19 +192,6 @@ console.log(`Server listening on http://0.0.0.0:${PORT}`);
 console.log(`[${new Date().toISOString()}] Checking for existing raw sources...`);
 if (rawSourcesExist()) {
   console.log(`[${new Date().toISOString()}] Raw sources found — skipping initial scrape.`);
-  console.log(`[${new Date().toISOString()}] Checking for normalized data...`);
-  const normExists = existsSync(path.join(process.cwd(), "output", "normalized", "improwiki.json"));
-  if (!normExists && !normalizeRunning) {
-    console.log(`[${new Date().toISOString()}] No normalized data found — running normalization...`);
-    normalizeRunning = true;
-    scanner.normalizeAll().then(() => {
-      normalizeRunning = false;
-      console.log(`[${new Date().toISOString()}] Initial normalization complete.`);
-    }).catch((err: Error) => {
-      normalizeRunning = false;
-      console.error(`[${new Date().toISOString()}] Initial normalization failed:`, err.message);
-    });
-  }
 } else {
   console.log(`[${new Date().toISOString()}] No raw sources found — running initial scrape...`);
   runScrape().catch((err) => console.error(`[${new Date().toISOString()}] Initial scrape failed:`, err));

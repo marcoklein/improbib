@@ -13,7 +13,7 @@ metadata:
 ## What I do
 
 - Deploy the improbib Bun app to dokku on impromat.app
-- Trigger normalization after deployment
+- Guide through testing normalization with a subset before running the full pipeline
 - Check deployment status and logs
 
 ## Pre-requisites
@@ -41,42 +41,49 @@ git push dokku main:main
 
 Only use this to test a different branch or configuration before merging to main. Production deploys should always go through the auto-deploy pipeline.
 
-### 2. Wait for deploy
+### Wait for deploy
 
 ```bash
-ssh dokku@impromat.app ps:report improbib --format json
+# Poll until version matches the latest commit
+curl -s https://improbib.host.impromat.app:5000/api/version | jq .version
 ```
 
-Check container is running and healthy.
+### Fast feedback loop (developing the normalization layer)
 
-### 3. Trigger normalization
+Normalization does NOT auto-trigger on startup. Test with a subset first:
 
 ```bash
-curl -X POST https://improbib.impromat.app/api/normalize
+# Test with 5 elements per source (skips Stages 2 & 3)
+curl -X POST "https://improbib.host.impromat.app:5000/api/normalize?max=5"
 ```
 
-This starts the 3-stage normalization pipeline (extraction → cross-source matching → vocabulary normalization) on all raw sources.
-
-### 4. Check progress
-
+Check progress:
 ```bash
-curl https://improbib.impromat.app/ | jq .normalizeProgress
+curl -s https://improbib.host.impromat.app:5000/ | jq .normalizeProgress
 ```
 
-Returns `{ stage, sourceName, processed, total, split, errors }`.
-
-### 5. View results
-
+Once the subset output looks good (no schema errors in logs), run the full pipeline:
 ```bash
-curl https://improbib.impromat.app/normalized/improwiki.json | jq '.meta'
+curl -X POST "https://improbib.host.impromat.app:5000/api/normalize"
 ```
 
-Normalized output is served via `/normalized/{source}.json` and `vocabulary.json`.
-
-### 6. View logs
+### View results
 
 ```bash
-ssh dokku@impromat.app logs improbib
+# Check metadata
+curl -s https://improbib.host.impromat.app:5000/normalized/improwiki.json | jq '.meta'
+
+# Check a specific element
+curl -s https://improbib.host.impromat.app:5000/normalized/improwiki.json | jq '.elements[0].normalized'
+
+# View vocabulary output (after Stage 3)
+curl -s https://improbib.host.impromat.app:5000/vocabulary.json | jq '.mechanics[:3]'
+```
+
+### View logs
+
+```bash
+ssh admin@impromat.app "sudo docker logs \$(sudo docker ps -q -f 'name=improbib.web' | head -1) 2>&1 | tail -50"
 ```
 
 ## Infrastructure changes
