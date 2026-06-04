@@ -167,7 +167,7 @@ Bun.serve({
         console.log(`[${new Date().toISOString()}] Normalize complete.`);
       }).catch((err: Error) => {
         normalizeRunning = false;
-        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message);
+        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack?.slice(0, 1000));
       });
       return jsonResponse({ status: "normalization started", maxElements: maxElements || null }, req);
     }

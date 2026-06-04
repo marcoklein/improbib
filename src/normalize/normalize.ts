@@ -1,5 +1,6 @@
 import path from "path";
 import { createHash } from "crypto";
+import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
 import { createOpencodeGoClient } from "./llm-client";
@@ -117,7 +118,7 @@ async function normalizeSource(
   const sourcePath = path.join(outDir, `${sourceName}.json`);
   const dir = Bun.file(outDir);
   if (!(await dir.exists())) {
-    await Bun.$`mkdir -p ${outDir}`.quiet();
+    await mkdir(outDir, { recursive: true });
   }
 
   const normalizedMap = new Map<string, NormalizedElement>();
@@ -260,7 +261,7 @@ async function normalizeSource(
   const outDir = path.join(process.cwd(), "output", "normalized");
   const dir = Bun.file(outDir);
   if (!(await dir.exists())) {
-    await Bun.$`mkdir -p ${outDir}`.quiet();
+    await mkdir(outDir, { recursive: true });
   }
   await Bun.write(
     path.join(outDir, `${sourceName}.json`),
