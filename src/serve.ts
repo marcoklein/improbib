@@ -4,13 +4,7 @@ const storagePath = process.env.STORAGE_PATH || process.cwd();
 await mkdir(storagePath, { recursive: true });
 process.chdir(storagePath);
 
-const GIT_COMMIT = await (async () => {
-  try {
-    const f = Bun.file("/app/GIT_COMMIT");
-    if (await f.exists()) return (await f.text()).trim() || "unknown";
-  } catch {}
-  return process.env.GIT_COMMIT || "unknown";
-})();
+const GIT_REV = process.env.GIT_REV || "unknown";
 
 import { Improbib } from ".";
 import { readFileSync } from "node:fs";
@@ -128,7 +122,7 @@ Bun.serve({
 
       return jsonResponse({
         storage,
-        version: GIT_COMMIT,
+        version: GIT_REV,
         sources: files.filter((f) => f.endsWith(".json")),
         normalizedSources: normFiles.filter((f) => f.endsWith(".json")),
         normalizeProgress,
@@ -155,7 +149,7 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/version") {
-      return jsonResponse({ version: GIT_COMMIT }, req);
+      return jsonResponse({ version: GIT_REV }, req);
     }
 
     if (url.pathname === "/api/scrape") {
