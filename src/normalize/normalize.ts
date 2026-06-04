@@ -65,6 +65,7 @@ function buildNormalizedElement(
   return {
     ...result,
     identifier: el.identifier,
+    name: el.name,
     url: el.url,
     sourceName: el.sourceName,
     languageCode: el.languageCode,
