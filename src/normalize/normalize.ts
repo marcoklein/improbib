@@ -129,7 +129,7 @@ async function normalizeSource(
   let writeLock = false;
   let lastWriteAt = 0;
 
-  const concurrency = 20;
+  const concurrency = 10;
   let index = 0;
 
   async function incrementalWrite() {
@@ -188,11 +188,15 @@ async function normalizeSource(
 
         if (Array.isArray(result)) {
           const [parent, ...children] = result;
-          normalizedMap.set(el.identifier, buildNormalizedElement(parent, el, contentHash, schemaHash));
+          const parentEl = buildNormalizedElement(parent, el, contentHash, schemaHash);
+          delete (parentEl as any).splitFrom;
+          normalizedMap.set(el.identifier, parentEl);
 
           for (const child of children) {
             const childId = generateSplitIdentifier(el.identifier, child.name);
-            normalizedMap.set(childId, buildNormalizedElement(child, { ...el, identifier: childId }, contentHash, schemaHash));
+            const childEl = buildNormalizedElement(child, { ...el, identifier: childId }, contentHash, schemaHash);
+            childEl.splitFrom = el.identifier;
+            normalizedMap.set(childId, childEl);
             splitCount++;
           }
         } else {

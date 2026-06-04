@@ -94,7 +94,7 @@ export function createOpencodeGoClient(
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 4000);
+      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 32000);
       return parseVocabularyResponse(text);
     },
   };
@@ -106,32 +106,48 @@ export async function callApi(
   systemMessage: string,
   userMessage: string,
   maxTokens: number = 12000,
+  retries: number = 3,
 ): Promise<string> {
-  const resp = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemMessage },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: maxTokens,
-      temperature: 0,
-    }),
-  });
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      console.warn(`  Retry ${attempt}/${retries} after ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
 
-  if (!resp.ok) {
-    const err = await resp.text().catch(() => resp.statusText);
-    throw new Error(`API error ${resp.status}: ${err.slice(0, 400)}`);
+    const resp = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemMessage },
+          { role: "user", content: userMessage },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: maxTokens,
+        temperature: 0,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => resp.statusText);
+      const msg = `API error ${resp.status}: ${err.slice(0, 400)}`;
+      if (resp.status === 503 || resp.status === 429) {
+        if (attempt < retries) continue;
+      }
+      throw new Error(msg);
+    }
+
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (content) return content;
+    if (attempt < retries) continue;
   }
-
-  const data = await resp.json();
-  return data.choices?.[0]?.message?.content || "";
+  throw new Error(`API returned empty response after ${retries + 1} attempts`);
 }
 
 function parseNormalizeResponse(text: string): NormalizedElement | NormalizedElement[] {
@@ -151,7 +167,7 @@ function coerceElement(raw: any): NormalizedElement {
     languageCode: "en",
     tags: [],
     htmlContent: "",
-    splitFrom: raw.splitFrom || undefined,
+    splitFrom: typeof raw.splitFrom === "string" && raw.splitFrom.length === 32 ? raw.splitFrom : undefined,
     normalized: {
       summary: String(raw.summary || raw.description || ""),
       description: String(raw.description || ""),

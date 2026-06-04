@@ -81,8 +81,10 @@ export async function buildRelatedIdentifiers(
   }
 
   const batches = buildMatchBatches(candidates);
+  let batchIndex = 0;
 
   for (const batch of batches) {
+    batchIndex++;
     const sourceAPrefix = batch.sourceA[0]?.sourceName || "A";
     const sourceBPrefix = batch.sourceB[0]?.sourceName || "B";
 
@@ -90,6 +92,9 @@ export async function buildRelatedIdentifiers(
     const filteredB = batch.sourceB.filter(c => !seededIds.has(`${c.identifier}:`));
 
     if (filteredA.length === 0 || filteredB.length === 0) continue;
+
+    // Throttle to avoid rate limiting
+    if (batchIndex > 1) await new Promise(r => setTimeout(r, 2000));
 
     try {
       const matches = await client.findCrossSourceMatches(filteredA, filteredB);
