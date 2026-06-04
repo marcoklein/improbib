@@ -4,12 +4,13 @@ import { join } from "node:path";
 import TurndownService from "turndown";
 import { goldenSet } from "./golden-set";
 import type { GoldenOutput } from "./golden-set";
+import { callApi } from "../llm-client";
 
 const turndown = new TurndownService({ headingStyle: "atx" });
 
 const MODELS = [
-  { id: "pro" as const, model: "opencode-go/deepseek-v4-pro", label: "deepseek-v4-pro" },
-  { id: "flash" as const, model: "opencode-go/deepseek-v4-flash", label: "deepseek-v4-flash" },
+  { id: "pro" as const, model: "deepseek-v4-pro", label: "deepseek-v4-pro" },
+  { id: "flash" as const, model: "deepseek-v4-flash", label: "deepseek-v4-flash" },
 ];
 
 function getApiKey(): string {
@@ -72,42 +73,15 @@ function extractJsonArray(text: string): any[] {
   return JSON.parse(finalStr);
 }
 
-async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
-  const promptFile = `/tmp/improbib-benchmark-${Date.now()}.txt`;
-  await Bun.write(promptFile, prompt);
+async function callModel(model: string, prompt: string): Promise<string> {
+  const apiKey = process.env.OPENCODE_GO_API_KEY
+    || process.env.OPENCODE_API_KEY
+    || (() => {
+        try { return JSON.parse(readFileSync(join(homedir(), ".local/share/opencode/auth.json"), "utf-8"))["opencode-go"]?.key || ""; }
+        catch { return ""; }
+      })();
 
-  try {
-    const proc = Bun.spawn(
-      ["sh", "-c", `timeout 120 cat ${promptFile} | opencode run --model ${model} --format json --dangerously-skip-permissions`],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-
-    const output = await new Response(proc.stdout).text();
-    await proc.exited;
-
-    const events = output
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter(Boolean);
-
-    const text = events
-      .filter((e: any) => e.type === "text")
-      .map((e: any) => e.part?.text || e.text || "")
-      .join("");
-
-    if (!text) {
-      console.error("  No text output. Event types:", events.map((e: any) => e.type).join(", "));
-      throw new Error("No text in model output");
-    }
-
-    return text;
-  } finally {
-    Bun.file(promptFile).delete().catch(() => {});
-  }
+  return callApi(apiKey, model, prompt);
 }
 
 interface Result {
@@ -215,7 +189,7 @@ async function main() {
     const start = Date.now();
     let rawOutput: string;
     try {
-      rawOutput = await callOpenCodeGo(prompt, m.model);
+      rawOutput = await callModel(m.model, prompt);
     } catch (err: any) {
       console.error(`  FAILED: ${err.message}`);
       continue;

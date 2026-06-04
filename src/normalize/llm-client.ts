@@ -8,14 +8,17 @@ export interface LlmClient {
 }
 
 export function createOpencodeGoClient(
-  model: string = "opencode-go/deepseek-v4-flash",
+  model: string = "deepseek-v4-flash",
 ): LlmClient {
+  const apiKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
+  if (!apiKey) console.warn("No OPENCODE_GO_API_KEY set — normalization will fail.");
+
   return {
     async normalizeElement(name, htmlContent, languageCode) {
       const md = turndown.turndown(htmlContent).trim();
       const lang = languageCode === "de" ? "German" : "English";
 
-      const prompt = `Extract structured fields from this improv element. Return ONLY a JSON object — no markdown, no backticks.
+      const prompt = `Extract structured fields from this improv element. Return ONLY a JSON object — no markdown, no backticks, no explanation outside the JSON.
 
 Name: ${name}
 Language: ${lang}
@@ -24,64 +27,45 @@ ${md || "(blank)"}
 
 Return: {"description":"1-3 sentence summary","howToPlay":"numbered steps or null for concepts/theory ONLY","variations":[{"name":"...","description":"..."}],"tips":["..."],"referencedElements":["name or empty"]}`;
 
-      const text = await callOpenCodeGo(prompt, model);
-      return extractJson(text);
+      const text = await callApi(apiKey, model, prompt);
+      return parseOutput(text);
     },
   };
 }
 
-async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
-  const promptFile = `/tmp/improbib-nl-${Date.now()}.txt`;
-  await Bun.write(promptFile, prompt);
+export async function callApi(
+  apiKey: string,
+  model: string,
+  userMessage: string,
+): Promise<string> {
+  const resp = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: "You extract structured fields from improv game descriptions. Return ONLY valid JSON matching the requested structure." },
+        { role: "user", content: userMessage },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 2000,
+      temperature: 0,
+    }),
+  });
 
-  try {
-    const proc = Bun.spawn(
-      ["sh", "-c", `timeout 60 cat ${promptFile} | opencode run --model ${model} --format json --dangerously-skip-permissions`],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-
-    const output = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0) {
-      throw new Error(`opencode exited ${exitCode}: ${stderr.slice(0, 500)}`);
-    }
-
-    const events = output
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter(Boolean);
-
-    const text = events
-      .filter((e: any) => e.type === "text")
-      .map((e: any) => e.part?.text || e.text || "")
-      .join("");
-
-    if (!text) {
-      const errorEvents = events.filter((e: any) => e.type === "error");
-      const errorDetails = errorEvents.map((e: any) => JSON.stringify(e)).join("; ");
-      const eventTypes = events.map((e: any) => e.type).join(", ");
-      throw new Error(`No text in model output. Events: ${eventTypes}. Errors: ${errorDetails}. stderr: ${stderr.slice(0, 200)}`);
-    }
-
-    return text;
-  } finally {
-    Bun.file(promptFile).delete().catch(() => {});
+  if (!resp.ok) {
+    const err = await resp.text().catch(() => resp.statusText);
+    throw new Error(`API error ${resp.status}: ${err.slice(0, 400)}`);
   }
+
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
-function normalizeHowToPlay(value: any): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    return value.map((v) => String(v)).join("\n");
-  }
-  return String(value);
-}
-
-function extractJson(text: string): GoldenOutput {
+export function parseOutput(text: string): GoldenOutput {
   const mdMatch = text.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\n?```/);
   const jsonStr = mdMatch ? mdMatch[1].trim() : text.trim();
   const objMatch = jsonStr.match(/\{[\s\S]*\}/);
@@ -98,4 +82,11 @@ function extractJson(text: string): GoldenOutput {
     tips: (parsed.tips || []).map(String),
     referencedElements: (parsed.referencedElements || []).map(String),
   };
+}
+
+function normalizeHowToPlay(value: any): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map((v: any) => String(v)).join("\n");
+  return String(value);
 }

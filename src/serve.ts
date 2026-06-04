@@ -4,17 +4,6 @@ const storagePath = process.env.STORAGE_PATH || process.cwd();
 await mkdir(storagePath, { recursive: true });
 process.chdir(storagePath);
 
-// Write opencode auth file from env var for normalization
-if (process.env.OPENCODE_GO_API_KEY) {
-  const authDir = `${process.env.HOME || "/root"}/.local/share/opencode`;
-  await mkdir(authDir, { recursive: true });
-  const authFile = Bun.file(`${authDir}/auth.json`);
-  await Bun.write(authFile, JSON.stringify({
-    "opencode-go": { type: "api", key: process.env.OPENCODE_GO_API_KEY },
-  }));
-  console.log(`[${new Date().toISOString()}] Auth file written.`);
-}
-
 import { Improbib } from ".";
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
@@ -134,6 +123,17 @@ Bun.serve({
         console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack?.slice(0, 500));
       });
       return jsonResponse({ status: "normalization started" }, req);
+    }
+
+    if (url.pathname === "/api/test-normalize") {
+      try {
+        const { createOpencodeGoClient } = await import("./normalize/llm-client");
+        const client = createOpencodeGoClient();
+        const result = await client.normalizeElement("Test Game", "<p>Players form a circle. One starts a word, the next continues.</p>", "en");
+        return jsonResponse({ ok: true, result }, req);
+      } catch (err: any) {
+        return jsonResponse({ ok: false, error: err.message, stack: err.stack?.slice(0, 500) }, req);
+      }
     }
 
     if (url.pathname === "/api/test-normalize") {
