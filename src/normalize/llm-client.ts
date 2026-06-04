@@ -145,7 +145,8 @@ export async function callApi(
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content;
     if (content) return content;
-    if (attempt < retries) continue;
+    // Empty response — don't retry, it's likely a prompt size issue
+    throw new Error("Empty response from API");
   }
   throw new Error(`API returned empty response after ${retries + 1} attempts`);
 }

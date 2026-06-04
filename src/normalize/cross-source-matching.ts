@@ -26,7 +26,7 @@ export function seedTranslationPairs(elements: { identifier: string }[] & { tran
 
 export function buildMatchBatches(
   candidates: MatchCandidate[],
-  batchSize: number = 100,
+  batchSize: number = 50,
 ): { sourceA: MatchCandidate[]; sourceB: MatchCandidate[] }[] {
   const bySource = new Map<string, MatchCandidate[]>();
   for (const c of candidates) {
@@ -94,7 +94,7 @@ export async function buildRelatedIdentifiers(
     if (filteredA.length === 0 || filteredB.length === 0) continue;
 
     // Throttle to avoid rate limiting
-    if (batchIndex > 1) await new Promise(r => setTimeout(r, 2000));
+    if (batchIndex > 1) await new Promise(r => setTimeout(r, 1000));
 
     try {
       const matches = await client.findCrossSourceMatches(filteredA, filteredB);
