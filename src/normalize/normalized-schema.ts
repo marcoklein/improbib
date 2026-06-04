@@ -119,7 +119,7 @@ export const normalizedSourceSchema = z.object({
     derivedElementCount: z.number(),
     splitElementCount: z.number(),
     normalizedAt: z.string(),
-  }),
+  }).passthrough(),
   elements: z.array(normalizedElementSchema),
 });
 

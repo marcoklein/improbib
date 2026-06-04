@@ -1,4 +1,5 @@
 import type { NormalizedElement } from "./normalized-schema";
+import { createHash } from "crypto";
 
 // Stage 2 types
 export interface MatchCandidate {
@@ -62,13 +63,21 @@ RULES:
 }
 
 function buildUserPrompt(name: string, languageCode: string, tags: string[], htmlContent: string): string {
-  const lang = languageCode === "de" ? "German" : "English";
-  const tagsStr = tags.length > 0 ? tags.join(", ") : "(none)";
-  return `Name: ${name}
-Language: ${lang}
-Tags: ${tagsStr}
-Content:
-${htmlContent}`;
+   const lang = languageCode === "de" ? "German" : "English";
+   const tagsStr = tags.length > 0 ? tags.join(", ") : "(none)";
+   return `Name: ${name}
+ Language: ${lang}
+ Tags: ${tagsStr}
+ Content:
+ ${htmlContent}`;
+}
+
+let _promptHash = "";
+export function getPromptHash(): string {
+  if (!_promptHash) {
+    _promptHash = createHash("md5").update(buildSystemPrompt()).digest("hex");
+  }
+  return _promptHash;
 }
 
 export function createOpencodeGoClient(
@@ -88,13 +97,13 @@ export function createOpencodeGoClient(
 
     async findCrossSourceMatches(sourceA, sourceB) {
       const prompt = buildMatchPrompt(sourceA, sourceB);
-      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 8000);
+      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 8000, 1, true);
       return parseMatchResponse(text, sourceA, sourceB);
     },
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 32000);
+      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 32000, 1, true);
       return parseVocabularyResponse(text);
     },
   };
@@ -107,6 +116,7 @@ export async function callApi(
   userMessage: string,
   maxTokens: number = 12000,
   retries: number = 3,
+  retryEmpty: boolean = false,
 ): Promise<string> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
@@ -145,7 +155,10 @@ export async function callApi(
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content;
     if (content) return content;
-    // Empty response — don't retry, it's likely a prompt size issue
+    if (retryEmpty && attempt < retries) {
+      console.warn(`  Empty response, retrying (${attempt + 1}/${retries})...`);
+      continue;
+    }
     throw new Error("Empty response from API");
   }
   throw new Error(`API returned empty response after ${retries + 1} attempts`);

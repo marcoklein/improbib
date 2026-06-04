@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
-import { createOpencodeGoClient } from "./llm-client";
+import { createOpencodeGoClient, getPromptHash } from "./llm-client";
 import { seedTranslationPairs, buildRelatedIdentifiers } from "./cross-source-matching";
 import { normalizeVocabulary, applyCanonicalTerms } from "./vocabulary";
 
@@ -95,7 +95,7 @@ async function normalizeSource(
   sourceName: string,
   previous: Map<string, NormalizedElement>,
   options?: { maxElements?: number },
-): Promise<NormalizedElement[]> {
+): Promise<{ elements: NormalizedElement[]; anyElementChanged: boolean }> {
   const { elements: rawElements } = await loadRaw(sourceName);
   const elements = options?.maxElements ? rawElements.slice(0, options.maxElements) : rawElements;
   const schemaHash = getNormalizedBy();
@@ -128,6 +128,7 @@ async function normalizeSource(
   let errors = 0;
   let writeLock = false;
   let lastWriteAt = 0;
+  let anyElementChanged = false;
 
   const concurrency = 10;
   let index = 0;
@@ -177,6 +178,8 @@ async function normalizeSource(
         if (dispatched % 10 === 0) logProgress();
         continue;
       }
+
+      anyElementChanged = true;
 
       try {
         const result = await client.normalizeElement(
@@ -249,7 +252,8 @@ async function normalizeSource(
   await Bun.write(sourcePath, JSON.stringify(finalOutput, null, 2));
 
   console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
-  return finalOutput.elements;
+  return { elements: finalOutput.elements, anyElementChanged };
+}
 }
 
 export async function normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }): Promise<void> {
@@ -260,16 +264,35 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
 
   console.log("=== STAGE 1: LLM Extraction ===\n");
   const allElements: Map<string, NormalizedElement[]> = new Map();
+  let anyElementChanged = false;
 
   await Promise.all(sourceNames.map(async (source) => {
     try {
       const previous = await loadPreviousNormalized(source);
-      const elements = await normalizeSource(client, source, previous, options);
-      allElements.set(source, elements);
+      const result = await normalizeSource(client, source, previous, options);
+      allElements.set(source, result.elements);
+      if (result.anyElementChanged) anyElementChanged = true;
     } catch (err: any) {
       console.error(`Failed to normalize ${source}: ${err.message}`);
     }
   }));
+
+  const promptHash = getPromptHash();
+  const outDir = path.join(process.cwd(), "output", "normalized");
+  const statePath = path.join(outDir, "..", ".normalize-state.json");
+
+  // Read previous state
+  let state: { promptHash?: string; stage2?: { inputHash: string; completedAt: string }; stage3?: { termsHash: string; completedAt: string } } = {};
+  try {
+    const sf = Bun.file(statePath);
+    if (await sf.exists()) {
+      state = await sf.json();
+    }
+  } catch { /* missing or corrupt — start fresh */ }
+
+  async function writeState() {
+    await Bun.write(statePath, JSON.stringify({ ...state, promptHash }, null, 2));
+  }
 
   if (options?.maxElements || options?.stages?.includes(1) && options.stages.length === 1) {
     console.log(`\nSubset/stage-1-only mode — skipping Stages 2 & 3.`);
@@ -296,29 +319,46 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
     }
   }
 
+  const candidatesSorted = [...allCandidates].sort((a, b) => a.identifier.localeCompare(b.identifier));
+  const stage2InputHash = createHash("md5").update(JSON.stringify(candidatesSorted.map(c => ({ id: c.identifier, name: c.name })))).digest("hex");
+
+  const skipStage2 = !anyElementChanged && state.stage2?.inputHash === stage2InputHash;
+  if (skipStage2) {
+    console.log(`  Input hash unchanged (${stage2InputHash.slice(0, 8)}) — skipping LLM batches.`);
+  } else {
+    console.log(`  Input hash: ${stage2InputHash.slice(0, 8)}${state.stage2?.inputHash ? ` (was ${state.stage2.inputHash.slice(0, 8)})` : " (first run)"}${anyElementChanged ? " — anyElementChanged" : ""}`);
+  }
+
   const translationPairs = seedTranslationPairs(allWithTranslation as any);
   console.log(`Seeded ${translationPairs.length} translation-link pairs`);
 
-  const related = await buildRelatedIdentifiers(allCandidates, client, translationPairs);
+  let related: Map<string, { identifier: string; confidence: number }[]> = new Map();
+  if (!skipStage2) {
+    related = await buildRelatedIdentifiers(allCandidates, client, translationPairs);
+    state.stage2 = { inputHash: stage2InputHash, completedAt: new Date().toISOString() };
+    await writeState();
+  }
 
   const outDir = path.join(process.cwd(), "output", "normalized");
-  for (const [source, elements] of allElements) {
-    const updated = elements.map(el => ({
-      ...el,
-      relatedIdentifiers: related.get(el.identifier) || [],
-    }));
+  if (!skipStage2) {
+    for (const [source, elements] of allElements) {
+      const updated = elements.map(el => ({
+        ...el,
+        relatedIdentifiers: related.get(el.identifier) || [],
+      }));
 
-    const srcPath = path.join(outDir, `${source}.json`);
-    const f = Bun.file(srcPath);
-    if (!(await f.exists())) continue;
-    const data = await f.json();
-    data.elements = updated;
+      const srcPath = path.join(outDir, `${source}.json`);
+      const f = Bun.file(srcPath);
+      if (!(await f.exists())) continue;
+      const data = await f.json();
+      data.elements = updated;
 
-    const parsed = normalizedSourceSchema.safeParse(data);
-    await Bun.write(srcPath, JSON.stringify(parsed.success ? parsed.data : data, null, 2));
+      const parsed = normalizedSourceSchema.safeParse(data);
+      await Bun.write(srcPath, JSON.stringify(parsed.success ? parsed.data : data, null, 2));
 
-    const matchCount = updated.reduce((s, e) => s + e.relatedIdentifiers.length, 0) / 2;
-    console.log(`  Updated ${source}: ${matchCount} total cross-source match pairs`);
+      const matchCount = updated.reduce((s, e) => s + e.relatedIdentifiers.length, 0) / 2;
+      console.log(`  Updated ${source}: ${matchCount} total cross-source match pairs`);
+    }
   }
 
   console.log("\n=== STAGE 3: Vocabulary Normalization ===\n");
@@ -327,6 +367,29 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   for (const elements of allElements.values()) {
     allNormalized.push(...elements);
   }
+
+  // Compute terms hash for caching
+  const allMechSet = new Set<string>();
+  const allSkillSet = new Set<string>();
+  for (const el of allNormalized) {
+    for (const m of el.normalized.mechanics) { if (m.name) allMechSet.add(m.name.toLowerCase()); }
+    for (const s of el.normalized.skills) { if (s.name) allSkillSet.add(s.name.toLowerCase()); }
+  }
+  const allMech = [...allMechSet].sort();
+  const allSkill = [...allSkillSet].sort();
+  const stage3TermsHash = createHash("md5").update(JSON.stringify({ mechanics: allMech, skills: allSkill })).digest("hex");
+
+  const vocabExists = await Bun.file(path.join(outDir, "..", "vocabulary.json")).exists();
+  const skipStage3 = !anyElementChanged && state.stage3?.termsHash === stage3TermsHash && vocabExists;
+
+  if (skipStage3) {
+    console.log(`  Terms hash unchanged (${stage3TermsHash.slice(0, 8)}) — skipping vocabulary normalization.`);
+    currentProgress = { ...currentProgress!, stage: "done" };
+    console.log("\n=== Normalization complete ===");
+    return;
+  }
+
+  console.log(`  Terms hash: ${stage3TermsHash.slice(0, 8)}${state.stage3?.termsHash ? ` (was ${state.stage3.termsHash.slice(0, 8)})` : " (first run)"}${anyElementChanged ? " — anyElementChanged" : ""} (${allMech.length} mechanics, ${allSkill.length} skills)`);
 
   const vocab = await normalizeVocabulary(client, allNormalized);
 
@@ -357,6 +420,9 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
       console.log(`  Canonicalized ${changed} elements in ${source}`);
     }
   }
+
+  state.stage3 = { termsHash: stage3TermsHash, completedAt: new Date().toISOString() };
+  await writeState();
 
   currentProgress = { ...currentProgress!, stage: "done" };
   console.log("\n=== Normalization complete ===");
