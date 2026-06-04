@@ -236,38 +236,6 @@ async function normalizeSource(
     elements: normalized,
   };
 
-  const parsed = normalizedSourceSchema.safeParse(output);
-  if (!parsed.success) {
-    console.error(`Schema validation failed for ${sourceName}:`);
-    for (const issue of parsed.error.issues.slice(0, 30)) {
-      console.error(`  ${issue.path.join(".")}: ${issue.message}`);
-    }
-    if (parsed.error.issues.length > 30) {
-      console.error(`  ... and ${parsed.error.issues.length - 30} more issues`);
-    }
-  }
-
-  const parsed = normalizedSourceSchema.safeParse(output);
-  if (!parsed.success) {
-    console.error(`Schema validation failed for ${sourceName}:`);
-    for (const issue of parsed.error.issues.slice(0, 30)) {
-      console.error(`  ${issue.path.join(".")}: ${issue.message}`);
-    }
-    if (parsed.error.issues.length > 30) {
-      console.error(`  ... and ${parsed.error.issues.length - 30} more issues`);
-    }
-  }
-
-  const outDir = path.join(process.cwd(), "output", "normalized");
-  const dir = Bun.file(outDir);
-  if (!(await dir.exists())) {
-    await mkdir(outDir, { recursive: true });
-  }
-  await Bun.write(
-    path.join(outDir, `${sourceName}.json`),
-    JSON.stringify(parsed.success ? parsed.data : output, null, 2),
-  );
-
   console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
   return parsed.success ? parsed.data.elements : normalized;
 }
