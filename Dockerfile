@@ -8,6 +8,7 @@ RUN bun install --production
 COPY . .
 
 ENV PORT=5000
+ENV STORAGE_PATH=/app/storage
 
 EXPOSE 5000
 

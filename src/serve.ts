@@ -30,31 +30,61 @@ function jsonResponse(data: unknown, req: Request): Response {
 
 function serveFile(filePath: string, req: Request): Response | null {
   if (!existsSync(filePath)) return null;
-
   const content = readFileSync(filePath, "utf-8");
   return jsonResponse(JSON.parse(content), req);
 }
 
 function serveDir(dirPath: string): string[] {
   if (!existsSync(dirPath)) return [];
-
   const { readdirSync } = require("node:fs") as typeof import("node:fs");
   return readdirSync(dirPath, { withFileTypes: true })
     .filter((d: { isFile: () => boolean }) => d.isFile())
     .map((d: { name: string }) => d.name);
 }
 
+function rawSourcesExist(): boolean {
+  const sources = ["improwiki", "learnimprov", "ircwiki"];
+  for (const src of sources) {
+    if (!existsSync(path.join(process.cwd(), "output", "raw", `${src}.json`))) return false;
+  }
+  return true;
+}
+
 const scanner = new Improbib();
 await scanner.enableLogging();
 
-async function runScrape() {
-  console.log(`[${new Date().toISOString()}] Starting scrape...`);
+let scrapeRunning = false;
+let normalizeRunning = false;
+
+async function runScrape(force: boolean = false) {
+  if (!force && rawSourcesExist()) {
+    console.log(`[${new Date().toISOString()}] Raw sources already exist — skipping scrape. Use ?force=true to re-scrape.`);
+    return;
+  }
+  if (scrapeRunning) {
+    console.log(`[${new Date().toISOString()}] Scrape already running — skipping.`);
+    return;
+  }
+  if (normalizeRunning) {
+    console.log(`[${new Date().toISOString()}] Normalization in progress — skipping scrape.`);
+    return;
+  }
+  scrapeRunning = true;
+  console.log(`[${new Date().toISOString()}] Starting scrape${force ? " (forced)" : ""}...`);
   try {
     await scanner.scrape();
     console.log(`[${new Date().toISOString()}] Scrape complete.`);
-    console.log(`[${new Date().toISOString()}] Run normalization: bun run src/normalize/normalize.ts`);
+    console.log(`[${new Date().toISOString()}] Running normalization...`);
+    normalizeRunning = true;
+    await scanner.normalizeAll().catch((err: Error) => {
+      console.error(`[${new Date().toISOString()}] Normalization failed:`, err.message);
+    });
+    normalizeRunning = false;
+    console.log(`[${new Date().toISOString()}] Normalization complete.`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] Scrape failed:`, err);
+  } finally {
+    scrapeRunning = false;
   }
 }
 
@@ -65,7 +95,7 @@ setInterval(async () => {
   const today = now.toISOString().slice(0, 10);
   if (now.getUTCHours() === 4 && lastRunDate !== today) {
     lastRunDate = today;
-    await runScrape();
+    await runScrape(true);
   }
 }, 60_000);
 
@@ -81,7 +111,6 @@ Bun.serve({
       const normDir = path.join(storage, "output", "normalized");
       const files = serveDir(rawDir);
       const normFiles = serveDir(normDir);
-      const improbableExists = existsSync(path.join(storage, "output", "improbib.json"));
 
       let normalizeProgress = null;
       try {
@@ -93,14 +122,10 @@ Bun.serve({
         storage,
         sources: files.filter((f) => f.endsWith(".json")),
         normalizedSources: normFiles.filter((f) => f.endsWith(".json")),
-        improbableBuilt: improbableExists,
         normalizeProgress,
+        scrapeRunning,
+        normalizeRunning,
       }, req);
-    }
-
-    if (url.pathname === "/improbib.json") {
-      const res = serveFile(path.join(process.cwd(), "output", "improbib.json"), req);
-      if (res) return res;
     }
 
     if (url.pathname.startsWith("/raw/")) {
@@ -115,12 +140,32 @@ Bun.serve({
       if (res) return res;
     }
 
+    if (url.pathname === "/vocabulary.json") {
+      const res = serveFile(path.join(process.cwd(), "output", "vocabulary.json"), req);
+      if (res) return res;
+    }
+
+    if (url.pathname === "/api/scrape") {
+      const force = url.searchParams.get("force") === "true";
+      console.log(`[${new Date().toISOString()}] Manual scrape trigger${force ? " (forced)" : ""}...`);
+      runScrape(force).catch((err: Error) => {
+        console.error(`[${new Date().toISOString()}] Manual scrape failed:`, err.message);
+      });
+      return jsonResponse({ status: "scrape started", force }, req);
+    }
+
     if (url.pathname === "/api/normalize") {
       console.log(`[${new Date().toISOString()}] Manual normalize trigger...`);
+      if (normalizeRunning) {
+        return jsonResponse({ status: "normalization already running" }, req);
+      }
+      normalizeRunning = true;
       scanner.normalizeAll().then(() => {
+        normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Normalize complete.`);
       }).catch((err: Error) => {
-        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack?.slice(0, 500));
+        normalizeRunning = false;
+        console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message);
       });
       return jsonResponse({ status: "normalization started" }, req);
     }
@@ -132,29 +177,8 @@ Bun.serve({
         const result = await client.normalizeElement("Test Game", "<p>Players form a circle. One starts a word, the next continues.</p>", "en", ["game"]);
         return jsonResponse({ ok: true, result }, req);
       } catch (err: any) {
-        return jsonResponse({ ok: false, error: err.message, stack: err.stack?.slice(0, 500) }, req);
+        return jsonResponse({ ok: false, error: err.message }, req);
       }
-    }
-
-    if (url.pathname === "/api/opencode-check") {
-      const result = Bun.spawnSync(["opencode", "--version"], { stdout: "pipe", stderr: "pipe" });
-      const authPath = path.join(process.env.HOME || "/root", ".local/share/opencode/auth.json");
-      let authContent: string | null = null;
-      try {
-        const raw = readFileSync(authPath, "utf-8");
-        // Only show structure, not the key itself
-        const parsed = JSON.parse(raw);
-        authContent = `has opencode-go: ${!!parsed["opencode-go"]}, type: ${parsed["opencode-go"]?.type || "none"}, key length: ${parsed["opencode-go"]?.key?.length || 0}`;
-      } catch {}
-      return jsonResponse({
-        opencode: result.exitCode === 0,
-        version: new TextDecoder().decode(result.stdout).trim() || null,
-        error: new TextDecoder().decode(result.stderr).trim() || null,
-        authExists: existsSync(authPath),
-        authContent,
-        apiKeySet: !!process.env.OPENCODE_GO_API_KEY,
-        apiKeyPrefix: (process.env.OPENCODE_GO_API_KEY || "").slice(0, 8) + "...",
-      }, req);
     }
 
     return new Response("Not Found", { status: 404 });
@@ -163,5 +187,23 @@ Bun.serve({
 
 console.log(`Server listening on http://0.0.0.0:${PORT}`);
 
-console.log(`[${new Date().toISOString()}] Running initial scrape in background...`);
-runScrape();
+console.log(`[${new Date().toISOString()}] Checking for existing raw sources...`);
+if (rawSourcesExist()) {
+  console.log(`[${new Date().toISOString()}] Raw sources found — skipping initial scrape.`);
+  console.log(`[${new Date().toISOString()}] Checking for normalized data...`);
+  const normExists = existsSync(path.join(process.cwd(), "output", "normalized", "improwiki.json"));
+  if (!normExists && !normalizeRunning) {
+    console.log(`[${new Date().toISOString()}] No normalized data found — running normalization...`);
+    normalizeRunning = true;
+    scanner.normalizeAll().then(() => {
+      normalizeRunning = false;
+      console.log(`[${new Date().toISOString()}] Initial normalization complete.`);
+    }).catch((err: Error) => {
+      normalizeRunning = false;
+      console.error(`[${new Date().toISOString()}] Initial normalization failed:`, err.message);
+    });
+  }
+} else {
+  console.log(`[${new Date().toISOString()}] No raw sources found — running initial scrape...`);
+  runScrape().catch((err) => console.error(`[${new Date().toISOString()}] Initial scrape failed:`, err));
+}

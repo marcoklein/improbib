@@ -25,13 +25,21 @@ metadata:
 
 ## Deployment workflow
 
-### 1. Deploy code
+### Auto-deploy (normal path)
+
+Pushing to `origin main` triggers GitHub Actions which:
+1. Runs `sync.sh` from `~/code/personal-infra` to converge dokku infrastructure
+2. Pushes the code to `dokku@impromat.app:improbib` for deployment
+
+Use this for all normal deploys. The manual push below is only for testing alternative branches or configurations.
+
+### Manual push (testing only)
 
 ```bash
 git push dokku main:main
 ```
 
-Dokku builds the Dockerfile, runs the container on port 5000. The server auto-scrapes on schedule (daily at 4 AM UTC) and serves a REST API.
+Only use this to test a different branch or configuration before merging to main. Production deploys should always go through the auto-deploy pipeline.
 
 ### 2. Wait for deploy
 
