@@ -219,25 +219,33 @@ async function normalizeSource(
 
   const workers = Array.from({ length: Math.min(concurrency, elements.length) }, () => processNext());
   await Promise.all(workers);
-  await incrementalWrite(); // final write
+  await incrementalWrite(); // final snapshot
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   const normalized = [...normalizedMap.values()];
   const derivedCount = normalized.reduce((s, e) => s + e.derivedElements.length, 0);
 
   const output = {
-    meta: {
-      sourceName,
-      elementCount: normalized.length,
-      derivedElementCount: derivedCount,
-      splitElementCount: splitCount,
-      normalizedAt: new Date().toISOString(),
-    },
+    meta: { sourceName, elementCount: normalized.length, derivedElementCount: derivedCount, splitElementCount: splitCount, normalizedAt: new Date().toISOString() },
     elements: normalized,
   };
 
+  // Validate and write final validated output
+  const parsed = normalizedSourceSchema.safeParse(output);
+  if (!parsed.success) {
+    console.error(`Schema validation failed for ${sourceName}:`);
+    for (const issue of parsed.error.issues.slice(0, 30)) {
+      console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+    }
+    if (parsed.error.issues.length > 30) {
+      console.error(`  ... and ${parsed.error.issues.length - 30} more issues`);
+    }
+  }
+  const finalOutput = parsed.success ? parsed.data : output;
+  await Bun.write(sourcePath, JSON.stringify(finalOutput, null, 2));
+
   console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
-  return parsed.success ? parsed.data.elements : normalized;
+  return finalOutput.elements;
 }
 
 export async function normalizeAll(options?: { maxElements?: number }): Promise<void> {
