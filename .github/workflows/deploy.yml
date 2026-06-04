@@ -29,7 +29,12 @@ jobs:
           echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Write git commit version
+        run: git rev-parse HEAD > GIT_COMMIT
+
       - name: Deploy to Dokku
         run: |
+          git add -f GIT_COMMIT
+          git commit -m "deploy: ${GITHUB_SHA:0:7}"
           git remote add dokku dokku@impromat.app:improbib
-          git push dokku main
+          git push dokku HEAD:main
