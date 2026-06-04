@@ -78,7 +78,7 @@ async function callOpenCodeGo(prompt: string, model: string): Promise<string> {
 
   try {
     const proc = Bun.spawn(
-      ["sh", "-c", `cat ${promptFile} | opencode run --model ${model} --format json --dangerously-skip-permissions 2>/dev/null`],
+      ["sh", "-c", `timeout 120 cat ${promptFile} | opencode run --model ${model} --format json --dangerously-skip-permissions`],
       {
         stdout: "pipe",
         stderr: "pipe",
