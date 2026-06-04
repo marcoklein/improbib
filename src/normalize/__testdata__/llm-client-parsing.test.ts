@@ -1,68 +1,89 @@
 import { describe, expect, it } from "bun:test";
+import { coerceElement, coerceHowToPlay, CoercionForTests as TestCoercion } from "./test-helpers";
 
-// Test the JSON extraction logic from llm-client.ts
-// (importing the internal function via a test helper)
-
+// Simple inline test helpers — not exported from llm-client, recreated here
 function extractJson(text: string): any {
-  // Replicate the extraction logic from llm-client.ts
-  const mdMatch = text.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\n?```/);
-  const jsonStr = mdMatch ? mdMatch[1].trim() : text.trim();
-  const objMatch = jsonStr.match(/\{[\s\S]*\}/);
-  const finalStr = objMatch ? objMatch[0] : jsonStr;
-  return JSON.parse(finalStr);
+  const mdMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (mdMatch) {
+    const inner = mdMatch[1].trim();
+    try { return JSON.parse(inner); } catch {}
+  }
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try { return JSON.parse(objMatch[0]); } catch {}
+  }
+  const arrMatch = text.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try { return JSON.parse(arrMatch[0]); } catch {}
+  }
+  throw new Error(`Could not parse JSON: ${text.slice(0, 200)}`);
 }
 
-describe("llm-client JSON parsing", () => {
-  it("parses plain JSON", () => {
-    const result = extractJson('{"description":"test","howToPlay":"do this","variations":[],"tips":[],"referencedElements":[]}');
-    expect(result.description).toBe("test");
-    expect(result.howToPlay).toBe("do this");
+function coerceHowToPlay(value: any): any {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    if (value.trim() === "null" || value.trim() === "") return null;
+    return { steps: [{ action: value }] };
+  }
+  if (value.steps && Array.isArray(value.steps)) {
+    return {
+      steps: value.steps.map((s: any) => ({
+        action: String(s.action || ""),
+        role: s.role ? String(s.role) : undefined,
+        constraint: s.constraint ? String(s.constraint) : undefined,
+      })),
+    };
+  }
+  return { steps: [{ action: String(value) }] };
+}
+
+describe("llm client parsing", () => {
+  it("extracts JSON from markdown code fence", () => {
+    const text = '```json\n{"description": "A test game"}\n```';
+    const result = extractJson(text);
+    expect(result.description).toBe("A test game");
   });
 
-  it("parses JSON inside markdown code fence", () => {
-    const text = '```json\n{"description":"test","howToPlay":null,"variations":[],"tips":["tip 1"],"referencedElements":[]}\n```';
+  it("extracts JSON from bare text", () => {
+    const text = '{"description": "A test game", "howToPlay": {"steps": [{"action": "do something"}]}}';
     const result = extractJson(text);
-    expect(result.description).toBe("test");
-    expect(result.howToPlay).toBeNull();
-    expect(result.tips).toEqual(["tip 1"]);
+    expect(result.description).toBe("A test game");
+    expect(result.howToPlay.steps.length).toBe(1);
   });
 
-  it("parses JSON with leading text noise", () => {
-    const text = 'Here is the result:\n\n{"description":"test","howToPlay":"step 1\\nstep 2","variations":[{"name":"v1","description":"desc"}],"tips":[],"referencedElements":["Freeze Tag"]}\n\nHope this helps.';
-    const result = extractJson(text);
-    expect(result.description).toBe("test");
-    expect(result.howToPlay).toBe("step 1\nstep 2");
-    expect(result.variations[0].name).toBe("v1");
-    expect(result.referencedElements).toEqual(["Freeze Tag"]);
+  it("handles null howToPlay", () => {
+    const result = coerceHowToPlay(null);
+    expect(result).toBeNull();
   });
 
-  it("handles howToPlay as array", () => {
-    const text = '{"description":"test","howToPlay":["step 1","step 2","step 3"],"variations":[],"tips":[],"referencedElements":[]}';
-    const result = extractJson(text);
-    expect(Array.isArray(result.howToPlay)).toBe(true);
-    expect(result.howToPlay.length).toBe(3);
+  it("handles string howToPlay fallback", () => {
+    const result = coerceHowToPlay("step instructions here");
+    expect(result).not.toBeNull();
+    expect(result!.steps[0].action).toBe("step instructions here");
   });
 
-  it("handles howToPlay as null for concepts", () => {
-    const text = '{"description":"a concept","howToPlay":null,"variations":[],"tips":["concepts are theoretical"],"referencedElements":[]}';
-    const result = extractJson(text);
-    expect(result.howToPlay).toBeNull();
+  it("handles structured howToPlay", () => {
+    const input = {
+      steps: [
+        { action: "form a circle", role: "all", constraint: "hold hands" },
+        { action: "start the game" },
+      ],
+    };
+    const result = coerceHowToPlay(input);
+    expect(result).not.toBeNull();
+    expect(result!.steps.length).toBe(2);
+    expect(result!.steps[0].action).toBe("form a circle");
+    expect(result!.steps[0].role).toBe("all");
+    expect(result!.steps[0].constraint).toBe("hold hands");
   });
 
-  it("handles empty fields", () => {
-    const text = '{"description":"","howToPlay":null,"variations":[],"tips":[],"referencedElements":[]}';
-    const result = extractJson(text);
-    expect(result.description).toBe("");
-    expect(result.variations).toEqual([]);
-    expect(result.tips).toEqual([]);
+  it("handles empty string howToPlay as null", () => {
+    const result = coerceHowToPlay("");
+    expect(result).toBeNull();
   });
 
-  it("parses complex nested variations", () => {
-    const text = '{"description":"test","howToPlay":"step 1","variations":[{"name":"Blind Freeze","description":"Players face away"},{"name":"Elimination Freeze","description":"Competitive version"}],"tips":["tip 1","tip 2"],"referencedElements":["Gefühlsquadrat"]}';
-    const result = extractJson(text);
-    expect(result.variations.length).toBe(2);
-    expect(result.variations[0].name).toBe("Blind Freeze");
-    expect(result.variations[1].name).toBe("Elimination Freeze");
-    expect(result.referencedElements).toContain("Gefühlsquadrat");
+  it("handles 'null' string as null", () => {
+    const result = coerceHowToPlay("null");
+    expect(result).toBeNull();
   });
 });

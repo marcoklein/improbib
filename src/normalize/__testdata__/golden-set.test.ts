@@ -1,31 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import TurndownService from "turndown";
-import { goldenSet } from "./golden-set";
 import type { GoldenEntry, GoldenOutput } from "./golden-set";
-
-const turndown = new TurndownService({ headingStyle: "atx" });
-
-/**
- * Converts HTML content to markdown using the same turndown config
- * as the main pipeline (src/scraping/shared/process-markdown.ts)
- */
-function htmlToMarkdown(html: string): string {
-  return turndown.turndown(html).trim();
-}
-
-/**
- * The normalization function that any LLM-backed implementation
- * should replicate. In tests, this is replaced with a mock or
- * actual LLM call. The expected outputs in golden-set.ts are
- * the ground truth.
- */
-export type NormalizeFn = (entry: GoldenEntry) => Promise<GoldenOutput>;
-
-// ── Structural validations on the golden set itself ──
+import { goldenSet } from "./golden-set";
 
 describe("golden set integrity", () => {
-  it("contains exactly 15 test cases", () => {
-    expect(goldenSet.length).toBe(15);
+  it("contains exactly 11 test cases", () => {
+    expect(goldenSet.length).toBe(11);
   });
 
   it("all entries have unique IDs", () => {
@@ -45,13 +24,13 @@ describe("golden set integrity", () => {
     }
   });
 
-  it("howToPlay is null for concept pages, non-null for games/exercises", () => {
+  it("howToPlay is null for concept pages and index pages, non-null for games/exercises/show formats", () => {
     for (const entry of goldenSet) {
-      if (entry.id === "game-concept" || entry.id === "what-did-you-want") {
+      if (entry.id === "game-concept" || entry.id === "what-did-you-want" || entry.id === "tag-games-index" || entry.id === "vocabulary-clusters") {
         expect(entry.expectedOutput.howToPlay).toBeNull();
       } else {
         expect(entry.expectedOutput.howToPlay).toBeTruthy();
-        expect((entry.expectedOutput.howToPlay as string).length).toBeGreaterThan(10);
+        expect(entry.expectedOutput.howToPlay!.steps.length).toBeGreaterThan(0);
       }
     }
   });
@@ -71,7 +50,7 @@ describe("golden set integrity", () => {
 
   it("includes edge case: minimal html content (< 100 chars)", () => {
     const minimal = goldenSet.filter((e) => e.input.htmlContent.length < 100);
-    expect(minimal.length).toBeGreaterThanOrEqual(1);
+    expect(minimal.length).toBeGreaterThanOrEqual(2);
   });
 
   it("includes edge case: very long html content (> 2000 chars)", () => {
@@ -84,17 +63,6 @@ describe("golden set integrity", () => {
     expect(emptyTags.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("all inputs convert to valid markdown via turndown", () => {
-    for (const entry of goldenSet) {
-      const md = htmlToMarkdown(entry.input.htmlContent);
-      expect(typeof md).toBe("string");
-      // The ask-for edge case has blank htmlContent — markdown will be empty
-      if (entry.id !== "what-did-you-want") {
-        expect(md.length).toBeGreaterThan(0);
-      }
-    }
-  });
-
   it("all entries have at least one expected output field populated", () => {
     for (const entry of goldenSet) {
       const o = entry.expectedOutput;
@@ -102,123 +70,39 @@ describe("golden set integrity", () => {
         o.description.length > 0 ||
         o.howToPlay !== null ||
         o.variations.length > 0 ||
-        o.tips.length > 0;
+        o.tips.length > 0 ||
+        o.mechanics.length > 0;
       expect(hasContent).toBeTrue();
     }
   });
 
-  it("referencedElements contains plausible game names when present", () => {
+  it("referencedElements contains plausible names when present", () => {
     for (const entry of goldenSet) {
       for (const ref of entry.expectedOutput.referencedElements) {
-        // Referenced element names should be plain text, not URLs
-        expect(ref).not.toContain("http");
-        expect(ref).not.toContain("/");
-        expect(ref.length).toBeGreaterThan(1);
+        expect(ref.name).not.toContain("http");
+        expect(ref.name).not.toContain("/");
+        expect(ref.name.length).toBeGreaterThan(1);
       }
     }
   });
-});
 
-// ── Model comparison harness ──
+  it("show format has non-null howToPlay with steps", () => {
+    const decon = goldenSet.find((e) => e.id === "deconstruction");
+    expect(decon).toBeTruthy();
+    expect(decon!.expectedOutput.howToPlay).toBeTruthy();
+    expect(decon!.expectedOutput.howToPlay!.steps.length).toBeGreaterThan(1);
+  });
 
-/**
- * Run the given normalize function against all golden elements
- * and return per-element results with diff information.
- *
- * Usage:
- *   import { runGoldenBenchmark } from "./golden-set.test";
- *   const results = await runGoldenBenchmark(myNormalizeFn);
- */
-export async function runGoldenBenchmark(
-  normalize: NormalizeFn,
-): Promise<
-  {
-    id: string;
-    category: string;
-    name: string;
-    passed: boolean;
-    failures: string[];
-    output: GoldenOutput;
-  }[]
-> {
-  const results = [];
-  for (const entry of goldenSet) {
-    const output = await normalize(entry);
-    const failures: string[] = [];
+  it("multi-element parent has null howToPlay", () => {
+    const parent = goldenSet.find((e) => e.id === "tag-games-index");
+    expect(parent).toBeTruthy();
+    expect(parent!.expectedOutput.howToPlay).toBeNull();
+  });
 
-    // Check description exists and is non-trivial
-    if (!output.description || output.description.length < 10) {
-      failures.push("description too short or missing");
-    }
-
-    // Check howToPlay consistency
-    if (entry.expectedOutput.howToPlay === null && output.howToPlay !== null) {
-      failures.push("howToPlay should be null but got a value");
-    }
-    if (entry.expectedOutput.howToPlay !== null && output.howToPlay === null) {
-      failures.push("howToPlay should have a value but got null");
-    }
-
-    // Check variation count is reasonable
-    if (
-      Math.abs(
-        output.variations.length - entry.expectedOutput.variations.length,
-      ) > 3
-    ) {
-      failures.push(
-        `variation count mismatch: expected ${entry.expectedOutput.variations.length}, got ${output.variations.length}`,
-      );
-    }
-
-    results.push({
-      id: entry.id,
-      category: entry.category,
-      name: entry.input.name,
-      passed: failures.length === 0,
-      failures,
-      output,
-    });
-  }
-  return results;
-}
-
-// ── Snapshot-like reference test (skipped by default) ──
-
-/**
- * This test is marked as TODO because it requires an actual LLM to run.
- * It serves as documentation of how to validate a normalization implementation
- * against the golden set.
- *
- * To use with a real LLM:
- *   const normalize = async (entry: GoldenEntry): Promise<GoldenOutput> => {
- *     const markdown = htmlToMarkdown(entry.input.htmlContent);
- *     const prompt = buildExtractionPrompt(entry.input.name, markdown, entry.input.languageCode);
- *     const result = await callLlm(prompt); // your LLM client
- *     return result;
- *   };
- *   const results = await runGoldenBenchmark(normalize);
- *   console.table(results);
- */
-describe.skip("llm extraction vs golden set", () => {
-  it("all 15 elements extract correctly", async () => {
-    // Placeholder — replace with actual LLM call
-    const normalize: NormalizeFn = async (entry) => {
-      throw new Error(
-        `Not implemented: plug in your LLM client for ${entry.id}`,
-      );
-    };
-
-    const results = await runGoldenBenchmark(normalize);
-    const failures = results.filter((r) => !r.passed);
-    if (failures.length > 0) {
-      console.table(
-        failures.map((f) => ({
-          id: f.id,
-          category: f.category,
-          failures: f.failures.join("; "),
-        })),
-      );
-    }
-    expect(failures.length).toBe(0);
+  it("multi-element children have non-null howToPlay", () => {
+    const child = goldenSet.find((e) => e.id === "alphabet-tag");
+    expect(child).toBeTruthy();
+    expect(child!.expectedOutput.howToPlay).toBeTruthy();
+    expect(child!.expectedOutput.howToPlay!.steps.length).toBeGreaterThan(0);
   });
 });

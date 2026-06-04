@@ -43,6 +43,15 @@ export class Improbib {
       console.error("Normalization failed:", err.message, err.stack);
     }
   }
+
+  async normalizeSource(source: string) {
+    try {
+      const { normalizeAll } = await import("./normalize/normalize");
+      await normalizeAll();
+    } catch (err: any) {
+      console.error("Normalization failed:", err.message, err.stack);
+    }
+  }
 }
 
 export async function readImprobibJson(filePath: string) {

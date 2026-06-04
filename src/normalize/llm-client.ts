@@ -1,10 +1,71 @@
-import TurndownService from "turndown";
-import type { GoldenOutput } from "./__testdata__/golden-set";
+import type { NormalizedElement } from "./normalized-schema";
 
-const turndown = new TurndownService({ headingStyle: "atx" });
+// Stage 2 types
+export interface MatchCandidate {
+  identifier: string;
+  name: string;
+  description: string;
+  sourceName: string;
+  languageCode: string;
+}
+
+export interface ConfirmedMatch {
+  a: string;
+  b: string;
+  confidence: number;
+}
+
+// Stage 3 types
+export interface VocabularyCluster {
+  canonical: string;
+  variants: string[];
+}
+
+export interface VocabularyMap {
+  mechanics: VocabularyCluster[];
+  skills: VocabularyCluster[];
+}
 
 export interface LlmClient {
-  normalizeElement(name: string, htmlContent: string, languageCode: string): Promise<GoldenOutput>;
+  normalizeElement(name: string, htmlContent: string, languageCode: string, tags: string[]): Promise<NormalizedElement | NormalizedElement[]>;
+  findCrossSourceMatches(sourceA: MatchCandidate[], sourceB: MatchCandidate[]): Promise<ConfirmedMatch[]>;
+  normalizeVocabulary(terms: { mechanics: string[]; skills: string[] }): Promise<VocabularyMap>;
+}
+
+function buildSystemPrompt(): string {
+  return `You extract structured fields from improvisation theatre content. Raw HTML is provided — use the heading hierarchy, link targets (<a href>), list types (<ol>/<ul>), and text emphasis (<strong>/<em>) to understand the content.
+
+Return ONLY valid JSON matching this structure:
+{
+  "description": "1-3 sentence summary in the source language",
+  "howToPlay": null or {"steps": [{"action": "what to do", "role": "who (optional)", "constraint": "rule (optional)"}]},
+  "variations": [{"name": "name", "description": "description", "differsBy": ["what changes"]}],
+  "tips": [{"text": "tip", "category": "pedagogical|staging|safety|group-dynamic|failure-mode|general"}],
+  "referencedElements": [{"name": "as it appears in text"}],
+  "mechanics": [{"name": "canonical name", "category": "constraint|signal|role|structure|interaction (optional)"}],
+  "skills": [{"name": "canonical name", "category": "social|physical|cognitive|narrative|vocal (optional)"}],
+  "practical": {"difficulty": "beginner|intermediate|advanced (optional)", "typicalDurationMinutes": number (optional), "energyLevel": "low|medium|high (optional)", "groupSize": {"min": number (optional), "max": number (optional)} (optional), "requiresPreparation": boolean (optional), "suitableFor": ["warmup|exercise|performance|encore|workshop"] (optional)}
+}
+
+RULES:
+- howToPlay is null ONLY for: theoretical concepts ("Game", "Status" as improv theory), parent index pages listing multiple games, or bare audience ask-for prompts. Everything else (games, exercises, warm-ups, show formats, handles) MUST have structured steps.
+- A show format (Harold, Deconstruction) is ONE atomic element. Its howToPlay describes multiple phases — that is correct. NEVER split a show format.
+- When a page describes MULTIPLE independent games under separate headings, split them: return an array with the parent index element first (howToPlay: null, referencedElements populated with children), then each child element (splitFrom set to parent's identifier, full fields extracted). Parent gets description summarizing the category. Children get names from their section headings.
+- Extract mechanics (reusable building blocks like "freeze signal", "tap out", "alphabet constraint", "translation gimmick") and skills (competencies like "active listening", "spontaneity", "group mind").
+- Extract practical metadata when the content suggests it: difficulty, typical duration, energy level, group size, preparation requirements, suitable contexts.
+- For <a href="..."> links to other wiki pages: extract the page name into referencedElements. Do NOT generate identifiers — just the name as it appears.
+- For tips: categorize as pedagogical (teaching advice), staging (performance/show advice), safety (physical/emotional), group-dynamic (team/group interaction), failure-mode (common mistakes), or general.
+- Preserve the source language — German content gets German fields, English gets English. Mechanic and skill names should be in English when possible.`;
+}
+
+function buildUserPrompt(name: string, languageCode: string, tags: string[], htmlContent: string): string {
+  const lang = languageCode === "de" ? "German" : "English";
+  const tagsStr = tags.length > 0 ? tags.join(", ") : "(none)";
+  return `Name: ${name}
+Language: ${lang}
+Tags: ${tagsStr}
+Content:
+${htmlContent}`;
 }
 
 export function createOpencodeGoClient(
@@ -13,22 +74,25 @@ export function createOpencodeGoClient(
   const apiKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
   if (!apiKey) console.warn("No OPENCODE_GO_API_KEY set — normalization will fail.");
 
+  const systemPrompt = buildSystemPrompt();
+
   return {
-    async normalizeElement(name, htmlContent, languageCode) {
-      const md = turndown.turndown(htmlContent).trim();
-      const lang = languageCode === "de" ? "German" : "English";
+    async normalizeElement(name, htmlContent, languageCode, tags) {
+      const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
+      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 4000);
+      return parseNormalizeResponse(text);
+    },
 
-      const prompt = `Extract structured fields from this improv element. Return ONLY a JSON object — no markdown, no backticks, no explanation outside the JSON.
+    async findCrossSourceMatches(sourceA, sourceB) {
+      const prompt = buildMatchPrompt(sourceA, sourceB);
+      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs.", prompt, 8000);
+      return parseMatchResponse(text);
+    },
 
-Name: ${name}
-Language: ${lang}
-Content:
-${md || "(blank)"}
-
-Return: {"description":"1-3 sentence summary","howToPlay":"numbered steps or null for concepts/theory ONLY","variations":[{"name":"...","description":"..."}],"tips":["..."],"referencedElements":["name or empty"]}`;
-
-      const text = await callApi(apiKey, model, prompt);
-      return parseOutput(text);
+    async normalizeVocabulary(terms) {
+      const prompt = buildVocabularyPrompt(terms);
+      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms.", prompt, 4000);
+      return parseVocabularyResponse(text);
     },
   };
 }
@@ -36,7 +100,9 @@ Return: {"description":"1-3 sentence summary","howToPlay":"numbered steps or nul
 export async function callApi(
   apiKey: string,
   model: string,
+  systemMessage: string,
   userMessage: string,
+  maxTokens: number = 4000,
 ): Promise<string> {
   const resp = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
     method: "POST",
@@ -47,11 +113,11 @@ export async function callApi(
     body: JSON.stringify({
       model,
       messages: [
-        { role: "system", content: "You extract structured fields from improv game descriptions. Return ONLY valid JSON matching the requested structure." },
+        { role: "system", content: systemMessage },
         { role: "user", content: userMessage },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       temperature: 0,
     }),
   });
@@ -65,28 +131,164 @@ export async function callApi(
   return data.choices?.[0]?.message?.content || "";
 }
 
-export function parseOutput(text: string): GoldenOutput {
-  const mdMatch = text.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\n?```/);
-  const jsonStr = mdMatch ? mdMatch[1].trim() : text.trim();
-  const objMatch = jsonStr.match(/\{[\s\S]*\}/);
-  const finalStr = objMatch ? objMatch[0] : jsonStr;
-  const parsed = JSON.parse(finalStr);
+function parseNormalizeResponse(text: string): NormalizedElement | NormalizedElement[] {
+  const json = extractJson(text);
+  if (Array.isArray(json)) {
+    return json.map((item: any) => coerceElement(item));
+  }
+  return coerceElement(json);
+}
 
+function coerceElement(raw: any): NormalizedElement {
   return {
-    description: String(parsed.description || ""),
-    howToPlay: normalizeHowToPlay(parsed.howToPlay),
-    variations: (parsed.variations || []).map((v: any) => ({
-      name: String(v.name || ""),
-      description: String(v.description || ""),
-    })),
-    tips: (parsed.tips || []).map(String),
-    referencedElements: (parsed.referencedElements || []).map(String),
+    identifier: "",
+    name: String(raw.name || ""),
+    url: "",
+    sourceName: "",
+    languageCode: "en",
+    tags: [],
+    htmlContent: "",
+    splitFrom: raw.splitFrom || undefined,
+    normalized: {
+      description: String(raw.description || ""),
+      howToPlay: coerceHowToPlay(raw.howToPlay),
+      variations: (raw.variations || []).map((v: any) => ({
+        name: String(v.name || ""),
+        description: String(v.description || ""),
+        differsBy: Array.isArray(v.differsBy) ? v.differsBy.map(String) : [],
+      })),
+      tips: (raw.tips || []).map((t: any) => ({
+        text: typeof t === "string" ? t : String(t.text || ""),
+        category: typeof t === "string" ? "general" : String(t.category || "general"),
+      })),
+      referencedElements: (raw.referencedElements || []).map((r: any) => ({
+        name: typeof r === "string" ? r : String(r.name || ""),
+      })),
+      mechanics: (raw.mechanics || []).map((m: any) => ({
+        name: typeof m === "string" ? m : String(m.name || ""),
+        category: typeof m === "object" ? m.category : undefined,
+      })),
+      skills: (raw.skills || []).map((s: any) => ({
+        name: typeof s === "string" ? s : String(s.name || ""),
+        category: typeof s === "object" ? s.category : undefined,
+      })),
+      practical: coercePractical(raw.practical),
+      contentHash: "",
+      extractedAt: new Date().toISOString(),
+    },
+    derivedElements: [],
+    relatedIdentifiers: [],
   };
 }
 
-function normalizeHowToPlay(value: any): string | null {
+function coerceHowToPlay(value: any): any {
   if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.map((v: any) => String(v)).join("\n");
-  return String(value);
+  if (typeof value === "string") {
+    if (value.trim() === "null" || value.trim() === "") return null;
+    return { steps: [{ action: value }] };
+  }
+  if (value.steps && Array.isArray(value.steps)) {
+    return {
+      steps: value.steps.map((s: any) => ({
+        action: String(s.action || ""),
+        role: s.role ? String(s.role) : undefined,
+        constraint: s.constraint ? String(s.constraint) : undefined,
+      })),
+    };
+  }
+  return { steps: [{ action: String(value) }] };
+}
+
+function coercePractical(raw: any): any {
+  if (!raw || typeof raw !== "object") return {};
+  return {
+    difficulty: raw.difficulty || undefined,
+    typicalDurationMinutes: typeof raw.typicalDurationMinutes === "number" ? raw.typicalDurationMinutes : undefined,
+    energyLevel: raw.energyLevel || undefined,
+    groupSize: raw.groupSize && typeof raw.groupSize === "object"
+      ? { min: typeof raw.groupSize.min === "number" ? raw.groupSize.min : undefined, max: typeof raw.groupSize.max === "number" ? raw.groupSize.max : undefined }
+      : undefined,
+    requiresPreparation: typeof raw.requiresPreparation === "boolean" ? raw.requiresPreparation : undefined,
+    suitableFor: Array.isArray(raw.suitableFor) ? raw.suitableFor : undefined,
+  };
+}
+
+function buildMatchPrompt(sourceA: MatchCandidate[], sourceB: MatchCandidate[]): string {
+  const listA = sourceA.map(e => `- [${e.identifier}] ${e.name}: ${e.description}`).join("\n");
+  const listB = sourceB.map(e => `- [${e.identifier}] ${e.name}: ${e.description}`).join("\n");
+
+  return `Compare these two lists of improv elements from different sources. Return all pairs that refer to the same game/exercise/concept.
+
+Source A (${sourceA[0]?.sourceName || "unknown"}):
+${listA}
+
+Source B (${sourceB[0]?.sourceName || "unknown"}):
+${listB}
+
+Return a JSON object: {"matches": [{"a": "identifier from A", "b": "identifier from B", "confidence": 0.0-1.0}]}
+Confidence should reflect how certain you are these are the same thing. 1.0 = definitely identical (e.g., exact same name in different languages via translation). 0.5 = possibly related. Only include pairs with confidence >= 0.5.`;
+}
+
+function parseMatchResponse(text: string): ConfirmedMatch[] {
+  const json = extractJson(text);
+  if (json.matches && Array.isArray(json.matches)) {
+    return json.matches.map((m: any) => ({
+      a: String(m.a || ""),
+      b: String(m.b || ""),
+      confidence: typeof m.confidence === "number" ? m.confidence : 0.5,
+    }));
+  }
+  return [];
+}
+
+function buildVocabularyPrompt(terms: { mechanics: string[]; skills: string[] }): string {
+  const mechList = terms.mechanics.map(t => `- ${t}`).join("\n") || "(none)";
+  const skillList = terms.skills.map(t => `- ${t}`).join("\n") || "(none)";
+
+  return `Cluster these improv terminology terms into canonical forms. Group synonyms together and choose the best canonical English name for each cluster.
+
+Mechanics (reusable building blocks):
+${mechList}
+
+Skills (competencies trained):
+${skillList}
+
+Return a JSON object:
+{
+  "mechanics": [{"canonical": "canonical name", "variants": ["synonym1", "synonym2"]}],
+  "skills": [{"canonical": "canonical name", "variants": ["synonym1", "synonym2"]}]
+}
+
+Each term must appear in exactly one cluster. Terms that are already canonical should appear as their own cluster with just themselves as a variant. Include German terms and map them to English canonical names.`;
+}
+
+function parseVocabularyResponse(text: string): VocabularyMap {
+  const json = extractJson(text);
+  return {
+    mechanics: (json.mechanics || []).map((c: any) => ({
+      canonical: String(c.canonical || ""),
+      variants: (c.variants || []).map(String),
+    })),
+    skills: (json.skills || []).map((c: any) => ({
+      canonical: String(c.canonical || ""),
+      variants: (c.variants || []).map(String),
+    })),
+  };
+}
+
+function extractJson(text: string): any {
+  const mdMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (mdMatch) {
+    const inner = mdMatch[1].trim();
+    try { return JSON.parse(inner); } catch {}
+  }
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try { return JSON.parse(objMatch[0]); } catch {}
+  }
+  const arrMatch = text.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try { return JSON.parse(arrMatch[0]); } catch {}
+  }
+  throw new Error(`Could not parse JSON from response: ${text.slice(0, 300)}`);
 }

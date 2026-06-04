@@ -9,6 +9,7 @@
 
 ```sh
 bun run src/analyze.ts    # run scraper
+bun run src/normalize/normalize.ts  # run normalization (3-stage LLM pipeline)
 bun test                   # run tests (bun:test)
 ```
 
@@ -19,6 +20,7 @@ No build step — Bun runs `.ts` directly (`noEmit: true` in tsconfig).
 - `src/analyze.ts` — CLI entry point for the scraper
 - `src/index.ts` — library entry (exports `Improbib` class, `readImprobibJson`)
 - Scraper pipeline in `src/scrape-improwiki.ts` scrapes improwiki.com, follows translation links, processes HTML→Markdown, and writes output
+- Normalization layer in `src/normalize/` — 3-stage LLM pipeline (extraction, cross-source matching, vocabulary normalization) per ADR-0008
 - Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–1000 elements
 
 ## Key details

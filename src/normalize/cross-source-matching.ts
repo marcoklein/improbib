@@ -1,99 +1,107 @@
-/**
- * Cross-source element matching using name similarity.
- *
- * Given lists of elements from different sources, finds pairs that
- * likely refer to the same improv game/exercise, enabling the graph
- * layer to merge them with source attribution.
- */
+import type { LlmClient, MatchCandidate, ConfirmedMatch } from "./llm-client";
 
-export interface MatchCandidate {
-  identifier: string;
-  name: string;
-  sourceName: string;
-  languageCode: string;
-}
-
-export interface MatchPair {
-  a: MatchCandidate;
-  b: MatchCandidate;
-  score: number;
-}
-
-function normalizeForMatch(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9äöüß ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenOverlap(a: string, b: string): number {
-  const tokensA = new Set(a.split(" ").filter((t) => t.length > 1));
-  const tokensB = new Set(b.split(" ").filter((t) => t.length > 1));
-  if (tokensA.size === 0 || tokensB.size === 0) return 0;
-  const intersection = new Set([...tokensA].filter((t) => tokensB.has(t)));
-  return intersection.size / Math.max(tokensA.size, tokensB.size);
-}
-
-/**
- * Find pairs of elements from different sources with similar names.
- * Returns pairs with score >= threshold (0.0 to 1.0).
- */
-export function findCrossSourceMatches(
-  candidates: MatchCandidate[],
-  threshold: number = 0.8,
-): MatchPair[] {
-  const matches: MatchPair[] = [];
+export function seedTranslationPairs(elements: { identifier: string }[] & { translationLinkEnIdentifier?: string; translationLinkDeIdentifier?: string }[]): { a: string; b: string; confidence: number }[] {
+  const pairs: { a: string; b: string; confidence: number }[] = [];
   const seen = new Set<string>();
 
-  for (let i = 0; i < candidates.length; i++) {
-    for (let j = i + 1; j < candidates.length; j++) {
-      const a = candidates[i];
-      const b = candidates[j];
-
-      // Only match across sources and languages
-      if (a.sourceName === b.sourceName) continue;
-
-      const key = `${a.identifier}:${b.identifier}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const nameA = normalizeForMatch(a.name);
-      const nameB = normalizeForMatch(b.name);
-
-      // Exact match after normalization
-      if (nameA === nameB) {
-        matches.push({ a, b, score: 1.0 });
-        continue;
+  for (const el of elements) {
+    if (el.translationLinkEnIdentifier) {
+      const key = `${el.identifier}:${el.translationLinkEnIdentifier}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        pairs.push({ a: el.identifier, b: el.translationLinkEnIdentifier, confidence: 1.0 });
       }
-
-      // Token overlap for similar names
-      const score = tokenOverlap(nameA, nameB);
-      if (score >= threshold) {
-        matches.push({ a, b, score: Math.round(score * 100) / 100 });
+    }
+    if (el.translationLinkDeIdentifier) {
+      const key = `${el.translationLinkDeIdentifier}:${el.identifier}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        pairs.push({ a: el.translationLinkDeIdentifier, b: el.identifier, confidence: 1.0 });
       }
     }
   }
 
-  return matches.sort((a, b) => b.score - a.score);
+  return pairs;
 }
 
-/**
- * Build a map from element identifier to a list of related identifiers
- * from other sources.
- */
-export function buildRelatedIdentifiers(
+export function buildMatchBatches(
   candidates: MatchCandidate[],
-  threshold: number = 0.8,
-): Map<string, string[]> {
-  const matches = findCrossSourceMatches(candidates, threshold);
-  const related = new Map<string, string[]>();
+  batchSize: number = 100,
+): { sourceA: MatchCandidate[]; sourceB: MatchCandidate[] }[] {
+  const bySource = new Map<string, MatchCandidate[]>();
+  for (const c of candidates) {
+    const existing = bySource.get(c.sourceName) || [];
+    existing.push(c);
+    bySource.set(c.sourceName, existing);
+  }
 
-  for (const m of matches) {
-    if (!related.has(m.a.identifier)) related.set(m.a.identifier, []);
-    if (!related.has(m.b.identifier)) related.set(m.b.identifier, []);
-    related.get(m.a.identifier)!.push(m.b.identifier);
-    related.get(m.b.identifier)!.push(m.a.identifier);
+  const sourceNames = [...bySource.keys()];
+  const batches: { sourceA: MatchCandidate[]; sourceB: MatchCandidate[] }[] = [];
+
+  for (let i = 0; i < sourceNames.length; i++) {
+    for (let j = i + 1; j < sourceNames.length; j++) {
+      const listA = bySource.get(sourceNames[i])!;
+      const listB = bySource.get(sourceNames[j])!;
+
+      for (let a = 0; a < listA.length; a += batchSize) {
+        for (let b = 0; b < listB.length; b += batchSize) {
+          batches.push({
+            sourceA: listA.slice(a, a + batchSize),
+            sourceB: listB.slice(b, b + batchSize),
+          });
+        }
+      }
+    }
+  }
+
+  return batches;
+}
+
+export async function buildRelatedIdentifiers(
+  candidates: MatchCandidate[],
+  client: LlmClient,
+  existingPairs?: { a: string; b: string; confidence: number }[],
+): Promise<Map<string, { identifier: string; confidence: number }[]>> {
+  const related = new Map<string, { identifier: string; confidence: number }[]>();
+  const seededIds = new Set<string>();
+
+  const addPair = (a: string, b: string, confidence: number) => {
+    if (!related.has(a)) related.set(a, []);
+    if (!related.has(b)) related.set(b, []);
+    related.get(a)!.push({ identifier: b, confidence });
+    related.get(b)!.push({ identifier: a, confidence });
+  };
+
+  if (existingPairs) {
+    for (const p of existingPairs) {
+      addPair(p.a, p.b, p.confidence);
+      seededIds.add(`${p.a}:${p.b}`);
+      seededIds.add(`${p.b}:${p.a}`);
+    }
+  }
+
+  const batches = buildMatchBatches(candidates);
+
+  for (const batch of batches) {
+    const sourceAPrefix = batch.sourceA[0]?.sourceName || "A";
+    const sourceBPrefix = batch.sourceB[0]?.sourceName || "B";
+
+    const filteredA = batch.sourceA.filter(c => !seededIds.has(`${c.identifier}:`));
+    const filteredB = batch.sourceB.filter(c => !seededIds.has(`${c.identifier}:`));
+
+    if (filteredA.length === 0 || filteredB.length === 0) continue;
+
+    try {
+      const matches = await client.findCrossSourceMatches(filteredA, filteredB);
+      for (const m of matches) {
+        if (m.confidence >= 0.5) {
+          addPair(m.a, m.b, m.confidence);
+        }
+      }
+      console.log(`  Matched ${sourceAPrefix}↔${sourceBPrefix} batch: ${filteredA.length}×${filteredB.length} → ${matches.length} pairs`);
+    } catch (err: any) {
+      console.warn(`  Match failed for ${sourceAPrefix}↔${sourceBPrefix} batch: ${err.message}`);
+    }
   }
 
   return related;

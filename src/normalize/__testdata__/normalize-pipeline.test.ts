@@ -1,137 +1,69 @@
 import { describe, expect, it } from "bun:test";
-import { createHash } from "crypto";
-import { buildRelatedIdentifiers } from "../cross-source-matching";
-import type { NormalizedElement } from "../normalized-schema";
-
-function hashContent(html: string): string {
-  return createHash("md5").update(html).digest("hex");
-}
-
-function makeElement(overrides: Partial<NormalizedElement> = {}): NormalizedElement {
-  return {
-    identifier: "test1234567890123456789012345678", // 32 chars
-    name: "Test Element",
-    url: "https://example.com/test",
-    sourceName: "improwiki",
-    languageCode: "en",
-    tags: ["game"],
-    htmlContent: "<p>Test content</p>",
-    normalized: {
-      description: "A test element.",
-      howToPlay: "1. Do this.\n2. Do that.",
-      variations: [],
-      tips: [],
-      referencedElements: [],
-      contentHash: hashContent("<p>Test content</p>"),
-      extractedAt: new Date().toISOString(),
-    },
-    derivedElements: [],
-    relatedIdentifiers: [],
-    ...overrides,
-  };
-}
+import { seedTranslationPairs, buildMatchBatches } from "../cross-source-matching";
+import type { MatchCandidate } from "../llm-client";
 
 describe("normalize pipeline", () => {
-  it("content hash detects changes", () => {
-    const hash1 = hashContent("<p>Hello</p>");
-    const hash2 = hashContent("<p>Hello</p>");
-    const hash3 = hashContent("<p>Goodbye</p>");
+  it("seedTranslationPairs creates pairs from translation links", () => {
+    const elements = [
+      { identifier: "a1234567890123456789012345678a", translationLinkEnIdentifier: "b1234567890123456789012345678b" },
+      { identifier: "b1234567890123456789012345678b" },
+      { identifier: "c1234567890123456789012345678c", translationLinkDeIdentifier: "d1234567890123456789012345678d" },
+    ] as any;
 
-    expect(hash1).toBe(hash2);
-    expect(hash1).not.toBe(hash3);
+    const pairs = seedTranslationPairs(elements);
+    expect(pairs.length).toBe(2);
+
+    const pair1 = pairs.find(p => p.a === "a1234567890123456789012345678a");
+    expect(pair1).toBeTruthy();
+    expect(pair1!.confidence).toBe(1.0);
+    expect(pair1!.b).toBe("b1234567890123456789012345678b");
   });
 
-  it("content hash is stable across invocations", () => {
-    const hash = hashContent("<p>Stable content</p>");
-    const hash2 = hashContent("<p>Stable content</p>");
-    expect(hash).toBe(hash2);
-    expect(hash).toHaveLength(32);
-  });
-
-  it("derived elements have parent back-reference", () => {
-    const el = makeElement({
-      derivedElements: [
-        {
-          name: "Blind Freeze",
-          description: "A variation where players face away.",
-          parentIdentifier: "test1234567890123456789012345678",
-        },
-      ],
-    });
-
-    expect(el.derivedElements.length).toBe(1);
-    expect(el.derivedElements[0].parentIdentifier).toBe(el.identifier);
-  });
-
-  it("derived elements are only created for substantial variations", () => {
-    // This is the threshold logic: variations with description > 40 chars
-    const short = "Short";
-    const long = "A".repeat(41);
-
-    expect(short.length > 40).toBe(false);
-    expect(long.length > 40).toBe(true);
-  });
-
-  it("relatedIdentifiers connects cross-source matches", () => {
-    const elements: NormalizedElement[] = [
-      makeElement({
-        identifier: "aaa111bbb222ccc333ddd444eee555f1",
-        name: "Freeze Tag",
-        sourceName: "improwiki",
-        relatedIdentifiers: ["bbb222ccc333ddd444eee555fff666g2"],
-      }),
-      makeElement({
-        identifier: "bbb222ccc333ddd444eee555fff666g2",
-        name: "Freeze Tag",
-        sourceName: "learnimprov",
-        relatedIdentifiers: ["aaa111bbb222ccc333ddd444eee555f1"],
-      }),
+  it("buildMatchBatches splits by source", () => {
+    const candidates: MatchCandidate[] = [
+      { identifier: "a1", name: "Game A1", description: "desc", sourceName: "improwiki", languageCode: "en" },
+      { identifier: "a2", name: "Game A2", description: "desc", sourceName: "improwiki", languageCode: "en" },
+      { identifier: "b1", name: "Game B1", description: "desc", sourceName: "learnimprov", languageCode: "en" },
+      { identifier: "c1", name: "Game C1", description: "desc", sourceName: "ircwiki", languageCode: "en" },
     ];
 
-    expect(elements[0].relatedIdentifiers).toContain(elements[1].identifier);
-    expect(elements[1].relatedIdentifiers).toContain(elements[0].identifier);
+    const batches = buildMatchBatches(candidates, 100);
+    // Should have 3 pairs: improwiki↔learnimprov, improwiki↔ircwiki, learnimprov↔ircwiki
+    expect(batches.length).toBe(3);
+
+    // Each batch should have elements from two different sources
+    for (const batch of batches) {
+      const sourceNames = new Set(batch.sourceA.map(c => c.sourceName));
+      sourceNames.add(batch.sourceB[0]?.sourceName || "");
+      expect(sourceNames.size).toBe(2);
+    }
   });
 
-  it("cross-source matching finds exact name matches", () => {
-    const result = buildRelatedIdentifiers([
-      { identifier: "a1234567890123456789012345678a", name: "Freeze Tag", sourceName: "improwiki", languageCode: "en" },
-      { identifier: "b1234567890123456789012345678b", name: "Freeze Tag", sourceName: "learnimprov", languageCode: "en" },
-    ]);
+  it("buildMatchBatches respects batch size", () => {
+    const candidates: MatchCandidate[] = [];
+    for (let i = 0; i < 150; i++) {
+      candidates.push({ identifier: `a${i}`, name: `A${i}`, description: "desc", sourceName: "improwiki", languageCode: "en" });
+      candidates.push({ identifier: `b${i}`, name: `B${i}`, description: "desc", sourceName: "learnimprov", languageCode: "en" });
+    }
 
-    expect(result.get("a1234567890123456789012345678a")).toContain("b1234567890123456789012345678b");
-    expect(result.get("b1234567890123456789012345678b")).toContain("a1234567890123456789012345678a");
+    const batches = buildMatchBatches(candidates, 50);
+    // 150 improwiki × 150 learnimprov, batch size 50 → (150/50 rounded up) × (150/50 rounded up) = 3×3 = 9 batches
+    // But round-up is: 3×3 = 9
+    expect(batches.length).toBe(9);
+
+    for (const batch of batches) {
+      expect(batch.sourceA.length).toBeLessThanOrEqual(50);
+      expect(batch.sourceB.length).toBeLessThanOrEqual(50);
+    }
   });
 
-  it("normalized schema preserves all source metadata", () => {
-    const el = makeElement({
-      translationLinkEn: "https://example.com/en/test",
-      translationLinkDe: "https://example.com/de/test",
-      playerCountMin: 2,
-      playerCountMax: 8,
-      categories: ["warmup"],
-      postTags: ["circle"],
-    });
+  it("buildMatchBatches returns empty for single source", () => {
+    const candidates: MatchCandidate[] = [
+      { identifier: "a1", name: "A1", description: "desc", sourceName: "improwiki", languageCode: "en" },
+      { identifier: "a2", name: "A2", description: "desc", sourceName: "improwiki", languageCode: "en" },
+    ];
 
-    expect(el.translationLinkEn).toBeDefined();
-    expect(el.translationLinkDe).toBeDefined();
-    expect(el.playerCountMin).toBe(2);
-    expect(el.playerCountMax).toBe(8);
-    expect(el.categories).toContain("warmup");
-    expect(el.postTags).toContain("circle");
-  });
-
-  it("normalized element has all required fields", () => {
-    const el = makeElement();
-
-    expect(el.identifier).toHaveLength(32);
-    expect(el.name).toBeTruthy();
-    expect(el.url).toStartWith("https://");
-    expect(el.sourceName).toBeTruthy();
-    expect(el.normalized.description.length).toBeGreaterThan(0);
-    expect(Array.isArray(el.normalized.variations)).toBe(true);
-    expect(Array.isArray(el.normalized.tips)).toBe(true);
-    expect(Array.isArray(el.normalized.referencedElements)).toBe(true);
-    expect(el.normalized.contentHash).toHaveLength(32);
-    expect(el.normalized.extractedAt).toBeTruthy();
+    const batches = buildMatchBatches(candidates, 100);
+    expect(batches.length).toBe(0);
   });
 });
