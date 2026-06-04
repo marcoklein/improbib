@@ -1,10 +1,14 @@
-FROM oven/bun:1-alpine
+FROM oven/bun:1-slim
 
 WORKDIR /app
+
 COPY package.json bun.lockb ./
-RUN bun install --frozen-lockfile
+RUN bun install --production
 
 COPY . .
-ENV STORAGE_PATH=/app/storage
+
+ENV PORT=5000
+
+EXPOSE 5000
 
 CMD ["bun", "run", "src/serve.ts"]

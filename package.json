@@ -5,8 +5,8 @@
   "version": "0.2.0",
   "main": "src/index.ts",
   "scripts": {
-    "start": "bun src/analyze.ts",
-    "dev": "bun --watch run src/analyze.ts"
+    "start": "bun src/serve.ts",
+    "dev": "bun --watch run src/serve.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

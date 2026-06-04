@@ -339,3 +339,11 @@ export async function normalizeAll(): Promise<void> {
   currentProgress = { ...currentProgress!, stage: "done" };
   console.log("\n=== Normalization complete ===");
 }
+
+// Allow running directly: bun run src/normalize/normalize.ts
+if (import.meta.main) {
+  normalizeAll().catch((err) => {
+    console.error("Normalization failed:", err);
+    process.exit(1);
+  });
+}

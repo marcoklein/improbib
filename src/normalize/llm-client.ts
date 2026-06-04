@@ -79,7 +79,7 @@ export function createOpencodeGoClient(
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
       const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 4000);
+      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 16000);
       return parseNormalizeResponse(text);
     },
 
@@ -102,7 +102,7 @@ export async function callApi(
   model: string,
   systemMessage: string,
   userMessage: string,
-  maxTokens: number = 4000,
+  maxTokens: number = 12000,
 ): Promise<string> {
   const resp = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
     method: "POST",
@@ -277,11 +277,15 @@ function parseVocabularyResponse(text: string): VocabularyMap {
 }
 
 function extractJson(text: string): any {
+  // Try markdown code fence
   const mdMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (mdMatch) {
     const inner = mdMatch[1].trim();
     try { return JSON.parse(inner); } catch {}
   }
+  // Try parsing directly
+  try { return JSON.parse(text.trim()); } catch {}
+  // Try extracting {...} or [...]
   const objMatch = text.match(/\{[\s\S]*\}/);
   if (objMatch) {
     try { return JSON.parse(objMatch[0]); } catch {}
@@ -290,5 +294,30 @@ function extractJson(text: string): any {
   if (arrMatch) {
     try { return JSON.parse(arrMatch[0]); } catch {}
   }
+  // Try repairing truncated JSON (close unclosed braces/strings)
+  let attempt = text.trim();
+  // Remove trailing "..." if present (streaming artifact)
+  attempt = attempt.replace(/\.{3,}$/, "");
+  // Count braces
+  let openBraces = 0, openBrackets = 0;
+  let inString = false, escaped = false;
+  const chars: string[] = [];
+  for (const ch of attempt) {
+    if (escaped) { chars.push(ch); escaped = false; continue; }
+    if (ch === "\\") { chars.push(ch); escaped = true; continue; }
+    if (ch === '"' && !inString) { inString = true; chars.push(ch); continue; }
+    if (ch === '"' && inString) { inString = false; chars.push(ch); continue; }
+    if (inString) { chars.push(ch); continue; }
+    if (ch === "{") openBraces++;
+    if (ch === "}") openBraces--;
+    if (ch === "[") openBrackets++;
+    if (ch === "]") openBrackets--;
+    chars.push(ch);
+  }
+  while (openBrackets > 0) { chars.push("]"); openBrackets--; }
+  while (openBraces > 0) { chars.push("}"); openBraces--; }
+  if (inString) chars.push('"');
+  const repaired = chars.join("");
+  try { return JSON.parse(repaired); } catch {}
   throw new Error(`Could not parse JSON from response: ${text.slice(0, 300)}`);
 }
