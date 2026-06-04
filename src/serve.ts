@@ -4,6 +4,14 @@ const storagePath = process.env.STORAGE_PATH || process.cwd();
 await mkdir(storagePath, { recursive: true });
 process.chdir(storagePath);
 
+const GIT_COMMIT = await (async () => {
+  try {
+    const f = Bun.file("/app/GIT_COMMIT");
+    if (await f.exists()) return (await f.text()).trim() || "unknown";
+  } catch {}
+  return process.env.GIT_COMMIT || "unknown";
+})();
+
 import { Improbib } from ".";
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
@@ -120,6 +128,7 @@ Bun.serve({
 
       return jsonResponse({
         storage,
+        version: GIT_COMMIT,
         sources: files.filter((f) => f.endsWith(".json")),
         normalizedSources: normFiles.filter((f) => f.endsWith(".json")),
         normalizeProgress,
@@ -143,6 +152,10 @@ Bun.serve({
     if (url.pathname === "/vocabulary.json") {
       const res = serveFile(path.join(process.cwd(), "output", "vocabulary.json"), req);
       if (res) return res;
+    }
+
+    if (url.pathname === "/api/version") {
+      return jsonResponse({ version: GIT_COMMIT }, req);
     }
 
     if (url.pathname === "/api/scrape") {
