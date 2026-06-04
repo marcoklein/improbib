@@ -82,7 +82,7 @@ export function createOpencodeGoClient(
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
       const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 16000);
+      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 32000);
       return parseNormalizeResponse(text);
     },
 

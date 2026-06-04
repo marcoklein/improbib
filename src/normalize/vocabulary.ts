@@ -74,33 +74,99 @@ export async function normalizeVocabulary(
     console.log(`Vocabulary: ${vocab.mechanics.length} mechanic clusters, ${vocab.skills.length} skill clusters`);
     return vocab;
   } catch (err: any) {
-    console.warn(`Vocabulary normalization failed: ${err.message}. Retrying with split calls...`);
-    return await normalizeVocabularySplit(client, terms);
+    console.warn(`Vocabulary normalization failed: ${err.message}. Retrying with chunked calls...`);
+    return await normalizeVocabularyChunked(client, terms);
   }
 }
 
-async function normalizeVocabularySplit(
+async function normalizeVocabularyChunked(
   client: LlmClient,
   terms: { mechanics: string[]; skills: string[] },
+  chunkSize: number = 500,
 ): Promise<VocabularyMap> {
   let mechanics: { canonical: string; variants: string[] }[] = [];
   let skills: { canonical: string; variants: string[] }[] = [];
 
+  // Mechanics in one shot (already works)
   if (terms.mechanics.length > 0) {
     try {
       const result = await client.normalizeVocabulary({ mechanics: terms.mechanics, skills: [] });
       mechanics = result.mechanics;
+      console.log(`  Mechanics: ${mechanics.length} clusters from ${terms.mechanics.length} terms`);
     } catch (err: any) {
-      console.warn(`Mechanics vocabulary failed: ${err.message}`);
+      console.warn(`  Mechanics vocabulary failed: ${err.message}`);
     }
   }
 
+  // Chunk skills
   if (terms.skills.length > 0) {
-    try {
-      const result = await client.normalizeVocabulary({ mechanics: [], skills: terms.skills });
-      skills = result.skills;
-    } catch (err: any) {
-      console.warn(`Skills vocabulary failed: ${err.message}`);
+    const chunks: string[][] = [];
+    for (let i = 0; i < terms.skills.length; i += chunkSize) {
+      chunks.push(terms.skills.slice(i, i + chunkSize));
+    }
+    console.log(`  Skills chunked: ${chunks.length} chunks of up to ${chunkSize} terms each`);
+
+    const allClusters: { canonical: string; variants: string[] }[] = [];
+
+    for (const [i, chunk] of chunks.entries()) {
+      try {
+        const result = await client.normalizeVocabulary({ mechanics: [], skills: chunk });
+        allClusters.push(...result.skills);
+        console.log(`    Chunk ${i + 1}/${chunks.length}: ${result.skills.length} clusters from ${chunk.length} terms`);
+      } catch (err: any) {
+        console.warn(`    Chunk ${i + 1}/${chunks.length} failed: ${err.message}`);
+      }
+    }
+
+    if (allClusters.length === 0) {
+      console.warn(`  All skill chunks failed — no skill vocabulary produced`);
+    } else if (chunks.length === 1) {
+      skills = allClusters;
+    } else {
+      // Merge pass: deduplicate overlapping canonical names across chunks
+      const allCanonicals = [...new Set(allClusters.map(c => c.canonical.toLowerCase()))];
+      console.log(`  Merge pass: ${allCanonicals.length} candidate canonical names from ${chunks.length} chunks`);
+
+      try {
+        const merged = await client.normalizeVocabulary({ mechanics: [], skills: allCanonicals });
+        // Rebuild variant lists from the original clusters
+        const mergedCanonicalLower = new Set(merged.skills.map(c => c.canonical.toLowerCase()));
+        const variantMap = new Map<string, Set<string>>();
+
+        for (const cluster of allClusters) {
+          const canonicalLower = cluster.canonical.toLowerCase();
+          // Find which merged canonical this cluster maps to
+          let target = canonicalLower;
+          if (!mergedCanonicalLower.has(canonicalLower)) {
+            // The canonical was subsumed — try to find a matching merged canonical by variant overlap
+            for (const mc of merged.skills) {
+              if (cluster.variants.some(v => v.toLowerCase() === mc.canonical.toLowerCase()) ||
+                  mc.variants.some(v => v.toLowerCase() === canonicalLower)) {
+                target = mc.canonical.toLowerCase();
+                break;
+              }
+            }
+          }
+
+          if (!variantMap.has(target)) variantMap.set(target, new Set());
+          variantMap.get(target)!.add(cluster.canonical);
+          for (const v of cluster.variants) {
+            if (v.toLowerCase() !== target) {
+              variantMap.get(target)!.add(v);
+            }
+          }
+        }
+
+        skills = merged.skills.map(mc => ({
+          canonical: mc.canonical,
+          variants: [...(variantMap.get(mc.canonical.toLowerCase()) || new Set([mc.canonical]))].filter(v => v.toLowerCase() !== mc.canonical.toLowerCase()),
+        }));
+
+        console.log(`  Merged skills: ${skills.length} clusters from ${allClusters.length} partial clusters`);
+      } catch (err: any) {
+        console.warn(`  Merge pass failed: ${err.message} — keeping unmerged clusters`);
+        skills = allClusters;
+      }
     }
   }
 
