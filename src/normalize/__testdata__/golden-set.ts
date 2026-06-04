@@ -251,7 +251,7 @@ export const goldenSet: GoldenEntry[] = [
           { action: "Lasst jedem Punkt ein gegensätzliches Gefühl durch Publikumszuruf zuordnen (z.B. Hass und Liebe)." },
           { action: "Lasst das Publikum einen Ort für die Szene vorgeben." },
           { action: "Entwickelt eine zusammenhängende Geschichte und bewegt euch frei auf der Bühne." },
-          { action: "Spielt die Figur je nach Nähe zu einem Gefühlspunkt in der entsprechenden Emotion aus. Direkt auf dem Punkt: völliger Gefühlsausbruch!", role: "alle Spieler", constraint: "Emotion steigert sich mit Nähe zum Punkt" },
+          { action: "Spielt die Figur je nach Nähe zu einem Gefühlspunkt in der entsprechenden Emotion aus. Direkt auf dem Punkt: völliger Gefühlsausbruch!", role: "alle Spieler", constraint: "die Emotion steigert sich, je näher du dem Punkt kommst" },
         ],
       },
       variations: [],

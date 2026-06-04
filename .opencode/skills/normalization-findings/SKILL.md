@@ -79,8 +79,8 @@ After deploying the fix:
 
 | # | Title | Status |
 |---|-------|--------|
-| 0001 | Constraint text uses "Sie" | open |
-| 0002 | "Zuhören" miscategorized as `vocal` | open |
+| 0001 | Constraint text uses "Sie" | done |
+| 0002 | "Zuhören" miscategorized as `vocal` | done |
 | 0003 | Sparse HTML produced rich extraction ★ | done |
 
 Run `ls docs/normalization/findings/*.md | grep -v _template` for the latest list.

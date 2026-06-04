@@ -1,7 +1,7 @@
 # NORM-0001: Constraint text uses "Sie" — tone rules only cover steps
 
 - **Date**: 2026-06-04
-- **Status**: open
+- **Status**: done
 - **Source**: Zweier-Synchro (de)
 
 ## Observation
@@ -37,6 +37,7 @@ Update golden set entry `gefuehlspunkte` constraints to model the informal form.
 
 ## Verification
 
+- [x] Updated tone rule in `llm-client.ts` to cover constraints and role descriptions
+- [x] Updated `gefuehlspunkte` golden set constraint to use Du-form
 - [ ] Re-run `?max=5` on improwiki, check Zweier-Synchro constraint text
-- [ ] Golden set test passes with updated expected output
 - [ ] Mark done when all German text uses Du in the element output

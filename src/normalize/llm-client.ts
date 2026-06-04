@@ -57,7 +57,8 @@ RULES:
 - For <a href="..."> links to other wiki pages: extract the page name into referencedElements. Do NOT generate identifiers — just the name as it appears.
 - For tips: categorize as pedagogical (teaching advice), staging (performance/show advice), safety (physical/emotional), group-dynamic (team/group interaction), failure-mode (common mistakes), or general.
 - Preserve the source language — German content gets German fields, English gets English. Mechanic and skill names should be in English when possible.
-- TONE: Use imperative mood for all step instructions. English: start each step with a verb. German: use informal "Du/ihr" with imperative mood ("geht", "stellt euch", "bildet Paare", not "gehen Sie" or "stellen Sie sich"). Descriptions: factual third-person, no personal pronouns ("you", "man").`;
+- TONE: Use imperative mood for all step instructions. English: start each step with a verb. German: use informal "Du/ihr" everywhere — steps ("geht", "stellt euch", "bildet Paare"), constraints ("du darfst nicht sprechen", "ihr müsst euch berühren"), role descriptions ("der Spieler, der führt"). Never use "Sie" or "man". Descriptions: factual third-person, no personal pronouns.
+- CATEGORY GUIDANCE: Pick the most specific category that fits. Skill examples: social (acceptance, status play, trust), physical (body awareness, mirroring, spatial coordination), cognitive (spontaneity, pattern recognition, quick thinking, active listening), narrative (storytelling, character creation, theme exploration), vocal (singing, projection, vocal expression). Mechanic examples: constraint (touch to speak, alphabet constraint, time limit), signal (freeze, tap out, clap), role (protagonist, moderator, translator), structure (opening scene, callback, scene rotation), interaction (audience voting, physical contact, mirroring).`;
 }
 
 function buildUserPrompt(name: string, languageCode: string, tags: string[], htmlContent: string): string {

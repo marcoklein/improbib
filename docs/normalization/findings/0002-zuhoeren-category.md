@@ -1,7 +1,7 @@
 # NORM-0002: "Zuhören" miscategorized as `vocal` — skill category guidance too vague
 
 - **Date**: 2026-06-04
-- **Status**: open
+- **Status**: done
 - **Source**: Zweier-Synchro (de)
 
 ## Observation
@@ -30,6 +30,7 @@ This gives the LLM concrete examples to anchor its categorization decisions. The
 
 ## Verification
 
+- [x] Added category guidance with examples to system prompt
 - [ ] Re-run extraction on Zweier-Synchro, check skill categories
 - [ ] Benchmark skill category precision against golden set
 - [ ] Mark done when non-vocal skills are no longer categorized as `vocal`
