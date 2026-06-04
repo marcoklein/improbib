@@ -254,7 +254,6 @@ async function normalizeSource(
   console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
   return { elements: finalOutput.elements, anyElementChanged };
 }
-}
 
 export async function normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }): Promise<void> {
   const client = createOpencodeGoClient();
@@ -278,8 +277,7 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   }));
 
   const promptHash = getPromptHash();
-  const outDir = path.join(process.cwd(), "output", "normalized");
-  const statePath = path.join(outDir, "..", ".normalize-state.json");
+  const statePath = path.join(process.cwd(), "output", ".normalize-state.json");
 
   // Read previous state
   let state: { promptHash?: string; stage2?: { inputHash: string; completedAt: string }; stage3?: { termsHash: string; completedAt: string } } = {};
