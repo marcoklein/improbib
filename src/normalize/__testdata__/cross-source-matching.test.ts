@@ -1,6 +1,40 @@
 import { describe, expect, it } from "bun:test";
-import { seedTranslationPairs, buildMatchBatches } from "../cross-source-matching";
+import { seedTranslationPairs, buildMatchBatches, jaccardWordSimilarity } from "../cross-source-matching";
 import type { MatchCandidate } from "../llm-client";
+
+describe("jaccardWordSimilarity", () => {
+  it("full match", () => {
+    expect(jaccardWordSimilarity("Freeze Tag", "Freeze Tag")).toBe(true);
+  });
+
+  it("partial overlap — one shared word", () => {
+    expect(jaccardWordSimilarity("Freeze Tag", "Freeze")).toBe(true);
+    expect(jaccardWordSimilarity("Freeze", "Freeze Tag")).toBe(true);
+  });
+
+  it("no overlap", () => {
+    expect(jaccardWordSimilarity("Gefühlspunkte", "Shopkeeper")).toBe(false);
+  });
+
+  it("case insensitive", () => {
+    expect(jaccardWordSimilarity("ABC-Spiel", "abc spiel")).toBe(true);
+  });
+
+  it("empty strings", () => {
+    expect(jaccardWordSimilarity("", "Freeze")).toBe(false);
+    expect(jaccardWordSimilarity("Freeze", "")).toBe(false);
+  });
+
+  it("identical single word", () => {
+    expect(jaccardWordSimilarity("Status", "Status")).toBe(true);
+  });
+
+  it("threshold filters low overlap", () => {
+    // "Ice Cold Freeze" vs "Freeze Hot" → 1 shared / 4 total = 0.25
+    expect(jaccardWordSimilarity("Ice Cold Freeze", "Freeze Hot", 0.5)).toBe(false);
+    expect(jaccardWordSimilarity("Ice Cold Freeze", "Freeze Hot", 0)).toBe(true);
+  });
+});
 
 describe("cross-source matching", () => {
   it("seeds translation-link pairs", () => {

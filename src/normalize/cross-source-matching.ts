@@ -1,5 +1,17 @@
 import type { LlmClient, MatchCandidate, ConfirmedMatch } from "./llm-client";
 
+export function jaccardWordSimilarity(a: string, b: string, threshold: number = 0): boolean {
+  const wordsA = new Set(a.toLowerCase().split(/[\s\-—–,.;:!?()]+/).filter(w => w.length > 0));
+  const wordsB = new Set(b.toLowerCase().split(/[\s\-—–,.;:!?()]+/).filter(w => w.length > 0));
+  if (wordsA.size === 0 || wordsB.size === 0) return false;
+  let intersection = 0;
+  for (const w of wordsA) {
+    if (wordsB.has(w)) intersection++;
+  }
+  const union = new Set([...wordsA, ...wordsB]).size;
+  return intersection / union > threshold;
+}
+
 export function seedTranslationPairs(elements: { identifier: string }[] & { translationLinkEnIdentifier?: string; translationLinkDeIdentifier?: string }[]): { a: string; b: string; confidence: number }[] {
   const pairs: { a: string; b: string; confidence: number }[] = [];
   const seen = new Set<string>();
@@ -75,37 +87,72 @@ export async function buildRelatedIdentifiers(
   if (existingPairs) {
     for (const p of existingPairs) {
       addPair(p.a, p.b, p.confidence);
-      seededIds.add(`${p.a}:${p.b}`);
-      seededIds.add(`${p.b}:${p.a}`);
+      seededIds.add(p.a);
+      seededIds.add(p.b);
     }
   }
 
-  const batches = buildMatchBatches(candidates);
-  let batchIndex = 0;
+  // Group non-seeded candidates by source
+  const bySource = new Map<string, MatchCandidate[]>();
+  for (const c of candidates) {
+    if (seededIds.has(c.identifier)) continue;
+    const list = bySource.get(c.sourceName) || [];
+    list.push(c);
+    bySource.set(c.sourceName, list);
+  }
 
-  for (const batch of batches) {
-    batchIndex++;
-    const sourceAPrefix = batch.sourceA[0]?.sourceName || "A";
-    const sourceBPrefix = batch.sourceB[0]?.sourceName || "B";
+  const sourceNames = [...bySource.keys()];
 
-    const filteredA = batch.sourceA.filter(c => !seededIds.has(`${c.identifier}:`));
-    const filteredB = batch.sourceB.filter(c => !seededIds.has(`${c.identifier}:`));
+  // Name-similarity pre-filter: only compare elements with shared words
+  for (let i = 0; i < sourceNames.length; i++) {
+    for (let j = i + 1; j < sourceNames.length; j++) {
+      const listA = bySource.get(sourceNames[i])!;
+      const listB = bySource.get(sourceNames[j])!;
 
-    if (filteredA.length === 0 || filteredB.length === 0) continue;
+      const similarA: MatchCandidate[] = [];
+      const similarB = new Set<string>();
 
-    // Throttle to avoid rate limiting
-    if (batchIndex > 1) await new Promise(r => setTimeout(r, 1000));
-
-    try {
-      const matches = await client.findCrossSourceMatches(filteredA, filteredB);
-      for (const m of matches) {
-        if (m.confidence >= 0.5) {
-          addPair(m.a, m.b, m.confidence);
+      for (const a of listA) {
+        for (const b of listB) {
+          if (jaccardWordSimilarity(a.name, b.name, 0)) {
+            similarB.add(b.identifier);
+            similarA.push(a);
+            break;
+          }
         }
       }
-      console.log(`  Matched ${sourceAPrefix}↔${sourceBPrefix} batch: ${filteredA.length}×${filteredB.length} → ${matches.length} pairs`);
-    } catch (err: any) {
-      console.warn(`  Match failed for ${sourceAPrefix}↔${sourceBPrefix} batch: ${err.message}`);
+
+      if (similarA.length === 0 || similarB.size === 0) continue;
+
+      const prefixedSourceA = sourceNames[i];
+      const prefixedSourceB = sourceNames[j];
+      const filteredB = listB.filter(b => similarB.has(b.identifier));
+
+      // Throttle
+      console.log(`  Pre-filtered ${prefixedSourceA}↔${prefixedSourceB}: ${listA.length}×${listB.length} → ${similarA.length}×${filteredB.length} candidates`);
+
+      // Split into manageable batches if still large
+      const batchSize = 50;
+      for (let a = 0; a < similarA.length; a += batchSize) {
+        for (let b = 0; b < filteredB.length; b += batchSize) {
+          const batchA = similarA.slice(a, a + batchSize);
+          const batchB = filteredB.slice(b, b + batchSize);
+
+          await new Promise(r => setTimeout(r, 1000));
+
+          try {
+            const matches = await client.findCrossSourceMatches(batchA, batchB);
+            for (const m of matches) {
+              if (m.confidence >= 0.5) {
+                addPair(m.a, m.b, m.confidence);
+              }
+            }
+            console.log(`  Matched ${prefixedSourceA}↔${prefixedSourceB} batch: ${batchA.length}×${batchB.length} → ${matches.length} pairs`);
+          } catch (err: any) {
+            console.warn(`  Match failed for ${prefixedSourceA}↔${prefixedSourceB} batch: ${err.message}`);
+          }
+        }
+      }
     }
   }
 
