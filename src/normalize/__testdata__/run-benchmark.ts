@@ -130,6 +130,7 @@ interface Result {
 
 function normalizeOutput(raw: any): GoldenOutput {
   return {
+    summary: String(raw.summary || raw.description || ""),
     description: String(raw.description || ""),
     howToPlay: raw.howToPlay === null || raw.howToPlay === undefined ? null : {
       steps: Array.isArray(raw.howToPlay?.steps) ? raw.howToPlay.steps.map((s: any) => ({

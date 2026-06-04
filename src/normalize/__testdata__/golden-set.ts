@@ -13,6 +13,7 @@ export interface GoldenOutputStep {
 }
 
 export interface GoldenOutput {
+  summary: string;
   description: string;
   howToPlay: { steps: GoldenOutputStep[] } | null;
   variations: { name: string; description: string; differsBy: string[] }[];
@@ -83,6 +84,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Freeze Tag is a fast-paced improv game where two players start a scene, anyone calls \"Freeze!\" to lock them in position, and a new player taps in, assumes the frozen pose, and launches an entirely new, unrelated scene. It trains spontaneity, physicality, and the core improv principle of accepting what you are given and building on it.",
       howToPlay: {
         steps: [
@@ -141,6 +143,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Yes - No is a simple paired improv exercise where one player can only say \"Yes\" and the other only \"No\". Despite having just one word each, they carry out a full conversation using tone, volume, rhythm, pauses, and body language.",
       howToPlay: {
         steps: [
@@ -188,6 +191,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Mirror Exercises is a classic paired improv warm-up where two players face each other and one mirrors the other's slow movements exactly. The goal is for an observer to be unable to tell who is leading.",
       howToPlay: {
         steps: [
@@ -239,6 +243,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Bei Gefühlspunkte werden zwei gut sichtbare Punkte auf die Bühne geklebt und jedem wird per Publikumszuruf ein gegensätzliches Gefühl zugeordnet (z.B. Hass und Liebe). Die Spieler improvisieren eine Szene und färben ihre Figur je nach Nähe zu einem Gefühlspunkt in der entsprechenden Emotion ein.",
       howToPlay: {
         steps: [
@@ -298,6 +303,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "\"Game\" is a foundational improv concept with distinct meanings in shortform and longform. In shortform, a game is a set of pre-determined rules. In longform, the \"game of the scene\" is the interesting pattern discovered during improvisation.",
       howToPlay: null,
       variations: [],
@@ -324,6 +330,7 @@ export const goldenSet: GoldenEntry[] = [
       htmlContent: "\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t",
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "\"What did you want to be when you grew up?\" is an audience ask-for prompt used to solicit suggestions to inspire an improv scene. It is not a game or exercise in itself.",
       howToPlay: null,
       variations: [],
@@ -358,6 +365,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Tag Games is a collection of tag-based warm-up games suitable for the start of rehearsal or between sessions. They include Alphabet Tag, Name Calling, and Chain Tag.",
       howToPlay: null,
       variations: [],
@@ -390,6 +398,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Alphabet Tag is a word-based variant of tag where players protect themselves by saying a word starting with the current letter of the alphabet. Each time a new chaser is tagged in, the letter advances to the next in the alphabet.",
       howToPlay: {
         steps: [
@@ -434,6 +443,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Chain Tag is a cooperative tag game where players form a growing chain by holding hands. The chain grows until four players are linked, then splits into two pairs. The last solo player wins.",
       howToPlay: {
         steps: [
@@ -485,6 +495,7 @@ export const goldenSet: GoldenEntry[] = [
       `.trim(),
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "The Deconstruction is a long-form improv structure developed by Del Close and The Family. It starts with a long two-person opening scene introducing characters and a problem, then \"deconstructs\" that scene through thematic and commentary scenes, building to an accelerating run before a final resolution.",
       howToPlay: {
         steps: [
@@ -531,6 +542,7 @@ export const goldenSet: GoldenEntry[] = [
       htmlContent: "",
     },
     expectedOutput: {
+      summary: "A test case for golden set validation.",
       description: "Vocabulary clustering test data — not a real element.",
       howToPlay: null,
       variations: [],

@@ -37,6 +37,7 @@ function buildSystemPrompt(): string {
 
 Return ONLY valid JSON matching this structure:
 {
+  "summary": "one sentence summary in the source language",
   "description": "1-3 sentence summary in the source language",
   "howToPlay": null or {"steps": [{"action": "what to do", "role": "who (optional)", "constraint": "rule (optional)"}]},
   "variations": [{"name": "name", "description": "description", "differsBy": ["what changes"]}],
@@ -150,6 +151,7 @@ function coerceElement(raw: any): NormalizedElement {
     htmlContent: "",
     splitFrom: raw.splitFrom || undefined,
     normalized: {
+      summary: String(raw.summary || raw.description || ""),
       description: String(raw.description || ""),
       howToPlay: coerceHowToPlay(raw.howToPlay),
       variations: (raw.variations || []).map((v: any) => ({
