@@ -3,12 +3,8 @@ import { z } from "zod";
 const TipCategory = z.enum([
   "pedagogical", "staging", "safety", "group-dynamic", "failure-mode", "general",
 ]);
-const MechanicCategory = z.enum([
-  "constraint", "signal", "role", "structure", "interaction",
-]);
-const SkillCategory = z.enum([
-  "social", "physical", "cognitive", "narrative", "vocal",
-]);
+const MechanicCategory = z.string();
+const SkillCategory = z.string();
 const Difficulty = z.enum(["beginner", "intermediate", "advanced"]);
 const EnergyLevel = z.enum(["low", "medium", "high"]);
 const SuitableFor = z.enum(["warmup", "exercise", "performance", "encore", "workshop"]);
@@ -72,6 +68,7 @@ const normalizedSchema = z.object({
   practical: practicalSchema,
   contentHash: z.string(),
   extractedAt: z.string(),
+  normalizedBy: z.string(),
 });
 
 const derivedElementSchema = z.object({
@@ -128,3 +125,11 @@ export const normalizedSourceSchema = z.object({
 });
 
 export type NormalizedSource = z.infer<typeof normalizedSourceSchema>;
+
+let _normalizedBy = "";
+export function getNormalizedBy(): string {
+  if (!_normalizedBy) {
+    _normalizedBy = Bun.hash(JSON.stringify(normalizedElementSchema.shape)).toString(16).padStart(32, "0");
+  }
+  return _normalizedBy;
+}

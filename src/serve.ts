@@ -162,19 +162,20 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/normalize") {
-      console.log(`[${new Date().toISOString()}] Manual normalize trigger...`);
+      const maxElements = url.searchParams.get("max") ? parseInt(url.searchParams.get("max")!) : undefined;
+      console.log(`[${new Date().toISOString()}] Manual normalize trigger${maxElements ? ` (max=${maxElements})` : ""}...`);
       if (normalizeRunning) {
         return jsonResponse({ status: "normalization already running" }, req);
       }
       normalizeRunning = true;
-      scanner.normalizeAll().then(() => {
+      scanner.normalizeAll(maxElements ? { maxElements } : undefined).then(() => {
         normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Normalize complete.`);
       }).catch((err: Error) => {
         normalizeRunning = false;
         console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message);
       });
-      return jsonResponse({ status: "normalization started" }, req);
+      return jsonResponse({ status: "normalization started", maxElements: maxElements || null }, req);
     }
 
     if (url.pathname === "/api/test-normalize") {

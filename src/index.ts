@@ -35,10 +35,10 @@ export class Improbib {
     return await assemble();
   }
 
-  async normalizeAll() {
+  async normalizeAll(options?: { maxElements?: number }) {
     try {
       const { normalizeAll } = await import("./normalize/normalize");
-      await normalizeAll();
+      await normalizeAll(options);
     } catch (err: any) {
       console.error("Normalization failed:", err.message, err.stack);
     }

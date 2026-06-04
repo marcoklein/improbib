@@ -166,11 +166,11 @@ function coerceElement(raw: any): NormalizedElement {
       })),
       mechanics: (raw.mechanics || []).map((m: any) => ({
         name: typeof m === "string" ? m : String(m.name || ""),
-        category: typeof m === "object" ? m.category : undefined,
+        category: typeof m === "object" && m.category ? String(m.category) : undefined,
       })),
       skills: (raw.skills || []).map((s: any) => ({
         name: typeof s === "string" ? s : String(s.name || ""),
-        category: typeof s === "object" ? s.category : undefined,
+        category: typeof s === "object" && s.category ? String(s.category) : undefined,
       })),
       practical: coercePractical(raw.practical),
       contentHash: "",

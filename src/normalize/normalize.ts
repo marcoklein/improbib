@@ -1,10 +1,10 @@
 import path from "path";
 import { createHash } from "crypto";
 import type { NormalizedElement } from "./normalized-schema";
-import { normalizedSourceSchema } from "./normalized-schema";
+import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
 import { createOpencodeGoClient } from "./llm-client";
 import { seedTranslationPairs, buildRelatedIdentifiers } from "./cross-source-matching";
-import { normalizeVocabulary, applyCanonicalTerms, collectTerms } from "./vocabulary";
+import { normalizeVocabulary, applyCanonicalTerms } from "./vocabulary";
 
 function hashContent(html: string): string {
   return createHash("md5").update(html).digest("hex");
@@ -13,9 +13,8 @@ function hashContent(html: string): string {
 export interface NormalizeProgress {
   sourceName: string;
   stage: "extraction" | "matching" | "vocabulary" | "done" | "error";
-  current: number;
+  dispatched: number;
   total: number;
-  processed: number;
   cached: number;
   split: number;
   errors: number;
@@ -57,45 +56,95 @@ function generateSplitIdentifier(parentId: string, childName: string): string {
   return createHash("md5").update(parentId + childName).digest("hex");
 }
 
+function buildNormalizedElement(
+  result: NormalizedElement,
+  el: any,
+  contentHash: string,
+  schemaHash: string,
+): NormalizedElement {
+  return {
+    ...result,
+    identifier: el.identifier,
+    url: el.url,
+    sourceName: el.sourceName,
+    languageCode: el.languageCode,
+    tags: el.tags,
+    htmlContent: el.htmlContent as string || "",
+    translationLinkEn: el.translationLinkEn,
+    translationLinkDe: el.translationLinkDe,
+    translationLinkEnIdentifier: el.translationLinkEnIdentifier,
+    translationLinkDeIdentifier: el.translationLinkDeIdentifier,
+    playerCountMin: el.playerCountMin,
+    playerCountMax: el.playerCountMax,
+    categories: el.categories,
+    postTags: el.postTags,
+    lastModified: el.lastModified,
+    normalized: {
+      ...result.normalized,
+      contentHash,
+      extractedAt: new Date().toISOString(),
+      normalizedBy: schemaHash,
+    },
+  };
+}
+
 async function normalizeSource(
   client: ReturnType<typeof createOpencodeGoClient>,
   sourceName: string,
   previous: Map<string, NormalizedElement>,
+  options?: { maxElements?: number },
 ): Promise<NormalizedElement[]> {
   const { elements: rawElements } = await loadRaw(sourceName);
+  const elements = options?.maxElements ? rawElements.slice(0, options.maxElements) : rawElements;
+  const schemaHash = getNormalizedBy();
 
   currentProgress = {
     sourceName,
     stage: "extraction",
-    current: 0,
-    total: rawElements.length,
-    processed: 0,
+    dispatched: 0,
+    total: elements.length,
     cached: 0,
     split: 0,
     errors: 0,
     startedAt: new Date().toISOString(),
   };
 
+  console.log(`Normalizing ${sourceName}: ${elements.length}${options?.maxElements ? ` of ${rawElements.length}` : ""} elements`);
+
   const startTime = Date.now();
-  const normalized: NormalizedElement[] = [];
-  let processed = 0;
+  const normalizedMap = new Map<string, NormalizedElement>();
+  let dispatched = 0;
   let cached = 0;
   let splitCount = 0;
   let errors = 0;
 
-  const concurrency = 20;
+  const concurrency = 5;
   let index = 0;
 
+  function updateProgress() {
+    currentProgress = {
+      ...currentProgress!,
+      dispatched,
+      cached,
+      split: splitCount,
+      errors,
+    };
+  }
+
   async function processNext(): Promise<void> {
-    while (index < rawElements.length) {
+    while (index < elements.length) {
       const i = index++;
-      const el = rawElements[i];
+      const el = elements[i];
       const contentHash = hashContent(el.htmlContent || "");
 
+      // Cache hit: same HTML content AND same schema version
       const prev = previous.get(el.identifier);
-      if (prev?.normalized?.contentHash === contentHash) {
-        normalized.push(prev);
+      if (prev?.normalized?.contentHash === contentHash && prev?.normalized?.normalizedBy === schemaHash) {
+        normalizedMap.set(el.identifier, prev);
         cached++;
+        dispatched++;
+        updateProgress();
+        if (dispatched % 10 === 0) logProgress();
         continue;
       }
 
@@ -109,103 +158,39 @@ async function normalizeSource(
 
         if (Array.isArray(result)) {
           const [parent, ...children] = result;
-          normalized.push({
-            ...parent,
-            identifier: el.identifier,
-            url: el.url,
-            sourceName: el.sourceName,
-            languageCode: el.languageCode,
-            tags: el.tags,
-            htmlContent: el.htmlContent as string || "",
-            translationLinkEn: el.translationLinkEn,
-            translationLinkDe: el.translationLinkDe,
-            translationLinkEnIdentifier: el.translationLinkEnIdentifier,
-            translationLinkDeIdentifier: el.translationLinkDeIdentifier,
-            playerCountMin: el.playerCountMin,
-            playerCountMax: el.playerCountMax,
-            categories: el.categories,
-            postTags: el.postTags,
-            lastModified: el.lastModified,
-            normalized: {
-              ...parent.normalized,
-              contentHash,
-              extractedAt: new Date().toISOString(),
-            },
-          });
+          normalizedMap.set(el.identifier, buildNormalizedElement(parent, el, contentHash, schemaHash));
 
           for (const child of children) {
             const childId = generateSplitIdentifier(el.identifier, child.name);
-            normalized.push({
-              ...child,
-              identifier: childId,
-              url: el.url,
-              sourceName: el.sourceName,
-              languageCode: el.languageCode,
-              tags: el.tags,
-              htmlContent: el.htmlContent as string || "",
-              translationLinkEn: el.translationLinkEn,
-              translationLinkDe: el.translationLinkDe,
-              translationLinkEnIdentifier: el.translationLinkEnIdentifier,
-              translationLinkDeIdentifier: el.translationLinkDeIdentifier,
-              normalized: {
-                ...child.normalized,
-                contentHash,
-                extractedAt: new Date().toISOString(),
-              },
-            });
+            normalizedMap.set(childId, buildNormalizedElement(child, { ...el, identifier: childId }, contentHash, schemaHash));
             splitCount++;
           }
-          processed++;
         } else {
-          normalized.push({
-            ...result,
-            identifier: el.identifier,
-            url: el.url,
-            sourceName: el.sourceName,
-            languageCode: el.languageCode,
-            tags: el.tags,
-            htmlContent: el.htmlContent as string || "",
-            translationLinkEn: el.translationLinkEn,
-            translationLinkDe: el.translationLinkDe,
-            translationLinkEnIdentifier: el.translationLinkEnIdentifier,
-            translationLinkDeIdentifier: el.translationLinkDeIdentifier,
-            playerCountMin: el.playerCountMin,
-            playerCountMax: el.playerCountMax,
-            categories: el.categories,
-            postTags: el.postTags,
-            lastModified: el.lastModified,
-            normalized: {
-              ...result.normalized,
-              contentHash,
-              extractedAt: new Date().toISOString(),
-            },
-          });
-          processed++;
+          normalizedMap.set(el.identifier, buildNormalizedElement(result, el, contentHash, schemaHash));
         }
       } catch (err: any) {
-        console.warn(`  SKIP ${el.name}: ${err.message}`);
-        if (prev) normalized.push(prev);
+        console.warn(`  SKIP ${el.name}: ${err.message.slice(0, 150)}`);
+        if (prev) normalizedMap.set(el.identifier, prev);
         errors++;
       }
 
-      if (processed % 10 === 0 || index >= rawElements.length) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const rate = ((processed + cached) / parseFloat(elapsed)).toFixed(1);
-        console.log(`  [${processed + cached}/${rawElements.length}] ${sourceName}: ${processed} new, ${cached} cached, ${splitCount} split (${rate}/s, ${elapsed}s)`);
-      }
+      dispatched++;
+      updateProgress();
+      if (dispatched % 10 === 0) logProgress();
     }
   }
 
-  const workers = Array.from({ length: Math.min(concurrency, rawElements.length) }, () => processNext());
+  function logProgress() {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const rate = (dispatched / parseFloat(elapsed)).toFixed(1);
+    console.log(`  [${dispatched}/${elements.length}] ${sourceName}: ${dispatched - cached} new, ${cached} cached, ${splitCount} split (${rate}/s, ${elapsed}s)`);
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, elements.length) }, () => processNext());
   await Promise.all(workers);
 
-  currentProgress.current = rawElements.length;
-  currentProgress.processed = processed;
-  currentProgress.cached = cached;
-  currentProgress.split = splitCount;
-  currentProgress.errors = errors;
-
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  const normalized = [...normalizedMap.values()];
   const derivedCount = normalized.reduce((s, e) => s + e.derivedElements.length, 0);
 
   const output = {
@@ -222,8 +207,11 @@ async function normalizeSource(
   const parsed = normalizedSourceSchema.safeParse(output);
   if (!parsed.success) {
     console.error(`Schema validation failed for ${sourceName}:`);
-    for (const issue of parsed.error.issues) {
+    for (const issue of parsed.error.issues.slice(0, 30)) {
       console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+    }
+    if (parsed.error.issues.length > 30) {
+      console.error(`  ... and ${parsed.error.issues.length - 30} more issues`);
     }
   }
 
@@ -232,15 +220,17 @@ async function normalizeSource(
   if (!(await dir.exists())) {
     await Bun.$`mkdir -p ${outDir}`.quiet();
   }
-  await Bun.write(path.join(outDir, `${sourceName}.json`), JSON.stringify(parsed.success ? parsed.data : output, null, 2));
+  await Bun.write(
+    path.join(outDir, `${sourceName}.json`),
+    JSON.stringify(parsed.success ? parsed.data : output, null, 2),
+  );
 
   console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
   return parsed.success ? parsed.data.elements : normalized;
 }
 
-export async function normalizeAll(): Promise<void> {
+export async function normalizeAll(options?: { maxElements?: number }): Promise<void> {
   const client = createOpencodeGoClient();
-  let totalTokens = 0;
 
   console.log("=== STAGE 1: LLM Extraction ===\n");
   const allElements: Map<string, NormalizedElement[]> = new Map();
@@ -248,11 +238,18 @@ export async function normalizeAll(): Promise<void> {
   for (const source of ["improwiki", "learnimprov", "ircwiki"]) {
     try {
       const previous = await loadPreviousNormalized(source);
-      const elements = await normalizeSource(client, source, previous);
+      const elements = await normalizeSource(client, source, previous, options);
       allElements.set(source, elements);
     } catch (err: any) {
       console.error(`Failed to normalize ${source}: ${err.message}`);
     }
+  }
+
+  if (options?.maxElements) {
+    console.log(`\nSubset mode (max ${options.maxElements} per source) — skipping Stages 2 & 3.`);
+    currentProgress = { ...currentProgress!, stage: "done" };
+    console.log("=== Normalization (subset) complete ===");
+    return;
   }
 
   console.log("\n=== STAGE 2: Cross-Source Matching ===\n");
@@ -314,7 +311,6 @@ export async function normalizeAll(): Promise<void> {
     );
     console.log(`Wrote vocabulary.json: ${vocab.mechanics.length} mechanic clusters, ${vocab.skills.length} skill clusters`);
 
-    // Write back canonical terms
     for (const [source, elements] of allElements) {
       const canonicalized = applyCanonicalTerms(elements, vocab);
       const srcPath = path.join(outDir, `${source}.json`);
@@ -342,7 +338,8 @@ export async function normalizeAll(): Promise<void> {
 
 // Allow running directly: bun run src/normalize/normalize.ts
 if (import.meta.main) {
-  normalizeAll().catch((err) => {
+  const maxElements = process.env.NORMALIZE_MAX ? parseInt(process.env.NORMALIZE_MAX) : undefined;
+  normalizeAll({ maxElements }).catch((err) => {
     console.error("Normalization failed:", err);
     process.exit(1);
   });
