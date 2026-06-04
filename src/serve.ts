@@ -157,19 +157,22 @@ Bun.serve({
 
     if (url.pathname === "/api/normalize") {
       const maxElements = url.searchParams.get("max") ? parseInt(url.searchParams.get("max")!) : undefined;
-      console.log(`[${new Date().toISOString()}] Manual normalize trigger${maxElements ? ` (max=${maxElements})` : ""}...`);
+      const source = url.searchParams.get("source") || undefined;
+      const stagesParam = url.searchParams.get("stages");
+      const stages = stagesParam ? stagesParam.split(",").map(Number) : undefined;
+      console.log(`[${new Date().toISOString()}] Manual normalize trigger${maxElements ? ` (max=${maxElements})` : ""}${source ? ` (source=${source})` : ""}${stages ? ` (stages=${stages})` : ""}...`);
       if (normalizeRunning) {
         return jsonResponse({ status: "normalization already running" }, req);
       }
       normalizeRunning = true;
-      scanner.normalizeAll(maxElements ? { maxElements } : undefined).then(() => {
+      scanner.normalizeAll({ maxElements, source, stages }).then(() => {
         normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Normalize complete.`);
       }).catch((err: Error) => {
         normalizeRunning = false;
         console.error(`[${new Date().toISOString()}] Normalize failed:`, err.message, err.stack?.slice(0, 1000));
       });
-      return jsonResponse({ status: "normalization started", maxElements: maxElements || null }, req);
+      return jsonResponse({ status: "normalization started", maxElements: maxElements || null, source: source || null }, req);
     }
 
     if (url.pathname === "/api/test-normalize") {

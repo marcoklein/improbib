@@ -1,13 +1,11 @@
 import { z } from "zod";
 
-const TipCategory = z.enum([
-  "pedagogical", "staging", "safety", "group-dynamic", "failure-mode", "general",
-]);
+const TipCategory = z.string();
 const MechanicCategory = z.string();
 const SkillCategory = z.string();
 const Difficulty = z.enum(["beginner", "intermediate", "advanced"]);
 const EnergyLevel = z.enum(["low", "medium", "high"]);
-const SuitableFor = z.enum(["warmup", "exercise", "performance", "encore", "workshop"]);
+const SuitableFor = z.string();
 
 const howToPlayStepSchema = z.object({
   action: z.string(),

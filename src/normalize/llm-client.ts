@@ -88,13 +88,13 @@ export function createOpencodeGoClient(
 
     async findCrossSourceMatches(sourceA, sourceB) {
       const prompt = buildMatchPrompt(sourceA, sourceB);
-      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs.", prompt, 8000);
-      return parseMatchResponse(text);
+      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 8000);
+      return parseMatchResponse(text, sourceA, sourceB);
     },
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms.", prompt, 4000);
+      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 4000);
       return parseVocabularyResponse(text);
     },
   };
@@ -218,8 +218,9 @@ function coercePractical(raw: any): any {
 }
 
 function buildMatchPrompt(sourceA: MatchCandidate[], sourceB: MatchCandidate[]): string {
-  const listA = sourceA.map(e => `- [${e.identifier}] ${e.name}: ${e.description}`).join("\n");
-  const listB = sourceB.map(e => `- [${e.identifier}] ${e.name}: ${e.description}`).join("\n");
+  const abbreviate = (d: string) => d.length > 200 ? d.slice(0, 200) + "..." : d;
+  const listA = sourceA.map((e, i) => `- [${i}] ${e.name}: ${abbreviate(e.description)}`).join("\n");
+  const listB = sourceB.map((e, i) => `- [${i}] ${e.name}: ${abbreviate(e.description)}`).join("\n");
 
   return `Compare these two lists of improv elements from different sources. Return all pairs that refer to the same game/exercise/concept.
 
@@ -229,18 +230,22 @@ ${listA}
 Source B (${sourceB[0]?.sourceName || "unknown"}):
 ${listB}
 
-Return a JSON object: {"matches": [{"a": "identifier from A", "b": "identifier from B", "confidence": 0.0-1.0}]}
-Confidence should reflect how certain you are these are the same thing. 1.0 = definitely identical (e.g., exact same name in different languages via translation). 0.5 = possibly related. Only include pairs with confidence >= 0.5.`;
+Return a JSON object: {"matches": [{"a": "index from A", "b": "index from B", "confidence": 0.0-1.0}]}
+Use the numeric index (in brackets) from each list. Confidence should reflect how certain you are these are the same thing. 1.0 = definitely identical (e.g., exact same name in different languages via translation). 0.5 = possibly related. Only include pairs with confidence >= 0.5.`;
 }
 
-function parseMatchResponse(text: string): ConfirmedMatch[] {
+function parseMatchResponse(text: string, sourceA: MatchCandidate[], sourceB: MatchCandidate[]): ConfirmedMatch[] {
   const json = extractJson(text);
   if (json.matches && Array.isArray(json.matches)) {
-    return json.matches.map((m: any) => ({
-      a: String(m.a || ""),
-      b: String(m.b || ""),
-      confidence: typeof m.confidence === "number" ? m.confidence : 0.5,
-    }));
+    return json.matches.map((m: any) => {
+      const aIdx = Number(m.a);
+      const bIdx = Number(m.b);
+      return {
+        a: sourceA[aIdx]?.identifier || String(m.a || ""),
+        b: sourceB[bIdx]?.identifier || String(m.b || ""),
+        confidence: typeof m.confidence === "number" ? m.confidence : 0.5,
+      };
+    });
   }
   return [];
 }
@@ -323,5 +328,6 @@ function extractJson(text: string): any {
   if (inString) chars.push('"');
   const repaired = chars.join("");
   try { return JSON.parse(repaired); } catch {}
+  if (!text) throw new Error("Empty response from API");
   throw new Error(`Could not parse JSON from response: ${text.slice(0, 300)}`);
 }

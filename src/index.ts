@@ -35,7 +35,7 @@ export class Improbib {
     return await assemble();
   }
 
-  async normalizeAll(options?: { maxElements?: number }) {
+  async normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }) {
     try {
       const { normalizeAll } = await import("./normalize/normalize");
       await normalizeAll(options);
@@ -47,7 +47,7 @@ export class Improbib {
   async normalizeSource(source: string) {
     try {
       const { normalizeAll } = await import("./normalize/normalize");
-      await normalizeAll();
+      await normalizeAll({ source });
     } catch (err: any) {
       console.error("Normalization failed:", err.message, err.stack);
     }

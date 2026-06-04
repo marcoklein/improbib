@@ -129,7 +129,7 @@ async function normalizeSource(
   let writeLock = false;
   let lastWriteAt = 0;
 
-  const concurrency = 5;
+  const concurrency = 20;
   let index = 0;
 
   async function incrementalWrite() {
@@ -248,13 +248,16 @@ async function normalizeSource(
   return finalOutput.elements;
 }
 
-export async function normalizeAll(options?: { maxElements?: number }): Promise<void> {
+export async function normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }): Promise<void> {
   const client = createOpencodeGoClient();
+
+  const allSources = ["improwiki", "learnimprov", "ircwiki"];
+  const sourceNames = options?.source ? [options.source] : allSources;
 
   console.log("=== STAGE 1: LLM Extraction ===\n");
   const allElements: Map<string, NormalizedElement[]> = new Map();
 
-  for (const source of ["improwiki", "learnimprov", "ircwiki"]) {
+  await Promise.all(sourceNames.map(async (source) => {
     try {
       const previous = await loadPreviousNormalized(source);
       const elements = await normalizeSource(client, source, previous, options);
@@ -262,10 +265,10 @@ export async function normalizeAll(options?: { maxElements?: number }): Promise<
     } catch (err: any) {
       console.error(`Failed to normalize ${source}: ${err.message}`);
     }
-  }
+  }));
 
-  if (options?.maxElements) {
-    console.log(`\nSubset mode (max ${options.maxElements} per source) — skipping Stages 2 & 3.`);
+  if (options?.maxElements || options?.stages?.includes(1) && options.stages.length === 1) {
+    console.log(`\nSubset/stage-1-only mode — skipping Stages 2 & 3.`);
     currentProgress = { ...currentProgress!, stage: "done" };
     console.log("=== Normalization (subset) complete ===");
     return;
