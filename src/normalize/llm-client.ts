@@ -56,7 +56,8 @@ RULES:
 - Extract practical metadata when the content suggests it: difficulty, typical duration, energy level, group size, preparation requirements, suitable contexts.
 - For <a href="..."> links to other wiki pages: extract the page name into referencedElements. Do NOT generate identifiers — just the name as it appears.
 - For tips: categorize as pedagogical (teaching advice), staging (performance/show advice), safety (physical/emotional), group-dynamic (team/group interaction), failure-mode (common mistakes), or general.
-- Preserve the source language — German content gets German fields, English gets English. Mechanic and skill names should be in English when possible.`;
+- Preserve the source language — German content gets German fields, English gets English. Mechanic and skill names should be in English when possible.
+- TONE: Use imperative mood for all step instructions. English: start each step with a verb. German: use informal "Du/ihr" with imperative mood ("geht", "stellt euch", "bildet Paare", not "gehen Sie" or "stellen Sie sich"). Descriptions: factual third-person, no personal pronouns ("you", "man").`;
 }
 
 function buildUserPrompt(name: string, languageCode: string, tags: string[], htmlContent: string): string {

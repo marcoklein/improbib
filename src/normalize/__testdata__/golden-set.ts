@@ -247,11 +247,11 @@ export const goldenSet: GoldenEntry[] = [
       description: "Bei Gefühlspunkte werden zwei gut sichtbare Punkte auf die Bühne geklebt und jedem wird per Publikumszuruf ein gegensätzliches Gefühl zugeordnet (z.B. Hass und Liebe). Die Spieler improvisieren eine Szene und färben ihre Figur je nach Nähe zu einem Gefühlspunkt in der entsprechenden Emotion ein.",
       howToPlay: {
         steps: [
-          { action: "Zwei gut sichtbare Punkte auf der Bühne markieren." },
-          { action: "Das Publikum ordnet jedem Punkt ein gegensätzliches Gefühl zu (z.B. Hass und Liebe)." },
-          { action: "Das Publikum gibt einen Ort für die Szene vor." },
-          { action: "Die Spieler entwickeln eine zusammenhängende Geschichte und bewegen sich frei auf der Bühne." },
-          { action: "Je näher ein Spieler einem Gefühlspunkt kommt, desto stärker spielt er die entsprechende Emotion aus. Auf dem Punkt selbst erfolgt der völlige Gefühlsausbruch.", role: "alle Spieler", constraint: "Emotion steigert sich mit Nähe zum Punkt" },
+          { action: "Klebt zwei gut sichtbare Punkte auf die Bühne." },
+          { action: "Lasst jedem Punkt ein gegensätzliches Gefühl durch Publikumszuruf zuordnen (z.B. Hass und Liebe)." },
+          { action: "Lasst das Publikum einen Ort für die Szene vorgeben." },
+          { action: "Entwickelt eine zusammenhängende Geschichte und bewegt euch frei auf der Bühne." },
+          { action: "Spielt die Figur je nach Nähe zu einem Gefühlspunkt in der entsprechenden Emotion aus. Direkt auf dem Punkt: völliger Gefühlsausbruch!", role: "alle Spieler", constraint: "Emotion steigert sich mit Nähe zum Punkt" },
         ],
       },
       variations: [],
