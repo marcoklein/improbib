@@ -113,14 +113,42 @@ async function normalizeSource(
   console.log(`Normalizing ${sourceName}: ${elements.length}${options?.maxElements ? ` of ${rawElements.length}` : ""} elements`);
 
   const startTime = Date.now();
+  const outDir = path.join(process.cwd(), "output", "normalized");
+  const sourcePath = path.join(outDir, `${sourceName}.json`);
+  const dir = Bun.file(outDir);
+  if (!(await dir.exists())) {
+    await Bun.$`mkdir -p ${outDir}`.quiet();
+  }
+
   const normalizedMap = new Map<string, NormalizedElement>();
   let dispatched = 0;
   let cached = 0;
   let splitCount = 0;
   let errors = 0;
+  let writeLock = false;
+  let lastWriteAt = 0;
 
   const concurrency = 5;
   let index = 0;
+
+  async function incrementalWrite() {
+    if (writeLock) return;
+    writeLock = true;
+    try {
+      const elements = [...normalizedMap.values()];
+      const derivedCount = elements.reduce((s, e) => s + e.derivedElements.length, 0);
+      const output = {
+        meta: { sourceName, elementCount: elements.length, derivedElementCount: derivedCount, splitElementCount: splitCount, normalizedAt: new Date().toISOString() },
+        elements,
+      };
+      await Bun.write(sourcePath, JSON.stringify(output, null, 2));
+      lastWriteAt = Date.now();
+    } catch (err: any) {
+      console.warn(`  Write error ${sourceName}: ${err.message.slice(0, 100)}`);
+    } finally {
+      writeLock = false;
+    }
+  }
 
   function updateProgress() {
     currentProgress = {
@@ -178,6 +206,7 @@ async function normalizeSource(
       dispatched++;
       updateProgress();
       if (dispatched % 10 === 0) logProgress();
+      if (dispatched % 25 === 0) await incrementalWrite();
     }
   }
 
@@ -189,6 +218,7 @@ async function normalizeSource(
 
   const workers = Array.from({ length: Math.min(concurrency, elements.length) }, () => processNext());
   await Promise.all(workers);
+  await incrementalWrite(); // final write
 
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   const normalized = [...normalizedMap.values()];
@@ -204,6 +234,17 @@ async function normalizeSource(
     },
     elements: normalized,
   };
+
+  const parsed = normalizedSourceSchema.safeParse(output);
+  if (!parsed.success) {
+    console.error(`Schema validation failed for ${sourceName}:`);
+    for (const issue of parsed.error.issues.slice(0, 30)) {
+      console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+    }
+    if (parsed.error.issues.length > 30) {
+      console.error(`  ... and ${parsed.error.issues.length - 30} more issues`);
+    }
+  }
 
   const parsed = normalizedSourceSchema.safeParse(output);
   if (!parsed.success) {
