@@ -107,7 +107,7 @@ Bun.serve({
     const url = new URL(req.url);
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
-      const htmlPath = path.join(process.cwd(), "public", "index.html");
+      const htmlPath = path.join(import.meta.dir, "..", "public", "index.html");
       const res = serveFile(htmlPath, req, "text/html; charset=utf-8");
       if (res) return res;
       return new Response("Not Found", { status: 404 });
