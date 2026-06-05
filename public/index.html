@@ -127,6 +127,7 @@ document.getElementById("toggleBtn").addEventListener("click",function(){
 });
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script>
 "use strict";
 (function(){
@@ -458,21 +459,7 @@ mmScript.onload=function(){
 };
 document.head.appendChild(mmScript);
 
-// D3
-var d3Script=document.createElement("script");
-d3Script.src="https://cdn.jsdelivr.net/npm/d3@7";
-d3Script.async=true;
-d3Script.onload=function(){loadGraph()};
-d3Script.onerror=function(){showFallback()};
-document.head.appendChild(d3Script);
-
-// Fallback if D3 fails to load within 8 seconds
-setTimeout(function(){if(!graphData)showFallback()},8000);
-
-function showFallback(){
- var lb=document.getElementById("loading");
- if(lb)lb.textContent="Could not load graph visualization. Try refreshing, or access /graph.json directly for raw data.";
-}
+loadGraph();
 })();
 </script>
 </body>
