@@ -139,7 +139,7 @@ export async function buildRelatedIdentifiers(
       let pairSucceeded = 0;
 
       // Split into manageable batches if still large
-      const batchSize = 50;
+      const batchSize = 40;
       for (let a = 0; a < similarA.length; a += batchSize) {
         for (let b = 0; b < filteredB.length; b += batchSize) {
           const batchA = similarA.slice(a, a + batchSize);

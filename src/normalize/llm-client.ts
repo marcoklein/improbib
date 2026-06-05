@@ -97,7 +97,7 @@ export function createOpencodeGoClient(
 
     async findCrossSourceMatches(sourceA, sourceB) {
       const prompt = buildMatchPrompt(sourceA, sourceB);
-      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 8000, 2, true);
+      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 16000, 2, true);
       return parseMatchResponse(text, sourceA, sourceB);
     },
 
