@@ -1,0 +1,84 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - button "−" [ref=e3] [cursor=pointer]
+    - heading "Improbib" [level=1] [ref=e4]
+    - generic [ref=e5]:
+      - text: A knowledge graph of improvisational theatre derived from open web sources.
+      - link "GitHub ↗" [ref=e6] [cursor=pointer]:
+        - /url: https://github.com/marcoklein/improbib
+      - text: · Nodes 354 · Edges 732
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - strong [ref=e9]: 3 Sources
+        - emphasis [ref=e10]:
+          - text: improwiki · learnimprov
+          - text: ircwiki
+      - generic [ref=e11]: →
+      - generic [ref=e12]:
+        - strong [ref=e13]: Scrape
+        - emphasis [ref=e14]:
+          - text: Raw HTML
+          - text: + metadata
+      - generic [ref=e15]: →
+      - generic [ref=e16]:
+        - strong [ref=e17]: Normalize
+        - emphasis [ref=e18]:
+          - text: LLM extracts
+          - text: mech·skill·steps
+      - generic [ref=e19]: →
+      - generic [ref=e20]:
+        - strong [ref=e21]: Vocab
+        - emphasis [ref=e22]:
+          - text: Canonical
+          - text: synonym groups
+      - generic [ref=e23]: →
+      - generic [ref=e24]:
+        - strong [ref=e25]: Graph
+        - emphasis [ref=e26]:
+          - text: Element·Mech
+          - text: Skill·Tag·Source
+      - generic [ref=e27]: →
+      - generic [ref=e28]:
+        - strong [ref=e29]: Apps
+        - emphasis [ref=e30]:
+          - text: Workshop Planner
+          - text: Browser
+    - document [ref=e32]:
+      - generic [ref=e39]:
+        - paragraph [ref=e46]:
+          - text: 3 Sources
+          - text: improwiki·learnimprov·ircwiki
+        - paragraph [ref=e53]:
+          - text: Scrape
+          - text: Raw HTML+metadata
+        - paragraph [ref=e60]:
+          - text: Normalize
+          - text: LLM extraction
+        - paragraph [ref=e67]:
+          - text: Vocabulary
+          - text: Canonical clusters
+        - paragraph [ref=e74]:
+          - text: Knowledge Graph
+          - text: Nodes+Edges
+        - paragraph [ref=e81]:
+          - text: Applications
+          - text: Workshop Planner
+  - generic [ref=e82]:
+    - img [ref=e83]
+    - generic [ref=e84]:
+      - generic [ref=e85]: Element
+      - generic [ref=e87]: Mechanic
+      - generic [ref=e89]: Skill
+      - generic [ref=e91]: Tag
+      - generic [ref=e93]: Source
+    - generic [ref=e95]:
+      - searchbox "Search nodes..." [active] [ref=e96]
+      - generic [ref=e97]: type to search, ↑↓ to navigate, enter to select
+    - generic [ref=e98]:
+      - button "Elements" [ref=e99] [cursor=pointer]
+      - button "Mechanics" [ref=e100] [cursor=pointer]
+      - button "Skills" [ref=e101] [cursor=pointer]
+      - button "Tags" [ref=e102] [cursor=pointer]
+      - button "Sources" [ref=e103] [cursor=pointer]
+    - generic [ref=e104]: "Failed to load graph: Cannot read properties of undefined (reading 'attr')"
+  - button "×" [ref=e106] [cursor=pointer]

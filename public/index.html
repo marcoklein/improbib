@@ -185,10 +185,9 @@ function initGraph(g){
  svgEl.attr("width",W).attr("height",H).attr("viewBox",[-W/2,-H/2,W,H]);
 
  var zoom=d3.zoom().scaleExtent([.15,6]).on("zoom",function(ev){gEl.attr("transform",ev.transform)});
+ gEl=svgEl.append("g");
  svgEl.call(zoom);
  svgEl.call(zoom.transform,d3.zoomIdentity.translate(W/2,H/2));
-
- gEl=svgEl.append("g");
 
  sim=d3.forceSimulation(nodes)
   .force("link",d3.forceLink(links).id(function(d){return d.id}).distance(function(l){
