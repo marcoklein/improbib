@@ -91,19 +91,19 @@ export function createOpencodeGoClient(
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
       const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 32000);
+      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 32000, 1, true);
       return parseNormalizeResponse(text);
     },
 
     async findCrossSourceMatches(sourceA, sourceB) {
       const prompt = buildMatchPrompt(sourceA, sourceB);
-      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 8000, 1, true);
+      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 8000, 2, true);
       return parseMatchResponse(text, sourceA, sourceB);
     },
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 16000, 1, true, false);
+      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 16000, 2, true, false);
       return parseVocabularyResponse(text);
     },
   };
@@ -119,9 +119,14 @@ export async function callApi(
   retryEmpty: boolean = false,
   jsonFormat: boolean = true,
 ): Promise<string> {
+  const promptChars = systemMessage.length + userMessage.length;
+  const estTokens = Math.round(promptChars / 4);
+  const label = `[api] model=${model} prompt=${(promptChars / 1024).toFixed(1)}K est=${estTokens / 1024}K max=${maxTokens / 1024}K`;
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
-      const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      const jitter = Math.floor(Math.random() * 1000);
+      const delay = Math.min(1000 * Math.pow(2, attempt) + jitter, 30000);
       console.warn(`  Retry ${attempt}/${retries} after ${delay}ms`);
       await new Promise(r => setTimeout(r, delay));
     }
@@ -148,21 +153,43 @@ export async function callApi(
       const err = await resp.text().catch(() => resp.statusText);
       const msg = `API error ${resp.status}: ${err.slice(0, 400)}`;
       if (resp.status === 503 || resp.status === 429) {
+        console.warn(`  ${label} HTTP ${resp.status} — retryable`);
         if (attempt < retries) continue;
       }
       throw new Error(msg);
     }
 
     const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (content) return content;
+    const choice = data.choices?.[0];
+    const finishReason = choice?.finish_reason || "(missing)";
+    const usage = data.usage;
+    const content = choice?.message?.content;
+
+    if (content) {
+      const outTokens = usage?.completion_tokens || 0;
+      console.log(`  ${label} HTTP ${resp.status} finish=${finishReason} in=${usage?.prompt_tokens || "?"} out=${outTokens}`);
+      return content;
+    }
+
+    // Empty response — diagnose why
+    const reason = finishReason === "length" ? "token limit hit" :
+                   finishReason === "stop" ? "model refused" :
+                   finishReason === "content_filter" ? "content filter" :
+                   "unknown";
+    const inTokens = usage?.prompt_tokens ? `${usage.prompt_tokens} in, ` : "";
+    console.warn(`  ${label} HTTP ${resp.status} finish=${finishReason} content="" (${reason} — ${inTokens}attempt ${attempt + 1}/${retries + 1})`);
+
     if (retryEmpty && attempt < retries) {
-      console.warn(`  Empty response, retrying (${attempt + 1}/${retries})...`);
+      // Token limit: retrying won't help with same prompt. Log and fail.
+      if (finishReason === "length") {
+        console.warn(`  ${label} — not retrying (token limit hit with same prompt)`);
+        break;
+      }
       continue;
     }
-    throw new Error("Empty response from API");
+    break;
   }
-  throw new Error(`API returned empty response after ${retries + 1} attempts`);
+  throw new Error("Empty response from API");
 }
 
 function parseNormalizeResponse(text: string): NormalizedElement | NormalizedElement[] {

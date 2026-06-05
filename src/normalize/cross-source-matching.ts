@@ -104,6 +104,10 @@ export async function buildRelatedIdentifiers(
   const sourceNames = [...bySource.keys()];
 
   // Name-similarity pre-filter: only compare elements with shared words
+  let totalBatches = 0;
+  let totalSucceeded = 0;
+  let totalPairs = 0;
+
   for (let i = 0; i < sourceNames.length; i++) {
     for (let j = i + 1; j < sourceNames.length; j++) {
       const listA = bySource.get(sourceNames[i])!;
@@ -131,6 +135,9 @@ export async function buildRelatedIdentifiers(
       // Throttle
       console.log(`  Pre-filtered ${prefixedSourceA}↔${prefixedSourceB}: ${listA.length}×${listB.length} → ${similarA.length}×${filteredB.length} candidates`);
 
+      let pairBatches = 0;
+      let pairSucceeded = 0;
+
       // Split into manageable batches if still large
       const batchSize = 50;
       for (let a = 0; a < similarA.length; a += batchSize) {
@@ -139,21 +146,33 @@ export async function buildRelatedIdentifiers(
           const batchB = filteredB.slice(b, b + batchSize);
 
           await new Promise(r => setTimeout(r, 1000));
+          pairBatches++;
+          totalBatches++;
 
           try {
             const matches = await client.findCrossSourceMatches(batchA, batchB);
             for (const m of matches) {
               if (m.confidence >= 0.5) {
                 addPair(m.a, m.b, m.confidence);
+                totalPairs++;
               }
             }
+            pairSucceeded++;
+            totalSucceeded++;
             console.log(`  Matched ${prefixedSourceA}↔${prefixedSourceB} batch: ${batchA.length}×${batchB.length} → ${matches.length} pairs`);
           } catch (err: any) {
             console.warn(`  Match failed for ${prefixedSourceA}↔${prefixedSourceB} batch: ${err.message}`);
           }
         }
       }
+      if (pairBatches > 0) {
+        console.log(`  ${prefixedSourceA}↔${prefixedSourceB}: ${pairSucceeded}/${pairBatches} batches succeeded`);
+      }
     }
+  }
+
+  if (totalBatches > 0) {
+    console.log(`  Cross-source matching: ${totalSucceeded}/${totalBatches} batches succeeded, ${totalPairs} LLM-confirmed pairs`);
   }
 
   return related;
