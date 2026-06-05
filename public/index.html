@@ -78,7 +78,7 @@
 
 <script>
 fetch('/graph.json').then(function(r){return r.json()}).then(function(d){
-  document.getElementById('s-elements').textContent = d.meta.elementCount;
+  document.getElementById('s-elements').textContent = d.meta.sourceElementCount + ' + ' + d.meta.canonicalElementCount;
   document.getElementById('s-mechanics').textContent = d.meta.mechanicCount;
   document.getElementById('s-skills').textContent = d.meta.skillCount;
   document.getElementById('s-edges').textContent = d.meta.edgeCount;

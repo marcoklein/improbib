@@ -1,0 +1,15 @@
+{
+  "sameAs": [
+    {"canonical": "Freeze Tag", "variants": ["Freeze", "Freeze Tag-Exercise", "Freeze-For All"]},
+    {"canonical": "Half-Life", "variants": ["Half Life"]},
+    {"canonical": "Slide Show", "variants": ["Slideshow"]},
+    {"canonical": "Mirror Exercises", "variants": ["Mirrors"]},
+    {"canonical": "Sit, Stand, Lay", "variants": ["Sit, Stand, Kneel, Lie Down"]},
+    {"canonical": "Singing Circle", "variants": ["Song Circle"]},
+    {"canonical": "One Word Story", "variants": ["Word At A Time Story"]},
+    {"canonical": "Yes, And", "variants": ["Yes And"]},
+    {"canonical": "Yes, Let's", "variants": ["Yes Let's"]},
+    {"canonical": "Slow Motion Fight", "variants": ["Slow Motion Swordplay"]},
+    {"canonical": "Hitch Hiker", "variants": ["The Hitch-Hiker"]}
+  ]
+}

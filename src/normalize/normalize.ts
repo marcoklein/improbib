@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
 import { createOpencodeGoClient, getPromptHash } from "./llm-client";
-import { seedTranslationPairs, buildRelatedIdentifiers } from "./cross-source-matching";
+
 
 interface DroppedElement {
   identifier: string;
@@ -422,75 +422,16 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   }
   await writeState();
 
-  if (options?.maxElements || options?.stages?.includes(1) && options.stages.length === 1) {
-    console.log(`\nSubset/stage-1-only mode — skipping Stages 2 & 3.`);
+  if (options?.maxElements || (options?.stages?.includes(1) && options.stages.length === 1)) {
+    console.log(`\nSubset/stage-1-only mode — cross-source matching runs separately via --dedup.`);
     currentProgress = { ...currentProgress!, stage: "done" };
-    console.log("=== Normalization (subset) complete ===");
+    console.log("=== Stage 1 (extraction) complete ===");
     return;
   }
 
-  console.log("\n=== STAGE 2: Cross-Source Matching ===\n");
-
-  const allCandidates: { identifier: string; name: string; description: string; sourceName: string; languageCode: string }[] = [];
-  const allWithTranslation: any[] = [];
-
-  for (const [source, elements] of allElements) {
-    for (const el of elements) {
-      allCandidates.push({
-        identifier: el.identifier,
-        name: el.name,
-        description: el.normalized.description,
-        sourceName: el.sourceName,
-        languageCode: el.languageCode,
-      });
-      allWithTranslation.push(el);
-    }
-  }
-
-  const candidatesSorted = [...allCandidates].sort((a, b) => a.identifier.localeCompare(b.identifier));
-  const stage2InputHash = createHash("md5").update(JSON.stringify(candidatesSorted.map(c => ({ id: c.identifier, name: c.name })))).digest("hex");
-
-  const skipStage2 = !anyElementChanged && state.stage2?.inputHash === stage2InputHash;
-  if (skipStage2) {
-    console.log(`  Input hash unchanged (${stage2InputHash.slice(0, 8)}) — skipping LLM batches.`);
-  } else {
-    console.log(`  Input hash: ${stage2InputHash.slice(0, 8)}${state.stage2?.inputHash ? ` (was ${state.stage2.inputHash.slice(0, 8)})` : " (first run)"}${anyElementChanged ? " — anyElementChanged" : ""}`);
-  }
-
-  const translationPairs = seedTranslationPairs(allWithTranslation as any);
-  console.log(`Seeded ${translationPairs.length} translation-link pairs`);
-
-  let related: Map<string, { identifier: string; confidence: number }[]> = new Map();
-  if (!skipStage2) {
-    related = await buildRelatedIdentifiers(allCandidates, client, translationPairs);
-    state.stage2 = { inputHash: stage2InputHash, completedAt: new Date().toISOString() };
-    await writeState();
-  }
-
-  const outDir = path.join(process.cwd(), "output", "normalized");
-  if (!skipStage2) {
-    for (const [source, elements] of allElements) {
-      const updated = elements.map(el => ({
-        ...el,
-        relatedIdentifiers: related.get(el.identifier) || [],
-      }));
-
-      const srcPath = path.join(outDir, `${source}.json`);
-      const f = Bun.file(srcPath);
-      if (!(await f.exists())) continue;
-      const data = await f.json();
-      data.elements = updated;
-
-      const parsed = normalizedSourceSchema.safeParse(data);
-      await Bun.write(srcPath, JSON.stringify(parsed.success ? parsed.data : data, null, 2));
-
-      const matchCount = updated.reduce((s, e) => s + e.relatedIdentifiers.length, 0) / 2;
-      console.log(`  Updated ${source}: ${matchCount} total cross-source match pairs`);
-    }
-  }
-
   currentProgress = { ...currentProgress!, stage: "done" };
-  console.log("\n=== Normalization complete ===");
+  console.log("\n=== Stage 1 (extraction) complete ===\n");
+  console.log("Run --vocabulary for Stage 3, then --dedup for Stage 4 cross-source matching.");
 }
 
 export async function normalizeVocabularyStage(): Promise<void> {
@@ -547,6 +488,11 @@ export async function normalizeVocabularyStage(): Promise<void> {
   console.log("\n=== Vocabulary normalization complete ===");
 }
 
+export async function dedupElementsStage(): Promise<void> {
+  const { dedupElements } = await import("./element-dedup");
+  await dedupElements();
+}
+
 export async function deriveGraphStage(): Promise<void> {
   console.log("=== GRAPH DERIVATION ===\n");
   const { writeGraph } = await import("../graph/derive");
@@ -562,6 +508,11 @@ if (import.meta.main) {
   if (args.includes("--vocabulary")) {
     normalizeVocabularyStage().catch((err) => {
       console.error("Vocabulary normalization failed:", err);
+      process.exit(1);
+    });
+  } else if (args.includes("--dedup")) {
+    dedupElementsStage().catch((err) => {
+      console.error("Dedup failed:", err);
       process.exit(1);
     });
   } else if (args.includes("--graph")) {

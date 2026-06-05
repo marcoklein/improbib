@@ -18,10 +18,15 @@ Improvisation theater has no structured, cross-source database connecting games,
 │ Review, correct, enrich edges                      │
 │ Produces overrides that merge into the final graph │
 ├──────────────────────────────────────────────────────────────────┤
-│ Layer 2: Knowledge Graph Derivation                             │
-│ Consumes normalized elements                                    │
-│ LLM extraction + heuristics → draft graph                       │
-│ Merges human QA overrides → output/graph.json                   │
+│ Layer 2: Knowledge Graph                                         │
+│ Consumes normalized elements + vocabulary + dedup               │
+│ Derives source elements + canonical (reconciled) elements       │
+│ Produces output/graph.json with canonicalOf and translationOf   │
+├──────────────────────────────────────────────────────────────────┤
+│ Layer 1.7: Cross-Source Dedup (ADR-0011)                        │
+│ Deterministic matching (name + mechanic + thesaurus)            │
+│ LLM matching with canonicalized mechanics/skills               │
+│ Produces relatedIdentifiers on normalized elements              │
 ├──────────────────────────────────────────────────────────────────┤
 │ Layer 1.5: Content Normalization             │
 │ Structures raw markdown into sections        │
@@ -118,41 +123,38 @@ After normalizing all sources, a token-overlap name matcher (`cross-source-match
 
 | Node | What it represents | Example |
 |---|---|---|
-| `Element` | An improv structure (game, exercise, show form, concept) | "Freeze Tag", "Zip Zap Zop" |
+| `Element` (canonical: false) | A source-backed improv structure | "Freeze Tag" (improwiki) |
+| `Element` (canonical: true) | A reconciled element merging all sources | "Freeze Tag" (canonical EN) |
 | `Mechanic` | A reusable building block / rule fragment | "freeze signal", "alphabet constraint" |
 | `Skill` | A competency trained by elements | "acceptance", "group mind", "character work" |
 | `Tag` | A canonical tag (existing flat system) | "warmup", "circle", "beginner" |
 | `Source` | Origin website | "improwiki.com", "learnimprov.com" |
-| `Category` | A dimension in the tag taxonomy | "Structure Type", "Grouping", "Difficulty" |
 
 ### Edge Types
 
 | Edge | From → To | Source | Meaning |
 |---|---|---|---|
-| `translationOf` | Element ↔ Element | Scraped | DE/EN translation pair |
-| `sourcedFrom` | Element → Source | Scraped | Origin of this element |
+| `translationOf` | Source DE → Source EN | Scraped | DE/EN translation pair (same page) |
+| `translationOf` | Canonical EN → Canonical DE | Derived | Reconciled German translation of reconciled English |
+| `sourcedFrom` | Source element → Source | Scraped | Origin of this element |
+| `canonicalOf` | Source element → Canonical | Dedup | "I describe this canonical game" |
 | `hasTag` | Element → Tag | Scraped + transformed | Element carries this tag |
-| `hasMechanic` | Element → Mechanic | LLM extraction | Uses this building block |
-| `variantOf` | Element → Element | LLM + heuristics | Y is a variation of X |
-| `trainsSkill` | Element → Skill | LLM extraction | Playing develops this skill |
-| `prerequisiteFor` | Element → Element | LLM extraction | Master X before Y |
-| `requiresSkill` | Element → Skill | LLM extraction | This skill is needed to play |
-| `similarTo` | Element ↔ Element | Computed | Share mechanics/tags |
-| `contrastsWith` | Element ↔ Element | Computed | Intentionally different |
-| `belongsTo` | Tag → Category | Manual taxonomy | Tag belongs to this dimension |
-| `derivedFrom` | Element → Element | Normalization | Sub-element extracted from parent page |
+| `hasMechanic` | Element → Mechanic | LLM extraction + vocabulary | Uses this building block |
+| `trainsSkill` | Element → Skill | LLM extraction + vocabulary | Playing develops this skill |
 
 ### Derivation Steps
 
-1. **Heuristics** (deterministic): tag classification into taxonomy dimensions, naming-pattern variant detection, cross-source deduplication by name similarity (using `relatedIdentifiers` from Layer 1.5 as starting points), player count, translation links — all from existing normalized data.
+1. **Source element creation**: Every normalized element becomes a source Element node (canonical: false) with `sourcedFrom`, `translationOf` (from translation links), and domain edges (hasMechanic, trainsSkill, hasTag).
 
-2. **LLM extraction** (one batch per element): mechanics list, skills list, variation relationships, prerequisite relationships, typical duration, energy level. Consumes normalized structured fields, not raw markdown.
+2. **Cluster formation**: Connected components from `relatedIdentifiers` (Stage 4 dedup) form element clusters. Translation links also contribute to clusters.
 
-3. **Computed edges**: similarity (shared mechanics/tags), contrast (disjoint mechanics/tags), tag-to-category membership — derived mathematically from extracted data.
+3. **Canonical element creation**: Each cluster produces:
+   - One EN canonical (if EN source elements exist) — merged description, mechanics, skills, tags
+   - One DE canonical (if DE source elements exist) — merged from DE sources
+   - `canonicalOf` edges from each source element to its language-matched canonical
+   - `translationOf` between EN↔DE canonicals
 
-### Output
-
-`output/graph.json` — nodes and edges array, serving as the single source of truth for the application layer.
+4. **Domain edges**: Mechanics, skills, and tags for canonical elements are unions across all cluster sources.
 
 ## Layer 2.5: Human QA
 

@@ -9,21 +9,21 @@
 
 ```sh
 bun run src/analyze.ts    # run scraper
-bun run src/normalize/normalize.ts            # run normalization (Stage 1+2: LLM extraction + cross-source matching)
+bun run src/normalize/normalize.ts            # run normalization (Stage 1: LLM extraction only)
 bun run src/normalize/normalize.ts --vocabulary  # run vocabulary canonicalization (Stage 3: deterministic clustering)
-bun run src/normalize/normalize.ts --graph        # derive knowledge graph from normalized + vocabulary
+bun run src/normalize/normalize.ts --dedup        # run cross-source dedup (Stage 4: deterministic + LLM matching)
+bun run src/normalize/normalize.ts --graph        # derive knowledge graph from normalized + vocabulary + dedup
 bun test                   # run tests (bun:test)
 ```
-
-No build step — Bun runs `.ts` directly (`noEmit: true` in tsconfig).
 
 ## Architecture
 
 - `src/analyze.ts` — CLI entry point for the scraper
 - `src/index.ts` — library entry (exports `Improbib` class, `readImprobibJson`)
 - Scraper pipeline in `src/scrape-improwiki.ts` scrapes improwiki.com, follows translation links, processes HTML→Markdown, and writes output
-- Normalization layer in `src/normalize/` — 2-stage pipeline (LLM extraction, cross-source matching) per ADR-0008. Stage 3 (vocabulary normalization) uses deterministic clustering per ADR-0009.
-- Graph derivation in `src/graph/` — deterministic graph from normalized + vocabulary: nodes (Element, Mechanic, Skill, Tag, Source) and edges (hasMechanic, trainsSkill, hasTag, sourcedFrom, translationOf).
+- Normalization layer in `src/normalize/` — 3-stage pipeline (LLM extraction, vocabulary canonicalization, cross-source dedup) per ADR-0008, ADR-0009, ADR-0011.
+- Cross-source dedup in `src/normalize/element-dedup.ts` — deterministic (name + mechanic overlap + curated thesaurus) then LLM matching, runs after vocabulary canonicalization.
+- Graph derivation in `src/graph/` — deterministic graph from normalized + vocabulary + dedup: nodes (Element with canonical: true/false, Mechanic, Skill, Tag, Source) and edges (hasMechanic, trainsSkill, hasTag, sourcedFrom, translationOf, canonicalOf).
 - Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–1000 elements
 
 ## Data access

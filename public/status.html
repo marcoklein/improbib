@@ -65,7 +65,7 @@ Promise.all([
   document.getElementById('graph-stats').innerHTML = [
     ['Total Nodes', g.nodeCount],
     ['Total Edges', g.edgeCount],
-    ['Elements', g.elementCount],
+    ['Elements', g.sourceElementCount + ' source + ' + g.canonicalElementCount + ' canonical (' + g.elementCount + ' total)'],
     ['Mechanics', g.mechanicCount],
     ['Skills', g.skillCount],
     ['Tags', g.tagCount],

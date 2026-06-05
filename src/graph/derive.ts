@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import path from "path";
 import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "../normalize/normalized-schema";
-import type { VocabularyMap, VocabularyCluster } from "../normalize/llm-client";
+import type { VocabularyMap } from "../normalize/llm-client";
 
 interface GraphNode {
   id: string;
@@ -10,14 +10,22 @@ interface GraphNode {
   label: string;
 }
 
+interface SourceProvenance {
+  sourceName: string;
+  url: string;
+  identifier: string;
+}
+
 interface ElementNode extends GraphNode {
   type: "Element";
+  canonical: boolean;
   description: string;
   summary: string;
   howToPlay: { steps: { action: string; role?: string; constraint?: string }[] } | null;
-  sourceName: string;
+  sourceName?: string;
   languageCode: string;
-  url: string;
+  url?: string;
+  sources?: SourceProvenance[];
   difficulty?: string;
   typicalDurationMinutes?: number;
   energyLevel?: string;
@@ -28,7 +36,7 @@ interface ElementNode extends GraphNode {
 }
 
 interface GraphEdge {
-  type: "hasMechanic" | "trainsSkill" | "hasTag" | "sourcedFrom" | "translationOf" | "derivedFrom";
+  type: "hasMechanic" | "trainsSkill" | "hasTag" | "sourcedFrom" | "translationOf" | "derivedFrom" | "canonicalOf";
   from: string;
   to: string;
   confidence?: number;
@@ -40,6 +48,8 @@ interface KnowledgeGraph {
     nodeCount: number;
     edgeCount: number;
     elementCount: number;
+    sourceElementCount: number;
+    canonicalElementCount: number;
     mechanicCount: number;
     skillCount: number;
     tagCount: number;
@@ -51,20 +61,6 @@ interface KnowledgeGraph {
 
 function nodeId(prefix: string, name: string): string {
   return createHash("md5").update(`${prefix}:${name.toLowerCase()}`).digest("hex");
-}
-
-function resolveMechanic(
-  name: string,
-  vocabMap: Map<string, string>,
-): string {
-  return vocabMap.get(name.toLowerCase()) ?? name;
-}
-
-function resolveSkill(
-  name: string,
-  vocabMap: Map<string, string>,
-): string {
-  return vocabMap.get(name.toLowerCase()) ?? name;
 }
 
 function buildVocabMap(vocab: VocabularyMap): {
@@ -88,6 +84,259 @@ function buildVocabMap(vocab: VocabularyMap): {
   }
 
   return { mechMap, skillMap };
+}
+
+function resolveTerm(
+  name: string,
+  vocabMap: Map<string, string>,
+): string {
+  return vocabMap.get(name.toLowerCase()) ?? name;
+}
+
+// Build connected-component clusters from relatedIdentifiers
+function buildClusters(
+  elements: NormalizedElement[],
+  idMap: Map<string, NormalizedElement>,
+): Map<string, NormalizedElement[]> {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    const p = parent.get(x) ?? x;
+    if (p !== x) {
+      const root = find(p);
+      parent.set(x, root);
+      return root;
+    }
+    parent.set(x, x);
+    return x;
+  };
+  const union = (a: string, b: string) => {
+    parent.set(find(a), find(b));
+  };
+
+  for (const el of elements) {
+    for (const ri of el.relatedIdentifiers || []) {
+      union(el.identifier, ri.identifier);
+    }
+    // Also include translation links for clustering
+    if (el.translationLinkEnIdentifier && idMap.has(el.translationLinkEnIdentifier)) {
+      union(el.identifier, el.translationLinkEnIdentifier);
+    }
+    if (el.translationLinkDeIdentifier && idMap.has(el.translationLinkDeIdentifier)) {
+      union(el.identifier, el.translationLinkDeIdentifier);
+    }
+  }
+
+  // Group by root
+  const groups = new Map<string, NormalizedElement[]>();
+  for (const el of elements) {
+    const root = find(el.identifier);
+    const list = groups.get(root) || [];
+    list.push(el);
+    groups.set(root, list);
+  }
+
+  // Filter to clusters with ≥2 elements
+  const clusters = new Map<string, NormalizedElement[]>();
+  for (const [root, members] of groups) {
+    if (members.length >= 2) {
+      clusters.set(root, members);
+    }
+  }
+
+  return clusters;
+}
+
+function pickCanonicalName(names: string[]): string {
+  const unique = [...new Set(names)];
+  if (unique.length === 1) return unique[0];
+
+  // Prefer names without exercise/game/variant suffixes, without hyphens
+  const suffixPattern = /-(?:exercise|game|variation|handle|übung|spiel|show|format)$/i;
+  const scored = unique.map(name => {
+    let score = 0;
+    if (!suffixPattern.test(name)) score += 100;
+    if (!name.includes("-")) score += 50;
+    return { name, score };
+  });
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.name.length - a.name.length; // longer preferred when scores equal
+  });
+  return scored[0].name;
+}
+
+function pickLongestName(names: string[]): string {
+  return names.reduce((a, b) => a.length >= b.length ? a : b, names[0] || "");
+}
+
+function createCanonicalElement(
+  cluster: NormalizedElement[],
+  languageCode: "en" | "de",
+  clusterId: string,
+): { node: ElementNode; memberIds: string[] } | null {
+  const langMembers = cluster.filter(el => el.languageCode === languageCode);
+  if (langMembers.length === 0) return null;
+
+  const canonicalId = createHash("md5")
+    .update(`canonical:${languageCode}:${clusterId}`)
+    .digest("hex");
+
+  // Names
+  const names = langMembers.map(el => el.name);
+  const canonicalName = pickCanonicalName(names);
+  const allNames = [...new Set(names)];
+
+  // Description: longest
+  const descriptions = langMembers.map(el => el.normalized.description);
+  const description = pickLongestName(descriptions);
+
+  // Summary: longest
+  const summaries = langMembers.map(el => el.normalized.summary);
+  const summary = pickLongestName(summaries);
+
+  // howToPlay: union of step sets (simple: longest wins)
+  const howToPlayOptions = langMembers
+    .map(el => el.normalized.howToPlay)
+    .filter((h): h is NonNullable<typeof h> => h !== null && h.steps.length > 0);
+  const howToPlay = howToPlayOptions.length > 0
+    ? pickLongestHowToPlay(howToPlayOptions)
+    : null;
+
+  // Mechanics: union from all cluster members (language-agnostic)
+  const mechSet = new Set<string>();
+  for (const el of langMembers) {
+    for (const m of el.normalized.mechanics) {
+      mechSet.add(m.name);
+    }
+  }
+  const mechanics = [...mechSet];
+
+  // Skills: union from all cluster members (language-agnostic)
+  const skillSet = new Set<string>();
+  for (const el of langMembers) {
+    for (const s of el.normalized.skills) {
+      skillSet.add(s.name);
+    }
+  }
+  const skills = [...skillSet];
+
+  // Tags: union
+  const tagSet = new Set<string>();
+  for (const el of langMembers) {
+    for (const t of el.tags) {
+      tagSet.add(t);
+    }
+  }
+  const tags = [...tagSet];
+
+  // Practical: mode across sources
+  let difficulty: string | undefined;
+  let typicalDurationMinutes: number | undefined;
+  let energyLevel: string | undefined;
+  let groupSizeMin: number | undefined;
+  let groupSizeMax: number | undefined;
+  let playerCountMin: number | undefined;
+  let playerCountMax: number | undefined;
+
+  const diffCounts = new Map<string, number>();
+  const energyCounts = new Map<string, number>();
+  const durations: number[] = [];
+  const gsMins: number[] = [];
+  const gsMaxs: number[] = [];
+  const pcMins: number[] = [];
+  const pcMaxs: number[] = [];
+
+  for (const el of langMembers) {
+    if (el.normalized.practical?.difficulty) {
+      diffCounts.set(el.normalized.practical.difficulty, (diffCounts.get(el.normalized.practical.difficulty) || 0) + 1);
+    }
+    if (el.normalized.practical?.typicalDurationMinutes) {
+      durations.push(el.normalized.practical.typicalDurationMinutes);
+    }
+    if (el.normalized.practical?.energyLevel) {
+      energyCounts.set(el.normalized.practical.energyLevel, (energyCounts.get(el.normalized.practical.energyLevel) || 0) + 1);
+    }
+    if (el.normalized.practical?.groupSize?.min) gsMins.push(el.normalized.practical.groupSize.min);
+    if (el.normalized.practical?.groupSize?.max) gsMaxs.push(el.normalized.practical.groupSize.max);
+    if (el.playerCountMin) pcMins.push(el.playerCountMin);
+    if (el.playerCountMax) pcMaxs.push(el.playerCountMax);
+  }
+
+  if (diffCounts.size > 0) {
+    difficulty = [...diffCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  }
+  if (durations.length > 0) {
+    typicalDurationMinutes = Math.round(durations.reduce((s, d) => s + d, 0) / durations.length);
+  }
+  if (energyCounts.size > 0) {
+    energyLevel = [...energyCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  }
+  if (gsMins.length > 0) groupSizeMin = Math.min(...gsMins);
+  if (gsMaxs.length > 0) groupSizeMax = Math.max(...gsMaxs);
+  if (pcMins.length > 0) playerCountMin = Math.min(...pcMins);
+  if (pcMaxs.length > 0) playerCountMax = Math.max(...pcMaxs);
+
+  // Sources
+  const sources: SourceProvenance[] = langMembers.map(el => ({
+    sourceName: el.sourceName,
+    url: el.url,
+    identifier: el.identifier,
+  }));
+
+  const node: ElementNode = {
+    id: canonicalId,
+    type: "Element",
+    canonical: true,
+    label: canonicalName,
+    description,
+    summary,
+    howToPlay,
+    languageCode,
+    sources,
+    tags,
+  };
+
+  // Wire mechanics/skills as temp arrays (processed in phase 2)
+  (node as any)._mechanics = mechanics;
+  (node as any)._skills = skills;
+
+  if (difficulty) node.difficulty = difficulty;
+  if (typicalDurationMinutes) node.typicalDurationMinutes = typicalDurationMinutes;
+  if (energyLevel) node.energyLevel = energyLevel;
+  if (groupSizeMin !== undefined || groupSizeMax !== undefined) {
+    node.groupSize = {
+      min: groupSizeMin,
+      max: groupSizeMax,
+    };
+  }
+  if (playerCountMin !== undefined || playerCountMax !== undefined) {
+    node.playerCountMin = playerCountMin;
+    node.playerCountMax = playerCountMax;
+  }
+
+  const memberIds = langMembers.map(el => el.identifier);
+  return { node, memberIds };
+}
+
+function pickLongestHowToPlay(
+  options: { steps: { action: string; role?: string; constraint?: string }[] }[],
+): { steps: { action: string; role?: string; constraint?: string }[] } {
+  return options.reduce((a, b) =>
+    a.steps.length >= b.steps.length ? a : b, options[0],
+  );
+}
+
+function dedupSteps(steps: { action: string; role?: string; constraint?: string }[]): { action: string; role?: string; constraint?: string }[] {
+  const seen = new Set<string>();
+  const result: { action: string; role?: string; constraint?: string }[] = [];
+  for (const s of steps) {
+    const key = s.action.toLowerCase().trim();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(s);
+    }
+  }
+  return result;
 }
 
 export function deriveGraph(
@@ -121,19 +370,15 @@ export function deriveGraph(
     edges.push(edge);
   }
 
-  // Collect all unique tags and sources
-  const allTags = new Set<string>();
-  const allSources = new Set<string>();
-  for (const el of elements) {
-    for (const t of el.tags) allTags.add(t);
-    allSources.add(el.sourceName);
-  }
+  // ── Phase 1: Create source element nodes ──
+  const idMap = new Map<string, NormalizedElement>();
+  for (const el of elements) idMap.set(el.identifier, el);
 
-  // Element nodes
   for (const el of elements) {
     addNode({
       id: el.identifier,
       type: "Element",
+      canonical: false,
       label: el.name,
       description: el.normalized.description,
       summary: el.normalized.summary ?? el.normalized.description.slice(0, 100),
@@ -150,49 +395,154 @@ export function deriveGraph(
       tags: el.tags,
     });
 
-    // Mechanic edges
-    for (const m of el.normalized.mechanics) {
-      const canonical = resolveMechanic(m.name, mechMap);
-      const mechId = nodeId("mechanic", canonical);
-      addNode({ id: mechId, type: "Mechanic", label: canonical });
-      addEdge("hasMechanic", el.identifier, mechId);
-    }
-
-    // Skill edges
-    for (const s of el.normalized.skills) {
-      const canonical = resolveSkill(s.name, skillMap);
-      const skillId = nodeId("skill", canonical);
-      addNode({ id: skillId, type: "Skill", label: canonical });
-      addEdge("trainsSkill", el.identifier, skillId);
-    }
-
-    // Tag edges
-    for (const t of el.tags) {
-      const tagId = nodeId("tag", t);
-      addNode({ id: tagId, type: "Tag", label: t });
-      addEdge("hasTag", el.identifier, tagId);
-    }
-
     // Source edges
-    const sourceId = nodeId("source", el.sourceName);
-    addNode({ id: sourceId, type: "Source", label: el.sourceName });
-    addEdge("sourcedFrom", el.identifier, sourceId);
+    addEdge("sourcedFrom", el.identifier, nodeId("source", el.sourceName));
 
-    // Translation edges
+    // Translation edges (only from explicit translation links)
     if (el.translationLinkEnIdentifier) {
       addEdge("translationOf", el.identifier, el.translationLinkEnIdentifier, 1.0);
     }
     if (el.translationLinkDeIdentifier) {
       addEdge("translationOf", el.identifier, el.translationLinkDeIdentifier, 1.0);
     }
+  }
 
-    // Cross-source match edges (from relatedIdentifiers)
-    for (const ri of el.relatedIdentifiers || []) {
-      addEdge("translationOf", el.identifier, ri.identifier, ri.confidence);
+  // ── Phase 2: Build clusters and create canonical nodes ──
+  const clusters = buildClusters(elements, idMap);
+  const canonicalNodes: { en?: ElementNode; de?: ElementNode; memberIds: string[] }[] = [];
+
+  for (const [root, members] of clusters) {
+    const clusterId = createHash("md5")
+      .update([...new Set(members.map(m => m.identifier))].sort().join(","))
+      .digest("hex");
+
+    const enResult = createCanonicalElement(members, "en", clusterId);
+    const deResult = createCanonicalElement(members, "de", clusterId);
+
+    const allMemberIds = new Set<string>();
+    if (enResult) {
+      addNode(enResult.node);
+      enResult.memberIds.forEach(id => allMemberIds.add(id));
+    }
+    if (deResult) {
+      addNode(deResult.node);
+      deResult.memberIds.forEach(id => allMemberIds.add(id));
+    }
+
+    // canonicalOf edges
+    for (const el of members) {
+      if (el.languageCode === "en" && enResult) {
+        addEdge("canonicalOf", el.identifier, enResult.node.id);
+      } else if (el.languageCode === "de" && deResult) {
+        addEdge("canonicalOf", el.identifier, deResult.node.id);
+      } else if (el.languageCode === "de" && enResult && !deResult) {
+        // DE element in cluster but no DE canonical — point to EN canonical
+        addEdge("canonicalOf", el.identifier, enResult.node.id);
+      } else if (el.languageCode === "en" && deResult && !enResult) {
+        addEdge("canonicalOf", el.identifier, deResult.node.id);
+      }
+    }
+
+    // translationOf between EN↔DE canonicals
+    if (enResult && deResult) {
+      addEdge("translationOf", enResult.node.id, deResult.node.id, 1.0);
+    }
+
+    canonicalNodes.push({
+      en: enResult?.node,
+      de: deResult?.node,
+      memberIds: [...allMemberIds],
+    });
+  }
+
+  // ── Phase 3: Mechanic, Skill, Tag edges for ALL elements ──
+  // Collect all elements (source + canonical) for edge wiring
+  const allElementNodes = nodes.filter(n => n.type === "Element") as ElementNode[];
+  const allElementsWithMechSkills: { id: string; mechanics: string[]; skills: string[]; tags: string[]; canonical: boolean; sourceName?: string }[] = [];
+
+  // Source elements: mechanics/skills/tags from normalized data
+  for (const el of elements) {
+    allElementsWithMechSkills.push({
+      id: el.identifier,
+      mechanics: el.normalized.mechanics.map(m => m.name),
+      skills: el.normalized.skills.map(s => s.name),
+      tags: el.tags,
+      canonical: false,
+      sourceName: el.sourceName,
+    });
+  }
+
+  // Canonical elements: mechanics/skills/tags from merged data on the node
+  for (const cn of canonicalNodes) {
+    for (const canonical of [cn.en, cn.de]) {
+      if (!canonical) continue;
+      const mechs = (canonical as any)._mechanics as string[] || [];
+      const skills = (canonical as any)._skills as string[] || [];
+      allElementsWithMechSkills.push({
+        id: canonical.id,
+        mechanics: mechs,
+        skills,
+        tags: canonical.tags,
+        canonical: true,
+      });
+      // Clean up temp fields
+      delete (canonical as any)._mechanics;
+      delete (canonical as any)._skills;
     }
   }
 
-  const elementCount = nodes.filter(n => n.type === "Element").length;
+  // Collect all unique tags and sources
+  const allTags = new Set<string>();
+  const allSources = new Set<string>();
+  for (const el of elements) {
+    for (const t of el.tags) allTags.add(t);
+    allSources.add(el.sourceName);
+  }
+
+  // Wire edges for all elements
+  for (const el of allElementsWithMechSkills) {
+    // Mechanic edges
+    for (const m of el.mechanics) {
+      const canonical = resolveTerm(m, mechMap);
+      const mechId = nodeId("mechanic", canonical);
+      addNode({ id: mechId, type: "Mechanic", label: canonical });
+      addEdge("hasMechanic", el.id, mechId);
+    }
+
+    // Skill edges
+    for (const s of el.skills) {
+      const canonical = resolveTerm(s, skillMap);
+      const skillId = nodeId("skill", canonical);
+      addNode({ id: skillId, type: "Skill", label: canonical });
+      addEdge("trainsSkill", el.id, skillId);
+    }
+
+    // Tag edges
+    for (const t of el.tags) {
+      const tagId = nodeId("tag", t);
+      addNode({ id: tagId, type: "Tag", label: t });
+      addEdge("hasTag", el.id, tagId);
+    }
+
+    // Source nodes (always add, sourcedFrom only for source elements)
+    if (!el.canonical && el.sourceName) {
+      const sourceId = nodeId("source", el.sourceName);
+      addNode({ id: sourceId, type: "Source", label: el.sourceName });
+    }
+  }
+
+  // Source nodes for canonical sources
+  for (const cn of canonicalNodes) {
+    for (const canonical of [cn.en, cn.de]) {
+      if (!canonical?.sources) continue;
+      for (const s of canonical.sources) {
+        addNode({ id: nodeId("source", s.sourceName), type: "Source", label: s.sourceName });
+      }
+    }
+  }
+
+  const sourceElementCount = allElementNodes.filter(n => !n.canonical).length;
+  const canonicalElementCount = allElementNodes.filter(n => n.canonical).length;
   const mechanicCount = nodes.filter(n => n.type === "Mechanic").length;
   const skillCount = nodes.filter(n => n.type === "Skill").length;
   const tagCount = nodes.filter(n => n.type === "Tag").length;
@@ -203,7 +553,9 @@ export function deriveGraph(
       derivedAt: new Date().toISOString(),
       nodeCount: nodes.length,
       edgeCount: edges.length,
-      elementCount,
+      elementCount: allElementNodes.length,
+      sourceElementCount,
+      canonicalElementCount,
       mechanicCount,
       skillCount,
       tagCount,
@@ -249,7 +601,8 @@ export async function writeGraph(outputPath?: string): Promise<KnowledgeGraph> {
 
   await Bun.write(outPath, JSON.stringify(graph, null, 2));
   console.log(`Graph: ${graph.meta.nodeCount} nodes, ${graph.meta.edgeCount} edges`);
-  console.log(`  Elements: ${graph.meta.elementCount}, Mechanics: ${graph.meta.mechanicCount}, Skills: ${graph.meta.skillCount}, Tags: ${graph.meta.tagCount}, Sources: ${graph.meta.sourceCount}`);
+  console.log(`  Elements: ${graph.meta.elementCount} (${graph.meta.sourceElementCount} source + ${graph.meta.canonicalElementCount} canonical)`);
+  console.log(`  Mechanics: ${graph.meta.mechanicCount}, Skills: ${graph.meta.skillCount}, Tags: ${graph.meta.tagCount}, Sources: ${graph.meta.sourceCount}`);
   console.log(`Wrote ${outPath}`);
 
   return graph;

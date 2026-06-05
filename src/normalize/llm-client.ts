@@ -382,7 +382,7 @@ function parseVocabularyResponse(text: string): VocabularyMap {
   };
 }
 
-function extractJson(text: string): any {
+export function extractJson(text: string): any {
   // Try markdown code fence
   const mdMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (mdMatch) {

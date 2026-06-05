@@ -142,8 +142,8 @@ var visible={Element:true,Mechanic:true,Skill:true,Tag:true,Source:true};
 var selected=null, graphData=null;
 var svgEl, gEl, sim, nodes=[], links=[], nodeById={}, linkByKey={}, edgeLabelG;
 
-function edgeTypeLabel(t){return{hasMechanic:"mechanic",trainsSkill:"skill",hasTag:"tag",translationOf:"translation",sourcedFrom:"source"}[t]||t}
-function edgeTypeColor(t){return{hasMechanic:"#3fb950",trainsSkill:"#a371f7",hasTag:"#d29922",translationOf:"#58a6ff"}[t]||"#8b949e"}
+function edgeTypeLabel(t){return{hasMechanic:"mechanic",trainsSkill:"skill",hasTag:"tag",translationOf:"translation",sourcedFrom:"source",canonicalOf:"canonical"}[t]||t}
+function edgeTypeColor(t){return{hasMechanic:"#3fb950",trainsSkill:"#a371f7",hasTag:"#d29922",translationOf:"#58a6ff",canonicalOf:"#d29922",sourcedFrom:"#8b949e"}[t]||"#8b949e"}
 var detailEl=document.getElementById("detailContent");
 
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
@@ -342,6 +342,7 @@ function renderDetail(d){
   if(el.type==="Element"){
     // Badges
     h+='<div style="margin-bottom:.75rem">';
+    if(el.canonical)h+='<span class="detail-badge" style="background:#d2992220;color:#d29922">canonical</span> ';
     if(el.difficulty){
       var dc={beginner:"#3fb950",intermediate:"#d29922",advanced:"#f85149"};
       h+='<span class="detail-badge" style="background:'+(dc[el.difficulty]||"#3a3a4a")+'20;color:'+(dc[el.difficulty]||"#6e7681")+'">'+el.difficulty+'</span> ';
@@ -351,7 +352,10 @@ function renderDetail(d){
       h+='<span class="detail-badge" style="background:'+(ec[el.energyLevel]||"#3a3a4a")+'20;color:'+(ec[el.energyLevel]||"#6e7681")+'">'+el.energyLevel+'</span> ';
     }
     if(el.typicalDurationMinutes)h+='<small>'+el.typicalDurationMinutes+'min</small> ';
-    h+='<a href="'+esc(el.url)+'" target="_blank" style="font-size:.75rem">source &#8599;</a>';
+    if(el.url)h+='<a href="'+esc(el.url)+'" target="_blank" style="font-size:.75rem">source &#8599;</a>';
+    if(el.sources&&el.sources.length){
+      h+='<small> ('+el.sources.map(function(s){return s.sourceName}).join(', ')+')</small>';
+    }
     h+='</div>';
 
     // Description
@@ -371,7 +375,7 @@ function renderDetail(d){
     }
 
     // Connected nodes
-    var connMechs=[],connSkills=[],connTags=[],connTrans=[];
+    var connMechs=[],connSkills=[],connTags=[],connTrans=[],connCanon=[];
     for(var i=0;i<links.length;i++){
       var l=links[i];
       if(l.source.id===d.id||l.target.id===d.id){
@@ -381,12 +385,14 @@ function renderDetail(d){
         else if(l.type==="trainsSkill")connSkills.push(other);
         else if(l.type==="hasTag")connTags.push(other);
         else if(l.type==="translationOf")connTrans.push(other);
+        else if(l.type==="canonicalOf")connCanon.push(other);
       }
     }
     if(connMechs.length)h+=chipSection("Mechanics",connMechs);
     if(connSkills.length)h+=chipSection("Skills",connSkills);
     if(connTags.length)h+=chipSection("Tags",connTags);
     if(connTrans.length)h+=chipSection("Translations",connTrans);
+    if(connCanon.length)h+=chipSection(d.canonical?"Sources":"Canonical",connCanon);
   } else {
     // Non-element node: show connected elements
     var connElements=[];
