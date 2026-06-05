@@ -270,6 +270,7 @@ function coerceElement(raw: any): NormalizedElement {
       })),
       practical: coercePractical(raw.practical),
       contentHash: "",
+      normalizedBy: "",
       extractedAt: new Date().toISOString(),
     },
     derivedElements: [],

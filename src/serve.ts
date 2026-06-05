@@ -22,7 +22,7 @@ function jsonResponse(data: unknown, req: Request): Response {
   };
 
   if (req.headers.get("accept-encoding")?.includes("gzip")) {
-    const compressed = gzipSync(Buffer.from(body));
+    const compressed = gzipSync(new Uint8Array(Buffer.from(body)));
     headers["content-encoding"] = "gzip";
     return new Response(compressed, { headers });
   }
@@ -172,7 +172,7 @@ Bun.serve({
         storage,
         version: GIT_REV,
         sources: files.filter((f) => f.endsWith(".json")),
-        normalizedSources: normFiles.filter((f) => f.endsWith(".json")),
+        normalizedSources: normFiles.filter((f) => f.endsWith(".json") && !f.startsWith("dropped-")),
         normalizeProgress,
         scrapeRunning,
         normalizeRunning,

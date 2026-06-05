@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { coerceElement, coerceHowToPlay, CoercionForTests as TestCoercion } from "./test-helpers";
 
 // Simple inline test helpers — not exported from llm-client, recreated here
 function extractJson(text: string): any {

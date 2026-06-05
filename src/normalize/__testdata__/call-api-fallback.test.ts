@@ -102,7 +102,7 @@ describe("callApi model fallback", () => {
     expect(calls).toBeGreaterThanOrEqual(2);
   });
 
-  it("does NOT fall back on HTTP 429 without credit keywords (rate limit)", { timeout: 1000 }, async () => {
+  it("does NOT fall back on HTTP 429 without credit keywords (rate limit)", async () => {
     globalThis.fetch = mock((_input: string, _init: RequestInit) => {
       return Promise.resolve(makeErrorResponse(429, "Too many requests, please slow down"));
     }) as unknown as typeof fetch;
@@ -129,7 +129,7 @@ describe("callApi model fallback", () => {
       .rejects.toThrow("API error 402");
   });
 
-  it("retries on HTTP 503 within same model", { timeout: 10000 }, async () => {
+  it("retries on HTTP 503 within same model", async () => {
     let calls = 0;
     globalThis.fetch = mock((_input: string, _init: RequestInit) => {
       calls++;
