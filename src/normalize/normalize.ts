@@ -6,6 +6,12 @@ import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
 import { createOpencodeGoClient, getPromptHash } from "./llm-client";
 import { seedTranslationPairs, buildRelatedIdentifiers } from "./cross-source-matching";
 
+interface DroppedElement {
+  identifier: string;
+  name: string;
+  reason: string;
+}
+
 function hashContent(html: string): string {
   return createHash("md5").update(html).digest("hex");
 }
@@ -72,6 +78,7 @@ export interface NormalizeProgress {
   cached: number;
   split: number;
   errors: number;
+  dropped: number;
   startedAt: string;
   error?: string;
 }
@@ -148,7 +155,7 @@ async function normalizeSource(
   sourceName: string,
   previous: Map<string, NormalizedElement>,
   options?: { maxElements?: number },
-): Promise<{ elements: NormalizedElement[]; anyElementChanged: boolean }> {
+): Promise<{ elements: NormalizedElement[]; anyElementChanged: boolean; droppedCount: number }> {
   const { elements: rawElements } = await loadRaw(sourceName);
   const elements = options?.maxElements ? rawElements.slice(0, options.maxElements) : rawElements;
   const schemaHash = getNormalizedBy();
@@ -161,6 +168,7 @@ async function normalizeSource(
     cached: 0,
     split: 0,
     errors: 0,
+    dropped: 0,
     startedAt: new Date().toISOString(),
   };
 
@@ -175,6 +183,7 @@ async function normalizeSource(
   }
 
   const normalizedMap = new Map<string, NormalizedElement>();
+  const dropped: DroppedElement[] = [];
   let dispatched = 0;
   let cached = 0;
   let splitCount = 0;
@@ -212,6 +221,7 @@ async function normalizeSource(
       cached,
       split: splitCount,
       errors,
+      dropped: dropped.length,
     };
   }
 
@@ -260,7 +270,11 @@ async function normalizeSource(
         }
       } catch (err: any) {
         console.warn(`  SKIP ${el.name}: ${err.message.slice(0, 150)}`);
-        if (prev) normalizedMap.set(el.identifier, prev);
+        if (prev) {
+          normalizedMap.set(el.identifier, prev);
+        } else {
+          dropped.push({ identifier: el.identifier, name: el.name, reason: err.message.slice(0, 200) });
+        }
         errors++;
       }
 
@@ -304,7 +318,25 @@ async function normalizeSource(
   const finalOutput = parsed.success ? parsed.data : output;
   await Bun.write(sourcePath, JSON.stringify(finalOutput, null, 2));
 
-  console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
+  // Write dropped element report for visibility and recovery
+  if (dropped.length > 0) {
+    const droppedPath = path.join(outDir, `dropped-${sourceName}.json`);
+    const droppedReport = {
+      sourceName,
+      droppedAt: new Date().toISOString(),
+      count: dropped.length,
+      elements: dropped,
+    };
+    await Bun.write(droppedPath, JSON.stringify(droppedReport, null, 2));
+    console.warn(`  Dropped ${dropped.length} elements without previous version — see ${droppedPath}`);
+    for (const d of dropped.slice(0, 10)) {
+      console.warn(`    - ${d.name}: ${d.reason}`);
+    }
+    if (dropped.length > 10) console.warn(`    ... and ${dropped.length - 10} more`);
+  }
+
+  const droppedCount = dropped.length;
+  console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors (${droppedCount} dropped), ${totalTime}s`);
 
   const fillerReport = detectFillers(finalOutput.elements);
   if (fillerReport.warnings.length > 0) {
@@ -314,7 +346,7 @@ async function normalizeSource(
     }
   }
 
-  return { elements: finalOutput.elements, anyElementChanged };
+  return { elements: finalOutput.elements, anyElementChanged, droppedCount: dropped.length };
 }
 
 export async function normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }): Promise<void> {
@@ -357,7 +389,7 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   const statePath = path.join(process.cwd(), "output", ".normalize-state.json");
 
   // Read previous state
-  let state: { promptHash?: string; stage2?: { inputHash: string; completedAt: string } } = {};
+  let state: { promptHash?: string; stage2?: { inputHash: string; completedAt: string }; stage1Sources?: Record<string, { elementCount: number; droppedCount: number; completedAt: string }> } = {};
   try {
     const sf = Bun.file(statePath);
     if (await sf.exists()) {
@@ -368,6 +400,27 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   async function writeState() {
     await Bun.write(statePath, JSON.stringify({ ...state, promptHash }, null, 2));
   }
+
+  // Record Stage 1 completion per source
+  const normDir = path.join(process.cwd(), "output", "normalized");
+  state.stage1Sources = {};
+  for (const [source, elements] of allElements) {
+    const droppedPath = path.join(normDir, `dropped-${source}.json`);
+    let droppedCount = 0;
+    try {
+      const df = Bun.file(droppedPath);
+      if (await df.exists()) {
+        const report = await df.json();
+        droppedCount = report.count || 0;
+      }
+    } catch { /* ignore */ }
+    state.stage1Sources[source] = {
+      elementCount: elements.length,
+      droppedCount,
+      completedAt: new Date().toISOString(),
+    };
+  }
+  await writeState();
 
   if (options?.maxElements || options?.stages?.includes(1) && options.stages.length === 1) {
     console.log(`\nSubset/stage-1-only mode — skipping Stages 2 & 3.`);

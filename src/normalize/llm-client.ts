@@ -81,9 +81,18 @@ export function getPromptHash(): string {
   return _promptHash;
 }
 
+const DEFAULT_MODELS = ["deepseek-v4-flash-free", "deepseek-v4-flash"];
+const API_ENDPOINT = "https://opencode.ai/zen/v1/chat/completions";
+
+function parseModelList(envVal: string | undefined, defaults: string[]): string[] {
+  if (!envVal || !envVal.trim()) return defaults;
+  return envVal.split(",").map(s => s.trim()).filter(Boolean);
+}
+
 export function createOpencodeGoClient(
-  model: string = "deepseek-v4-flash-free",
+  models?: string[],
 ): LlmClient {
+  const modelList = models ?? parseModelList(process.env.NORMALIZE_MODELS, DEFAULT_MODELS);
   const apiKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
   if (!apiKey) console.warn("No OPENCODE_GO_API_KEY set — normalization will fail.");
 
@@ -92,27 +101,33 @@ export function createOpencodeGoClient(
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
       const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const text = await callApi(apiKey, model, systemPrompt, userPrompt, 32000, 1, true);
+      const text = await callApi(apiKey, modelList, systemPrompt, userPrompt, 32000, 1, true);
       return parseNormalizeResponse(text);
     },
 
     async findCrossSourceMatches(sourceA, sourceB) {
       const prompt = buildMatchPrompt(sourceA, sourceB);
-      const text = await callApi(apiKey, model, "You compare improv elements and return match pairs as JSON.", prompt, 16000, 2, true);
+      const text = await callApi(apiKey, modelList, "You compare improv elements and return match pairs as JSON.", prompt, 16000, 2, true);
       return parseMatchResponse(text, sourceA, sourceB);
     },
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 16000, 2, true, false);
+      const text = await callApi(apiKey, modelList, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 16000, 2, true, false);
       return parseVocabularyResponse(text);
     },
   };
 }
 
+function isCreditExhausted(status: number, body: string): boolean {
+  if (status === 402) return true;
+  if ((status === 403 || status === 429) && /insufficient|quota|credit|balance|exhausted|limit.*reached/i.test(body)) return true;
+  return false;
+}
+
 export async function callApi(
   apiKey: string,
-  model: string,
+  models: string[],
   systemMessage: string,
   userMessage: string,
   maxTokens: number = 12000,
@@ -122,75 +137,92 @@ export async function callApi(
 ): Promise<string> {
   const promptChars = systemMessage.length + userMessage.length;
   const estTokens = Math.round(promptChars / 4);
-  const label = `[api] model=${model} prompt=${(promptChars / 1024).toFixed(1)}K est=${estTokens / 1024}K max=${maxTokens / 1024}K`;
+  let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    if (attempt > 0) {
-      const jitter = Math.floor(Math.random() * 1000);
-      const delay = Math.min(1000 * Math.pow(2, attempt) + jitter, 30000);
-      console.warn(`  Retry ${attempt}/${retries} after ${delay}ms`);
-      await new Promise(r => setTimeout(r, delay));
-    }
+  for (let modelIdx = 0; modelIdx < models.length; modelIdx++) {
+    const model = models[modelIdx];
+    const label = `[api] model=${model} prompt=${(promptChars / 1024).toFixed(1)}K est=${estTokens / 1024}K max=${maxTokens / 1024}K`;
 
-    const resp = await fetch("https://opencode.ai/zen/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemMessage },
-          { role: "user", content: userMessage },
-        ],
-        ...(jsonFormat ? { response_format: { type: "json_object" } } : {}),
-        max_tokens: maxTokens,
-        temperature: 0,
-      }),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.text().catch(() => resp.statusText);
-      const msg = `API error ${resp.status}: ${err.slice(0, 400)}`;
-      if (resp.status === 503 || resp.status === 429) {
-        console.warn(`  ${label} HTTP ${resp.status} — retryable`);
-        if (attempt < retries) continue;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        const jitter = Math.floor(Math.random() * 1000);
+        const delay = Math.min(1000 * Math.pow(2, attempt) + jitter, 30000);
+        console.warn(`  Retry ${attempt}/${retries} after ${delay}ms [model=${model}]`);
+        await new Promise(r => setTimeout(r, delay));
       }
-      throw new Error(msg);
-    }
 
-    const data = await resp.json();
-    const choice = data.choices?.[0];
-    const finishReason = choice?.finish_reason || "(missing)";
-    const usage = data.usage;
-    const content = choice?.message?.content;
+      const resp = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemMessage },
+            { role: "user", content: userMessage },
+          ],
+          ...(jsonFormat ? { response_format: { type: "json_object" } } : {}),
+          max_tokens: maxTokens,
+          temperature: 0,
+        }),
+      });
 
-    if (content) {
-      const outTokens = usage?.completion_tokens || 0;
-      console.log(`  ${label} HTTP ${resp.status} finish=${finishReason} in=${usage?.prompt_tokens || "?"} out=${outTokens}`);
-      return content;
-    }
+      if (!resp.ok) {
+        const err = await resp.text().catch(() => resp.statusText);
+        const msg = `API error ${resp.status}: ${err.slice(0, 400)}`;
 
-    // Empty response — diagnose why
-    const reason = finishReason === "length" ? "token limit hit" :
-                   finishReason === "stop" ? "model refused" :
-                   finishReason === "content_filter" ? "content filter" :
-                   "unknown";
-    const inTokens = usage?.prompt_tokens ? `${usage.prompt_tokens} in, ` : "";
-    console.warn(`  ${label} HTTP ${resp.status} finish=${finishReason} content="" (${reason} — ${inTokens}attempt ${attempt + 1}/${retries + 1})`);
+        if (isCreditExhausted(resp.status, err)) {
+          console.warn(`  ${label} HTTP ${resp.status} — model appears out of credits`);
+          if (modelIdx < models.length - 1) {
+            console.warn(`  Falling back to ${models[modelIdx + 1]}`);
+          }
+          lastError = new Error(msg);
+          break; // break retry loop → try next model
+        }
 
-    if (retryEmpty && attempt < retries) {
-      // Token limit: retrying won't help with same prompt. Log and fail.
-      if (finishReason === "length") {
-        console.warn(`  ${label} — not retrying (token limit hit with same prompt)`);
-        break;
+        if (resp.status === 503 || resp.status === 429) {
+          console.warn(`  ${label} HTTP ${resp.status} — retryable`);
+          lastError = new Error(msg);
+          if (attempt < retries) continue;
+        }
+
+        throw new Error(msg);
       }
-      continue;
+
+      const data = await resp.json();
+      const choice = data.choices?.[0];
+      const finishReason = choice?.finish_reason || "(missing)";
+      const usage = data.usage;
+      const content = choice?.message?.content;
+
+      if (content) {
+        const outTokens = usage?.completion_tokens || 0;
+        console.log(`  ${label} HTTP ${resp.status} finish=${finishReason} in=${usage?.prompt_tokens || "?"} out=${outTokens}`);
+        return content;
+      }
+
+      // Empty response — diagnose why
+      const reason = finishReason === "length" ? "token limit hit" :
+                     finishReason === "stop" ? "model refused" :
+                     finishReason === "content_filter" ? "content filter" :
+                     "unknown";
+      const inTokens = usage?.prompt_tokens ? `${usage.prompt_tokens} in, ` : "";
+      console.warn(`  ${label} HTTP ${resp.status} finish=${finishReason} content="" (${reason} — ${inTokens}attempt ${attempt + 1}/${retries + 1})`);
+
+      if (retryEmpty && attempt < retries) {
+        if (finishReason === "length") {
+          console.warn(`  ${label} — not retrying (token limit hit with same prompt)`);
+          break;
+        }
+        continue;
+      }
+      break;
     }
-    break;
   }
-  throw new Error("Empty response from API");
+
+  throw lastError || new Error("Empty response from API");
 }
 
 function parseNormalizeResponse(text: string): NormalizedElement | NormalizedElement[] {
