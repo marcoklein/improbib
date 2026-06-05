@@ -494,6 +494,13 @@ export async function normalizeVocabularyStage(): Promise<void> {
   console.log("\n=== Vocabulary normalization complete ===");
 }
 
+export async function deriveGraphStage(): Promise<void> {
+  console.log("=== GRAPH DERIVATION ===\n");
+  const { writeGraph } = await import("../graph/derive");
+  await writeGraph();
+  console.log("\n=== Graph derivation complete ===");
+}
+
 // Allow running directly: bun run src/normalize/normalize.ts
 if (import.meta.main) {
   const args = process.argv.slice(2);
@@ -502,6 +509,11 @@ if (import.meta.main) {
   if (args.includes("--vocabulary")) {
     normalizeVocabularyStage().catch((err) => {
       console.error("Vocabulary normalization failed:", err);
+      process.exit(1);
+    });
+  } else if (args.includes("--graph")) {
+    deriveGraphStage().catch((err) => {
+      console.error("Graph derivation failed:", err);
       process.exit(1);
     });
   } else {

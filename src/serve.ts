@@ -194,6 +194,28 @@ Bun.serve({
       return jsonResponse({ error: "vocabulary.json not found — run vocabulary normalization first" }, req);
     }
 
+    if (url.pathname === "/api/graph") {
+      console.log(`[${new Date().toISOString()}] Manual graph derivation trigger...`);
+      if (normalizeRunning) {
+        return jsonResponse({ status: "normalization in progress — try again later" }, req);
+      }
+      normalizeRunning = true;
+      import("./graph/derive").then(({ writeGraph }) => writeGraph()).then(() => {
+        normalizeRunning = false;
+        console.log(`[${new Date().toISOString()}] Graph derivation complete.`);
+      }).catch((err: Error) => {
+        normalizeRunning = false;
+        console.error(`[${new Date().toISOString()}] Graph derivation failed:`, err.message);
+      });
+      return jsonResponse({ status: "graph derivation started" }, req);
+    }
+
+    if (url.pathname === "/graph.json") {
+      const res = serveFile(path.join(process.cwd(), "output", "graph.json"), req);
+      if (res) return res;
+      return jsonResponse({ error: "graph.json not found — derive graph first via POST /api/graph" }, req);
+    }
+
     if (url.pathname === "/api/test-normalize") {
       try {
         const { createOpencodeGoClient } = await import("./normalize/llm-client");
