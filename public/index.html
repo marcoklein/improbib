@@ -7,7 +7,27 @@
 <style>
 :root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d37;--text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;--purple:#a371f7}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden}
+body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* INFO HEADER */
+#info{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 20px 8px;flex-shrink:0;position:relative;transition:padding .2s}
+#info.collapsed{padding:8px 20px}
+#info h1{font-size:16px;font-weight:700;margin-bottom:2px;color:var(--text)}
+#info .subtitle{font-size:12px;color:var(--muted);margin-bottom:10px}
+#info .subtitle a{color:var(--accent);text-decoration:none}
+#info .subtitle a:hover{text-decoration:underline}
+#info .pipeline{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:11px}
+#info .pipeline .step{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;text-align:center;min-width:100px;line-height:1.3}
+#info .pipeline .step strong{display:block;font-size:12px;margin-bottom:2px}
+#info .pipeline .step em{color:var(--muted);font-style:normal;font-size:10px}
+#info .pipeline .arrow{font-size:16px;color:var(--muted);margin:0 2px}
+#info .toggle{position:absolute;top:8px;right:12px;background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:14px;width:24px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;line-height:1}
+#info .toggle:hover{color:var(--text);border-color:var(--accent)}
+#info.collapsed .pipeline,#info.collapsed h1{display:none}
+#info.collapsed .subtitle{margin-bottom:0;font-size:11px}
+
+/* GRAPH BROWSER (below info) */
+#browser{flex:1;display:flex;overflow:hidden;min-height:0}
 #list{width:360px;min-width:280px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 #filters{padding:10px;border-bottom:1px solid var(--border);background:var(--surface)}
 #filters input{width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;outline:none;font:inherit}
@@ -40,9 +60,53 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
 .empty{color:var(--muted);text-align:center;padding:40px 20px}
 .loading{color:var(--muted);text-align:center;padding:60px}
 .err{color:var(--red);padding:20px;font-size:12px;white-space:pre-wrap}
+.mermaid{margin:4px 0;text-align:center}
+.mermaid svg{max-height:140px}
 </style>
 </head>
 <body>
+<div id="info">
+ <button class="toggle" id="toggleBtn" title="Toggle info">−</button>
+ <h1>Improbib</h1>
+ <div class="subtitle">
+  A knowledge graph of improvisational theatre — derived from open web sources via scraping, LLM extraction, and deterministic clustering.
+  <a href="https://github.com/marcoklein/improbib" target="_blank">GitHub ↗</a>
+ </div>
+ <div class="pipeline">
+  <div class="step"><strong>3 Sources</strong><em>improwiki · learnimprov<br/>ircwiki (~1355 elements)</em></div>
+  <span class="arrow">→</span>
+  <div class="step"><strong>Scrape</strong><em>Raw HTML<br/>+ translation links</em></div>
+  <span class="arrow">→</span>
+  <div class="step"><strong>Normalize</strong><em>LLM extracts<br/>mechanics·skills·steps</em></div>
+  <span class="arrow">→</span>
+  <div class="step"><strong>Vocab</strong><em>Canonical<br/>synonym groups</em></div>
+  <span class="arrow">→</span>
+  <div class="step"><strong>Graph</strong><em>Nodes: Element<br/>Mechanic·Skill·Tag</em></div>
+  <span class="arrow">→</span>
+  <div class="step"><strong>Apps</strong><em>Workshop Planner<br/>Element Browser</em></div>
+ </div>
+ <div class="mermaid" id="pipelineDiagram"></div>
+ <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+ <script>
+ mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{
+  background:'#1a1d27',primaryColor:'#0f1117',primaryTextColor:'#c9d1d9',
+  primaryBorderColor:'#2a2d37',lineColor:'#6e7681',secondaryColor:'#1a1d27',
+  tertiaryColor:'#1a1d27',fontSize:'13px',fontFamily:'system-ui,monospace'
+ }});
+ document.getElementById("pipelineDiagram").textContent=`flowchart LR
+  S["3 Source Websites<br/>improwiki · learnimprov · ircwiki<br/><i>~1355 improv elements</i>"]
+  L1["Layer 1: Scrape<br/>Raw HTML + metadata<br/>translation links resolved"]
+  L15["Layer 1.5: Normalize<br/>LLM extracts structured fields<br/>mechanics · skills · steps"]
+  V["Vocabulary<br/>Deterministic clustering<br/>canonical synonym groups"]
+  L2["Layer 2: Knowledge Graph<br/>Element · Mechanic · Skill<br/>Tag · Source nodes"]
+  L3["Layer 3: Applications<br/>Workshop Planner<br/>Element Browser"]
+  S --> L1 --> L15 --> L2 --> L3
+  L15 --> V --> L2`;
+ mermaid.run({nodes:[document.getElementById("pipelineDiagram")]});
+ </script>
+</div>
+
+<div id="browser">
 <div id="list">
  <div id="filters"><input type="search" id="search" placeholder="Filter by name..." autofocus></div>
  <div id="chips"></div>
@@ -50,6 +114,17 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
  <div id="elements"><div class="loading">Loading graph...</div></div>
 </div>
 <div id="detail"><div class="empty">Select an element</div></div>
+</div>
+
+<script>
+document.getElementById("toggleBtn").addEventListener("click",function(){
+ var info=document.getElementById("info");
+ var btn=this;
+ info.classList.toggle("collapsed");
+ btn.textContent=info.classList.contains("collapsed")?"+":"−";
+});
+</script>
+
 <script>
 "use strict";
 (function(){
@@ -118,7 +193,7 @@ function renderChips(){
  var h="";
  for(var i=0;i<DIFF.length;i++){var d=DIFF[i];h+='<span class="chip'+(activeDiff[d]?' on':'')+'" data-diff="'+esc(d)+'">'+d[0]+'</span>'}
  h+='<span style="color:var(--border);margin:0 4px">|</span>';
- for(var i=0;i<ENERGY.length;i++){var en=ENERGY[i];h+='<span class="chip'+(activeEnergy[en]?' on':'')+'" data-energy="'+esc(en)+'">'+en+'</span>'}
+ for(var i=0;i<ENERGY.length;i++){var en=ENERGY[i];h+='<span class="chip'+(activeEnergy[en]?' on':'')+'" data-energy="'+esc(en)+'">'+en+'</span>';
  h+='<span style="color:var(--border);margin:0 4px">|</span>';
  if(activeMech)h+='<span class="chip on" data-clear="mech">'+esc(activeMech)+'</span>';
  if(activeSkill)h+='<span class="chip on" data-clear="skill">'+esc(activeSkill)+'</span>';
