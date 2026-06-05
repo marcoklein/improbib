@@ -170,6 +170,30 @@ Bun.serve({
       return jsonResponse({ status: "normalization started", maxElements: maxElements || null, source: source || null }, req);
     }
 
+    if (url.pathname === "/api/vocabulary") {
+      console.log(`[${new Date().toISOString()}] Manual vocabulary trigger...`);
+      if (normalizeRunning) {
+        return jsonResponse({ status: "normalization in progress — try again later" }, req);
+      }
+      normalizeRunning = true;
+      import("./normalize/normalize").then(({ normalizeVocabularyStage }) => {
+        return normalizeVocabularyStage();
+      }).then(() => {
+        normalizeRunning = false;
+        console.log(`[${new Date().toISOString()}] Vocabulary normalization complete.`);
+      }).catch((err: Error) => {
+        normalizeRunning = false;
+        console.error(`[${new Date().toISOString()}] Vocabulary normalization failed:`, err.message);
+      });
+      return jsonResponse({ status: "vocabulary normalization started" }, req);
+    }
+
+    if (url.pathname === "/vocabulary.json") {
+      const res = serveFile(path.join(process.cwd(), "output", "vocabulary.json"), req);
+      if (res) return res;
+      return jsonResponse({ error: "vocabulary.json not found — run vocabulary normalization first" }, req);
+    }
+
     if (url.pathname === "/api/test-normalize") {
       try {
         const { createOpencodeGoClient } = await import("./normalize/llm-client");
