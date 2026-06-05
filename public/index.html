@@ -142,16 +142,16 @@ var searchEl=document.getElementById("search");
 
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 
-function loadGraph(){
+ function loadGraph(){
  fetch("/graph.json").then(function(r){
   if(!r.ok)throw new Error("HTTP "+r.status);
   return r.json();
  }).then(function(data){
   graphData=data;
+  document.getElementById("loading").style.display="none";
   document.getElementById("infoNodes").textContent=data.meta.nodeCount;
   document.getElementById("infoEdges").textContent=data.meta.edgeCount;
   initGraph(data);
-  document.getElementById("loading").style.display="none";
  }).catch(function(err){
   document.getElementById("loading").textContent="Failed to load graph: "+err.message;
  });
