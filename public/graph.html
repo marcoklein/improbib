@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
+<title>Improbib — Knowledge Graph</title>
+<style>
+#graph { position:fixed; inset:0; overflow:hidden; }
+#graph svg { width:100%; height:100%; }
+
+#graph-nav {
+  position:fixed; top:0; left:0; right:0; z-index:10;
+  background:var(--pico-background-color); opacity:.92;
+  padding:0 1rem;
+}
+
+#detail {
+  position:fixed; top:0; right:-420px; width:400px; height:100vh;
+  z-index:20; transition:right .25s; overflow-y:auto;
+  background:var(--pico-background-color); padding:1rem;
+  border-left:1px solid var(--pico-muted-border-color);
+}
+#detail.open { right:0; }
+
+#controls {
+  position:fixed; bottom:1rem; left:1rem; z-index:5;
+  display:flex; gap:.25rem; flex-wrap:wrap;
+}
+#controls button {
+  opacity:.45; transition:opacity .15s;
+}
+#controls button.active {
+  opacity:1;
+  background:var(--pico-primary-background);
+  color:var(--pico-primary-inverse);
+  border-color:var(--pico-primary-background);
+}
+
+#searchBox { position:fixed; top:3.5rem; right:1rem; z-index:5; }
+#searchBox small { display:block; margin-top:.25rem; opacity:.6; }
+
+#legend {
+  position:fixed; top:3.5rem; left:1rem; z-index:5;
+  display:flex; gap:.75rem; font-size:.75rem;
+  background:var(--pico-card-background-color);
+  padding:.25rem .5rem; border-radius:4px;
+}
+
+#tooltip {
+  position:fixed; pointer-events:none; z-index:30; display:none;
+  background:var(--pico-card-background-color); padding:.25rem .5rem;
+  border:1px solid var(--pico-muted-border-color); border-radius:4px;
+  font-size:.75rem;
+}
+
+#loading {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:var(--pico-muted-color);
+}
+
+.graph-info {
+  position:fixed; bottom:1rem; right:1rem; z-index:5;
+  font-size:.75rem; color:var(--pico-muted-color);
+}
+
+.d-step-role { color:#a371f7; }
+.d-step-constraint { color:#d29922; }
+
+.detail-chip {
+  font-size:.7rem; padding:.1rem .35rem; margin:0 .15rem .15rem 0;
+  cursor:pointer; display:inline-block;
+}
+
+.detail-badge {
+  display:inline-block; font-size:.7rem; padding:.1rem .35rem; margin-right:.25rem;
+  border-radius:3px; font-weight:600;
+}
+
+.edge-labels text {
+  font-size:8px; font-family:system-ui,monospace;
+  text-anchor:middle; paint-order:stroke;
+}
+</style>
+</head>
+<body>
+
+<nav id="graph-nav">
+  <ul>
+    <li><strong>Improbib</strong></li>
+  </ul>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/status.html">Status</a></li>
+    <li><a href="/graph.html" aria-current="page">Graph</a></li>
+  </ul>
+</nav>
+
+<div id="graph">
+  <svg></svg>
+  <div id="tooltip"></div>
+  <div id="loading">Loading graph&hellip;</div>
+</div>
+
+<div id="legend">
+  <span style="color:#58a6ff">&#9679;</span> Element
+  <span style="color:#3fb950">&#9679;</span> Mechanic
+  <span style="color:#a371f7">&#9679;</span> Skill
+  <span style="color:#d29922">&#9679;</span> Tag
+  <span style="color:#8b949e">&#9679;</span> Source
+</div>
+
+<div id="searchBox">
+  <input type="search" id="search" placeholder="Search nodes...">
+  <small>&uarr;&darr; navigate, enter to select</small>
+</div>
+
+<div id="controls">
+  <button class="active" data-type="Element">Elements</button>
+  <button class="active" data-type="Mechanic">Mechanics</button>
+  <button class="active" data-type="Skill">Skills</button>
+  <button class="active" data-type="Tag">Tags</button>
+  <button class="active" data-type="Source">Sources</button>
+</div>
+
+<div class="graph-info">
+  <span id="infoNodes">0</span> nodes &middot; <span id="infoEdges">0</span> edges
+</div>
+
+<div id="detail">
+  <button onclick="closeDetail()" style="float:right;margin-bottom:.5rem">Close</button>
+  <div id="detailContent"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var COLORS={Element:"#58a6ff",Mechanic:"#3fb950",Skill:"#a371f7",Tag:"#d29922",Source:"#8b949e"};
+var RADIUS={Element:6,Mechanic:4,Skill:4,Tag:3,Source:3};
+var visible={Element:true,Mechanic:true,Skill:true,Tag:true,Source:true};
+var selected=null, graphData=null;
+var svgEl, gEl, sim, nodes=[], links=[], nodeById={}, linkByKey={}, edgeLabelG;
+
+function edgeTypeLabel(t){return{hasMechanic:"mechanic",trainsSkill:"skill",hasTag:"tag",translationOf:"translation",sourcedFrom:"source"}[t]||t}
+function edgeTypeColor(t){return{hasMechanic:"#3fb950",trainsSkill:"#a371f7",hasTag:"#d29922",translationOf:"#58a6ff"}[t]||"#8b949e"}
+var detailEl=document.getElementById("detailContent");
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+
+function loadGraph(){
+  fetch("/graph.json").then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    return r.json();
+  }).then(function(data){
+    graphData=data;
+    document.getElementById("infoNodes").textContent=data.meta.nodeCount;
+    document.getElementById("infoEdges").textContent=data.meta.edgeCount;
+    initGraph(data);
+    document.getElementById("loading").style.display="none";
+  }).catch(function(err){
+    document.getElementById("loading").textContent="Failed to load graph: "+err.message;
+  });
+}
+
+function initGraph(g){
+  nodes=[]; links=[]; nodeById={}; linkByKey={};
+
+  for(var i=0;i<g.nodes.length;i++){
+    var n=g.nodes[i];
+    var node={id:n.id,label:n.label,type:n.type,data:n,index:i};
+    nodes.push(node);
+    nodeById[n.id]=node;
+  }
+
+  for(var i=0;i<g.edges.length;i++){
+    var e=g.edges[i];
+    var s=nodeById[e.from], t=nodeById[e.to];
+    if(!s||!t)continue;
+    var key=e.from+"\u2192"+e.to;
+    if(linkByKey[key])continue;
+    linkByKey[key]=true;
+    links.push({source:e.from,target:e.to,type:e.type,confidence:e.confidence});
+  }
+
+  svgEl=d3.select("#graph svg");
+
+  var W=document.getElementById("graph").clientWidth||window.innerWidth;
+  var H=document.getElementById("graph").clientHeight||window.innerHeight;
+  svgEl.attr("width",W).attr("height",H).attr("viewBox",[-W/2,-H/2,W,H]);
+
+  gEl=svgEl.append("g");
+
+  var zoom=d3.zoom().scaleExtent([.15,6]).on("zoom",function(ev){gEl.attr("transform",ev.transform)});
+  svgEl.call(zoom);
+  svgEl.call(zoom.transform,d3.zoomIdentity.translate(W/2,H/2));
+
+  sim=d3.forceSimulation(nodes)
+    .force("link",d3.forceLink(links).id(function(d){return d.id}).distance(function(l){
+      if(l.type==="translationOf")return 80;
+      return 50;
+    }))
+    .force("charge",d3.forceManyBody().strength(function(d){
+      if(d.type==="Element")return -200;
+      if(d.type==="Tag")return -40;
+      return -100;
+    }))
+    .force("center",d3.forceCenter(0,0))
+    .force("collision",d3.forceCollide(10))
+    .alphaDecay(.02);
+
+  var linkG=gEl.append("g").attr("class","links").selectAll("line")
+    .data(links).join("line")
+    .attr("stroke","#3a3d47")
+    .attr("stroke-width",.5)
+    .attr("stroke-opacity",.15);
+
+  var nodeG=gEl.append("g").attr("class","nodes").selectAll("circle")
+    .data(nodes).join("circle")
+    .attr("r",function(d){return RADIUS[d.type]||3})
+    .attr("fill",function(d){return COLORS[d.type]||COLORS.Element})
+    .attr("stroke","var(--pico-background-color,#11191f)")
+    .attr("stroke-width",1)
+    .attr("opacity",function(d){return visible[d.type]?1:0})
+    .call(d3.drag()
+      .on("start",function(ev,d){if(!ev.active)sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y})
+      .on("drag",function(ev,d){d.fx=ev.x;d.fy=ev.y})
+      .on("end",function(ev,d){if(!ev.active)sim.alphaTarget(0);d.fx=null;d.fy=null}))
+    .on("click",function(ev,d){ev.stopPropagation();selectNode(d)})
+    .on("mouseenter",function(ev,d){
+      var tip=document.getElementById("tooltip");
+      tip.style.display="block";
+      tip.innerHTML="<strong>"+esc(d.label)+"</strong><br>"+d.type+(d.data.languageCode?" &middot; "+d.data.languageCode:"");
+    })
+    .on("mousemove",function(ev){
+      var tip=document.getElementById("tooltip");
+      tip.style.left=(ev.pageX+10)+"px";tip.style.top=(ev.pageY-28)+"px";
+    })
+    .on("mouseleave",function(){document.getElementById("tooltip").style.display="none"});
+
+  var labelG=gEl.append("g").attr("class","labels").selectAll("text")
+    .data(nodes.filter(function(d){return d.type==="Element"})).join("text")
+    .text(function(d){return d.label})
+    .attr("font-size",10).attr("font-family","system-ui,monospace")
+    .attr("fill","#6e7681").attr("text-anchor","middle")
+    .attr("dx",0).attr("dy",-10)
+    .attr("opacity",function(d){return visible[d.type]?.5:0});
+
+  edgeLabelG=gEl.append("g").attr("class","edge-labels");
+
+  sim.on("tick",function(){
+    linkG.attr("x1",function(d){return d.source.x}).attr("y1",function(d){return d.source.y})
+      .attr("x2",function(d){return d.target.x}).attr("y2",function(d){return d.target.y});
+    nodeG.attr("cx",function(d){return d.x}).attr("cy",function(d){return d.y});
+    labelG.attr("x",function(d){return d.x}).attr("y",function(d){return d.y});
+    edgeLabelG.selectAll("text")
+      .attr("x",function(d){return (d.source.x+d.target.x)/2})
+      .attr("y",function(d){return (d.source.y+d.target.y)/2});
+  });
+
+  svgEl.on("click",function(){deselect()});
+
+  window.addEventListener("resize",function(){
+    var W2=document.getElementById("graph").clientWidth;
+    var H2=document.getElementById("graph").clientHeight;
+    svgEl.attr("viewBox",[-W2/2,-H2/2,W2,H2]);
+  });
+}
+
+function selectNode(d){
+  selected=d;
+  document.getElementById("detail").classList.add("open");
+
+  var edgesSel=gEl.select(".links").selectAll("line");
+  var circles=gEl.select(".nodes").selectAll("circle");
+  var labels=gEl.select(".labels").selectAll("text");
+  var connected=new Set();connected.add(d.id);
+  for(var i=0;i<links.length;i++){
+    if(links[i].source.id===d.id||links[i].target.id===d.id){
+      connected.add(links[i].source.id);
+      connected.add(links[i].target.id);
+    }
+  }
+  edgesSel.attr("stroke-opacity",function(l){
+    return (l.source.id===d.id||l.target.id===d.id)?.8:
+      (connected.has(l.source.id)&&connected.has(l.target.id))?.3:.03;
+  }).attr("stroke-width",function(l){
+    return (l.source.id===d.id||l.target.id===d.id)?2.5:.5;
+  });
+  circles.attr("opacity",function(c){
+    return connected.has(c.id)?1:.06;
+  }).attr("stroke-width",function(c){
+    return c.id===d.id?3:1;
+  }).attr("stroke",function(c){
+    return c.id===d.id?"#fff":"var(--pico-background-color,#11191f)";
+  });
+  labels.attr("opacity",function(c){
+    return connected.has(c.id)&&c.type==="Element"?1:0;
+  });
+
+  // Edge labels for direct edges
+  var directLinks=links.filter(function(l){return l.source.id===d.id||l.target.id===d.id});
+  var eLabels=edgeLabelG.selectAll("text").data(directLinks,function(l){return l.source.id+"\u2192"+l.target.id});
+  eLabels.exit().remove();
+  var eEnter=eLabels.enter().append("text");
+  eEnter.merge(eLabels)
+    .text(function(l){return edgeTypeLabel(l.type)})
+    .attr("font-size",8).attr("font-family","system-ui,monospace").attr("text-anchor","middle")
+    .attr("fill",function(l){return edgeTypeColor(l.type)})
+    .attr("stroke","#11191f").attr("stroke-width",2).attr("paint-order","stroke")
+    .attr("dy",-4);
+
+  renderDetail(d);
+}
+
+function deselect(){
+  selected=null;
+  document.getElementById("detail").classList.remove("open");
+  edgeLabelG.selectAll("text").remove();
+  var edgesSel=gEl.select(".links").selectAll("line");
+  var circles=gEl.select(".nodes").selectAll("circle");
+  var labels=gEl.select(".labels").selectAll("text");
+  edgesSel.attr("stroke-opacity",.15).attr("stroke-width",.5);
+  circles.attr("opacity",function(d){return visible[d.type]?1:0}).attr("stroke-width",1).attr("stroke","var(--pico-background-color,#11191f)");
+  labels.attr("opacity",function(d){return visible[d.type]&&d.type==="Element"?.5:0});
+  sim.alpha(.1).restart();
+}
+
+window.closeDetail=function(){deselect()};
+
+function renderDetail(d){
+  var el=d.data;
+  var h='';
+
+  // Name
+  h+='<h3 style="margin-bottom:0">'+esc(el.label)+'</h3>';
+  h+='<small style="display:block;margin-bottom:.5rem">'+el.type;
+  if(el.languageCode)h+=' &middot; '+el.languageCode.toUpperCase();
+  if(el.sourceName)h+=' &middot; '+el.sourceName;
+  h+='</small>';
+
+  if(el.type==="Element"){
+    // Badges
+    h+='<div style="margin-bottom:.75rem">';
+    if(el.difficulty){
+      var dc={beginner:"#3fb950",intermediate:"#d29922",advanced:"#f85149"};
+      h+='<span class="detail-badge" style="background:'+(dc[el.difficulty]||"#3a3a4a")+'20;color:'+(dc[el.difficulty]||"#6e7681")+'">'+el.difficulty+'</span> ';
+    }
+    if(el.energyLevel){
+      var ec={low:"#3fb950",medium:"#d29922",high:"#f85149"};
+      h+='<span class="detail-badge" style="background:'+(ec[el.energyLevel]||"#3a3a4a")+'20;color:'+(ec[el.energyLevel]||"#6e7681")+'">'+el.energyLevel+'</span> ';
+    }
+    if(el.typicalDurationMinutes)h+='<small>'+el.typicalDurationMinutes+'min</small> ';
+    h+='<a href="'+esc(el.url)+'" target="_blank" style="font-size:.75rem">source &#8599;</a>';
+    h+='</div>';
+
+    // Description
+    h+='<p style="font-size:.9rem">'+esc(el.description)+'</p>';
+
+    // How to Play
+    if(el.howToPlay&&el.howToPlay.steps){
+      h+='<h4>How to Play</h4><ol>';
+      for(var i=0;i<el.howToPlay.steps.length;i++){
+        var s=el.howToPlay.steps[i];
+        h+='<li>'+esc(s.action);
+        if(s.role)h+=' <span class="d-step-role">('+esc(s.role)+')</span>';
+        if(s.constraint)h+=' <span class="d-step-constraint">['+esc(s.constraint)+']</span>';
+        h+='</li>';
+      }
+      h+='</ol>';
+    }
+
+    // Connected nodes
+    var connMechs=[],connSkills=[],connTags=[],connTrans=[];
+    for(var i=0;i<links.length;i++){
+      var l=links[i];
+      if(l.source.id===d.id||l.target.id===d.id){
+        var other=l.source.id===d.id?nodeById[l.target.id]:nodeById[l.source.id];
+        if(!other)continue;
+        if(l.type==="hasMechanic")connMechs.push(other);
+        else if(l.type==="trainsSkill")connSkills.push(other);
+        else if(l.type==="hasTag")connTags.push(other);
+        else if(l.type==="translationOf")connTrans.push(other);
+      }
+    }
+    if(connMechs.length)h+=chipSection("Mechanics",connMechs);
+    if(connSkills.length)h+=chipSection("Skills",connSkills);
+    if(connTags.length)h+=chipSection("Tags",connTags);
+    if(connTrans.length)h+=chipSection("Translations",connTrans);
+  } else {
+    // Non-element node: show connected elements
+    var connElements=[];
+    for(var i=0;i<links.length;i++){
+      var l=links[i];
+      if(l.source.id===d.id||l.target.id===d.id){
+        var other=l.source.id===d.id?nodeById[l.target.id]:nodeById[l.source.id];
+        if(other&&other.type==="Element")connElements.push(other);
+      }
+    }
+    h+='<p>Connected to <strong>'+connElements.length+'</strong> elements</p>';
+    if(connElements.length){
+      h+='<h4>Elements</h4><div style="display:flex;flex-wrap:wrap;gap:.25rem">';
+      connElements.sort(function(a,b){return a.label.localeCompare(b.label)});
+      var limit=Math.min(connElements.length,50);
+      for(var i=0;i<limit;i++){
+        h+='<button class="detail-chip outline secondary" data-nav="'+esc(connElements[i].id)+'" style="font-size:.7rem;padding:.1rem .4rem;line-height:1.4">'+esc(connElements[i].label)+'</button>';
+      }
+      if(connElements.length>50)h+='<small>+'+ (connElements.length-50)+' more</small>';
+      h+='</div>';
+    }
+  }
+
+  detailEl.innerHTML=h;
+}
+
+function chipSection(title,items){
+  var s='<h4>'+title+'</h4><div style="display:flex;flex-wrap:wrap;gap:.25rem">';
+  for(var i=0;i<items.length;i++){
+    s+='<button class="detail-chip outline secondary" data-nav="'+esc(items[i].id)+'" style="font-size:.7rem;padding:.1rem .4rem;line-height:1.4">'+esc(items[i].label)+'</button>';
+  }
+  s+='</div>';
+  return s;
+}
+
+detailEl.addEventListener("click",function(ev){
+  var t=ev.target;while(t&&!t.classList.contains("detail-chip"))t=t.parentElement;
+  if(t&&t.dataset.nav){
+    var n=nodeById[t.dataset.nav];
+    if(n)selectNode(n);
+  }
+});
+
+// Filter toggles
+document.getElementById("controls").addEventListener("click",function(ev){
+  var btn=ev.target.closest("button");
+  if(!btn||!btn.dataset.type)return;
+  var type=btn.dataset.type;
+  visible[type]=!visible[type];
+  btn.classList.toggle("active",visible[type]);
+  if(!sim)return;
+  gEl.select(".nodes").selectAll("circle").attr("opacity",function(d){return visible[d.type]?1:0});
+  gEl.select(".labels").selectAll("text").attr("opacity",function(d){return visible[d.type]&&d.type==="Element"?.5:0});
+  gEl.select(".links").selectAll("line").attr("stroke-opacity",function(l){
+    return visible[nodeById[l.source.id].type]&&visible[nodeById[l.target.id].type]?.15:.02;
+  });
+});
+
+// Search
+var searchResults=[], searchIdx=-1, searchActive=false;
+var searchEl=document.getElementById("search");
+
+function searchDimAll(){
+  if(!gEl||!sim)return;
+  gEl.select(".nodes").selectAll("circle")
+    .attr("stroke","var(--pico-background-color,#11191f)").attr("stroke-width",1)
+    .attr("opacity",function(d){return visible[d.type]?1:0});
+  gEl.select(".labels").selectAll("text")
+    .attr("font-weight","normal")
+    .attr("opacity",function(d){return visible[d.type]&&d.type==="Element"?.5:0});
+  gEl.select(".links").selectAll("line")
+    .attr("stroke-opacity",function(l){
+      return visible[nodeById[l.source.id].type]&&visible[nodeById[l.target.id].type]?.15:.02;
+    });
+}
+
+function searchApplyFilter(){
+  if(!gEl||!sim)return;
+  var matchSet={};
+  for(var i=0;i<searchResults.length;i++)matchSet[searchResults[i].id]=true;
+
+  gEl.select(".nodes").selectAll("circle")
+    .attr("stroke","var(--pico-background-color,#11191f)").attr("stroke-width",1)
+    .attr("opacity",function(d){return visible[d.type]?(matchSet[d.id]?1:.04):0});
+  gEl.select(".labels").selectAll("text")
+    .attr("font-weight","normal")
+    .attr("opacity",function(d){
+      if(!visible[d.type]||d.type!=="Element")return 0;
+      return matchSet[d.id]?.5:0;
+    });
+  gEl.select(".links").selectAll("line")
+    .attr("stroke-opacity",function(l){
+      var sv=visible[nodeById[l.source.id].type], tv=visible[nodeById[l.target.id].type];
+      if(!sv||!tv)return 0;
+      return (matchSet[l.source.id]||matchSet[l.target.id])?.15:.01;
+    });
+}
+
+function highlightSearch(){
+  if(!gEl||!sim||!searchResults.length)return;
+  if(searchIdx<0||!searchResults[searchIdx])return;
+  var d=searchResults[searchIdx];
+  gEl.select(".nodes").selectAll("circle")
+    .filter(function(nd){return nd.id===d.id})
+    .attr("stroke","#fff").attr("stroke-width",3);
+  gEl.select(".labels").selectAll("text")
+    .filter(function(nd){return nd.id===d.id})
+    .attr("font-weight","bold");
+  var tx=-d.x+document.getElementById("graph").clientWidth/2;
+  var ty=-d.y+document.getElementById("graph").clientHeight/2;
+  svgEl.transition().duration(300).call(d3.zoom().transform,d3.zoomIdentity.translate(tx,ty).scale(1));
+}
+
+searchEl.addEventListener("input",function(){
+  searchResults=[];
+  searchIdx=-1;
+  var q=this.value.trim().toLowerCase();
+  if(!q){
+    searchActive=false;
+    searchDimAll();
+    return;
+  }
+  searchActive=true;
+  for(var i=0;i<nodes.length;i++){
+    if(visible[nodes[i].type]&&nodes[i].label.toLowerCase().indexOf(q)>=0)searchResults.push(nodes[i]);
+  }
+  if(searchResults.length){
+    searchIdx=0;
+    searchApplyFilter();
+    highlightSearch();
+  } else {
+    searchApplyFilter();
+  }
+});
+
+searchEl.addEventListener("keydown",function(ev){
+  if(!searchActive||!searchResults.length)return;
+  if(ev.key==="ArrowDown"){searchIdx=Math.min(searchIdx+1,searchResults.length-1);searchApplyFilter();highlightSearch();ev.preventDefault()}
+  if(ev.key==="ArrowUp"){searchIdx=Math.max(searchIdx-1,0);searchApplyFilter();highlightSearch();ev.preventDefault()}
+  if(ev.key==="Enter"&&searchIdx>=0){
+    selectNode(searchResults[searchIdx]);
+    searchResults=[];searchIdx=-1;searchActive=false;
+    ev.preventDefault();
+  }
+  if(ev.key==="Escape"){
+    searchEl.value="";searchResults=[];searchIdx=-1;searchActive=false;
+    searchDimAll();searchEl.blur();
+    ev.preventDefault();
+  }
+});
+
+// Zoom to fit on load
+setTimeout(function(){
+  if(sim)sim.alpha(.3).restart();
+},500);
+
+// Load D3
+var d3Script=document.createElement("script");
+d3Script.src="https://cdn.jsdelivr.net/npm/d3@7";
+d3Script.async=true;
+d3Script.onload=function(){loadGraph()};
+d3Script.onerror=function(){
+  document.getElementById("loading").textContent="Could not load graph visualization. Try refreshing.";
+};
+document.head.appendChild(d3Script);
+
+// Timeout fallback
+setTimeout(function(){if(!graphData){
+  var lb=document.getElementById("loading");
+  if(lb&&lb.style.display!=="none")lb.textContent="Could not load graph. Try refreshing, or access /graph.json directly for raw data.";
+}},8000);
+})();
+</script>
+
+</body>
+</html>

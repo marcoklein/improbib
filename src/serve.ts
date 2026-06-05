@@ -106,10 +106,15 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
 
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      const htmlPath = path.join(import.meta.dir, "..", "public", "index.html");
-      const res = serveFile(htmlPath, req, "text/html; charset=utf-8");
-      if (res) return res;
+    if (url.pathname === "/" || url.pathname.endsWith(".html")) {
+      const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
+      const htmlPath = path.join(import.meta.dir, "..", "public", filePath);
+      if (existsSync(htmlPath)) {
+        const content = readFileSync(htmlPath, "utf-8");
+        return new Response(content, {
+          headers: { "content-type": "text/html; charset=utf-8", "access-control-allow-origin": "*" },
+        });
+      }
       return new Response("Not Found", { status: 404 });
     }
 

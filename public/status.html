@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
+<title>Improbib — Status</title>
+</head>
+<body>
+
+<header>
+  <nav>
+    <ul>
+      <li><strong>Improbib</strong></li>
+    </ul>
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/status.html" aria-current="page">Status</a></li>
+      <li><a href="/graph.html">Graph</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <hgroup>
+    <h1>Status</h1>
+    <p>Pipeline statistics and data freshness</p>
+  </hgroup>
+
+  <section>
+    <h2>Knowledge Graph</h2>
+    <table>
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody id="graph-stats"><tr><td colspan="2">Loading&hellip;</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Data Pipeline</h2>
+    <table>
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody id="pipeline-stats"><tr><td colspan="2">Loading&hellip;</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Sources</h2>
+    <table>
+      <thead><tr><th>Source</th><th>Status</th></tr></thead>
+      <tbody id="sources-stats"><tr><td colspan="2">Loading&hellip;</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+Promise.all([
+  fetch('/status').then(function(r){return r.json()}),
+  fetch('/graph.json').then(function(r){return r.json()})
+]).then(function(results){
+  var status = results[0];
+  var graph  = results[1];
+  var g = graph.meta;
+
+  document.getElementById('graph-stats').innerHTML = [
+    ['Total Nodes', g.nodeCount],
+    ['Total Edges', g.edgeCount],
+    ['Elements', g.elementCount],
+    ['Mechanics', g.mechanicCount],
+    ['Skills', g.skillCount],
+    ['Tags', g.tagCount],
+    ['Sources', g.sourceCount],
+    ['Graph derived', new Date(g.derivedAt).toLocaleString()],
+  ].map(function(r){return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'}).join('');
+
+  document.getElementById('pipeline-stats').innerHTML = [
+    ['Version', '<code>'+status.version.slice(0,8)+'</code>'],
+    ['Scraping', status.scrapeRunning ? 'Running&hellip;' : 'Idle'],
+    ['Normalization', status.normalizeRunning ? 'Running&hellip;' : 'Idle'],
+  ].map(function(r){return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'}).join('');
+
+  var rawSet = {};
+  status.sources.forEach(function(f){rawSet[f.replace('.json','')]=true});
+  var normSet = {};
+  status.normalizedSources.forEach(function(f){normSet[f.replace('.json','')]=true});
+
+  document.getElementById('sources-stats').innerHTML =
+    ['improwiki','learnimprov','ircwiki'].map(function(s){
+      var raw  = rawSet[s]  ? 'Scraped'   : 'Missing';
+      var norm = normSet[s] ? 'Normalized' : 'Pending';
+      return '<tr><td>'+s+'</td><td>'+raw+' &middot; '+norm+'</td></tr>';
+    }).join('');
+}).catch(function(err){
+  document.getElementById('graph-stats').innerHTML = '<tr><td colspan="2">Could not load data.</td></tr>';
+});
+</script>
+
+</body>
+</html>
