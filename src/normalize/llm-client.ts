@@ -103,7 +103,7 @@ export function createOpencodeGoClient(
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 32000, 1, true);
+      const text = await callApi(apiKey, model, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 16000, 1, true, false);
       return parseVocabularyResponse(text);
     },
   };
@@ -117,6 +117,7 @@ export async function callApi(
   maxTokens: number = 12000,
   retries: number = 3,
   retryEmpty: boolean = false,
+  jsonFormat: boolean = true,
 ): Promise<string> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
@@ -137,7 +138,7 @@ export async function callApi(
           { role: "system", content: systemMessage },
           { role: "user", content: userMessage },
         ],
-        response_format: { type: "json_object" },
+        ...(jsonFormat ? { response_format: { type: "json_object" } } : {}),
         max_tokens: maxTokens,
         temperature: 0,
       }),
