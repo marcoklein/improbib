@@ -97,13 +97,13 @@ async function runNormalizationChain() {
     return;
   }
   normalizeRunning = true;
-  console.log(`[${new Date().toISOString()}] Starting normalization chain (Stages 1-3 + graph)...`);
+  console.log(`[${new Date().toISOString()}] Starting normalization chain (Stages 1, 3, 4 + graph)...`);
 
   try {
     await scanner.normalizeAll();
-    console.log(`[${new Date().toISOString()}] Stages 1+2 complete.`);
+    console.log(`[${new Date().toISOString()}] Stage 1 (extraction) complete.`);
   } catch (err: any) {
-    console.error(`[${new Date().toISOString()}] Stages 1+2 failed:`, err.message);
+    console.error(`[${new Date().toISOString()}] Stage 1 failed:`, err.message);
   }
 
   try {
@@ -112,6 +112,14 @@ async function runNormalizationChain() {
     console.log(`[${new Date().toISOString()}] Stage 3 (vocabulary) complete.`);
   } catch (err: any) {
     console.error(`[${new Date().toISOString()}] Stage 3 (vocabulary) failed:`, err.message);
+  }
+
+  try {
+    const { dedupElementsStage } = await import("./normalize/normalize");
+    await dedupElementsStage();
+    console.log(`[${new Date().toISOString()}] Stage 4 (dedup) complete.`);
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] Stage 4 (dedup) failed:`, err.message);
   }
 
   try {
@@ -240,6 +248,24 @@ Bun.serve({
         console.error(`[${new Date().toISOString()}] Vocabulary normalization failed:`, err.message);
       });
       return jsonResponse({ status: "vocabulary normalization started" }, req);
+    }
+
+    if (url.pathname === "/api/dedup") {
+      console.log(`[${new Date().toISOString()}] Manual dedup trigger...`);
+      if (normalizeRunning) {
+        return jsonResponse({ status: "normalization in progress — try again later" }, req);
+      }
+      normalizeRunning = true;
+      import("./normalize/normalize").then(({ dedupElementsStage }) => {
+        return dedupElementsStage();
+      }).then(() => {
+        normalizeRunning = false;
+        console.log(`[${new Date().toISOString()}] Dedup complete.`);
+      }).catch((err: Error) => {
+        normalizeRunning = false;
+        console.error(`[${new Date().toISOString()}] Dedup failed:`, err.message);
+      });
+      return jsonResponse({ status: "dedup started" }, req);
     }
 
     if (url.pathname === "/vocabulary.json") {
