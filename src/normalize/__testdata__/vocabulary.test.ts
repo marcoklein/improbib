@@ -260,4 +260,17 @@ describe("canonicalizeVocabulary", () => {
     const result = canonicalizeVocabulary(elements);
     expect(result.mechanics[0].parent).toBeNull();
   });
+
+  it("does not cluster constraint-suffixed mechanics via stop-word filtering", () => {
+    const elements = [
+      makeElement(["letter avoidance constraint"], []),
+      makeElement(["dialogue constraint"], []),
+      makeElement(["singing constraint"], []),
+      makeElement(["alphabet constraint"], []),
+    ];
+
+    const result = canonicalizeVocabulary(elements);
+    // Each constraint mechanic should be its own cluster since "constraint" is a stop word
+    expect(result.mechanics.length).toBe(4);
+  });
 });

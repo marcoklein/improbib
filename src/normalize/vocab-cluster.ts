@@ -10,10 +10,6 @@ function normalizeTerm(t: string): string {
     .trim();
 }
 
-function tokenize(s: string): Set<string> {
-  return new Set(s.split(/\s+/).filter(w => w.length > 0));
-}
-
 function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
@@ -39,63 +35,8 @@ function levenshteinRatio(a: string, b: string): number {
   return 1 - levenshtein(a, b) / maxLen;
 }
 
-function tokenJaccard(a: string, b: string): number {
-  const ta = tokenize(a);
-  const tb = tokenize(b);
-  if (ta.size === 0 || tb.size === 0) return 0;
-
-  let intersection = 0;
-  for (const w of ta) {
-    if (tb.has(w)) intersection++;
-  }
-  const union = new Set([...ta, ...tb]).size;
-  return intersection / union;
-}
-
 function isEnglishTerm(t: string): boolean {
   return !/[äöüß]/.test(t.toLowerCase());
-}
-
-class UnionFind {
-  private parent: number[];
-  private rank: number[];
-
-  constructor(n: number) {
-    this.parent = Array.from({ length: n }, (_, i) => i);
-    this.rank = new Array(n).fill(0);
-  }
-
-  find(x: number): number {
-    if (this.parent[x] !== x) {
-      this.parent[x] = this.find(this.parent[x]);
-    }
-    return this.parent[x];
-  }
-
-  union(x: number, y: number): void {
-    const rx = this.find(x);
-    const ry = this.find(y);
-    if (rx === ry) return;
-    if (this.rank[rx] < this.rank[ry]) {
-      this.parent[rx] = ry;
-    } else if (this.rank[rx] > this.rank[ry]) {
-      this.parent[ry] = rx;
-    } else {
-      this.parent[ry] = rx;
-      this.rank[rx]++;
-    }
-  }
-
-  groups(): Map<number, number[]> {
-    const groupMap = new Map<number, number[]>();
-    for (let i = 0; i < this.parent.length; i++) {
-      const root = this.find(i);
-      const g = groupMap.get(root) || [];
-      g.push(i);
-      groupMap.set(root, g);
-    }
-    return groupMap;
-  }
 }
 
 interface TermMeta {
@@ -140,7 +81,7 @@ function buildTranslationSeeds(
 }
 
 function pickCanonical(
-  clusterTerms: string[],
+  _clusterTerms: string[],
   originalTerms: string[],
   meta: Map<string, TermMeta>,
   seedCanonicals: Set<string>,
@@ -176,47 +117,102 @@ function pickCanonical(
   return candidates[0]!;
 }
 
+const MECH_STOP_WORDS = new Set(["constraint"]);
+
+function tokenizeForMech(s: string): Set<string> {
+  const tokens = s.split(/\s+/).filter(w => w.length > 0);
+  return new Set(tokens.filter(t => !MECH_STOP_WORDS.has(t)));
+}
+
+function tokenizeForSkill(s: string): Set<string> {
+  return new Set(s.split(/\s+/).filter(w => w.length > 0));
+}
+
+function tokenJaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const w of a) {
+    if (b.has(w)) intersection++;
+  }
+  const union = new Set([...a, ...b]).size;
+  return intersection / union;
+}
+
+function scoreMatch(
+  normI: string,
+  normJ: string,
+  tokensI: Set<string>,
+  tokensJ: Set<string>,
+  options: { jaccardThreshold: number; levenshteinThreshold: number },
+): number {
+  const jaccard = tokenJaccard(tokensI, tokensJ);
+  if (jaccard >= options.jaccardThreshold) return jaccard;
+
+  if (normI.length <= 15 && normJ.length <= 15) {
+    const ratio = levenshteinRatio(normI, normJ);
+    if (ratio >= options.levenshteinThreshold) return ratio;
+  }
+
+  return -1;
+}
+
 function clusterTerms(
   terms: string[],
   meta: Map<string, TermMeta>,
   seedCanonicals: Set<string>,
   options: { jaccardThreshold: number; levenshteinThreshold: number },
+  kind: "mechanics" | "skills",
 ): VocabularyCluster[] {
   if (terms.length === 0) return [];
 
+  const tokenizeFn = kind === "mechanics" ? tokenizeForMech : tokenizeForSkill;
   const normalized = terms.map(t => normalizeTerm(t));
-  const uf = new UnionFind(terms.length);
+  const tokenSets = normalized.map(t => tokenizeFn(t));
 
-  for (let i = 0; i < terms.length; i++) {
-    for (let j = i + 1; j < terms.length; j++) {
-      const jaccard = tokenJaccard(normalized[i], normalized[j]);
-      if (jaccard >= options.jaccardThreshold) {
-        uf.union(i, j);
-        continue;
-      }
+  // Sort by frequency descending — frequent terms make better cluster seeds
+  const indices = Array.from({ length: terms.length }, (_, i) => i);
+  indices.sort((a, b) => {
+    const ca = meta.get(terms[a].toLowerCase())?.count ?? 0;
+    const cb = meta.get(terms[b].toLowerCase())?.count ?? 0;
+    return cb - ca;
+  });
 
-      if (normalized[i].length <= 15 && normalized[j].length <= 15) {
-        const ratio = levenshteinRatio(normalized[i], normalized[j]);
-        if (ratio >= options.levenshteinThreshold) {
-          uf.union(i, j);
+  const clusters: { members: number[] }[] = [];
+
+  for (const i of indices) {
+    let bestCluster = -1;
+    let bestScore = -1;
+
+    for (let c = 0; c < clusters.length; c++) {
+      for (const member of clusters[c].members) {
+        const score = scoreMatch(normalized[i], normalized[member], tokenSets[i], tokenSets[member], options);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCluster = c;
         }
+        if (score >= 0.9) break; // great match, no need to look further
       }
+    }
+
+    if (bestCluster >= 0 && bestScore >= 0) {
+      clusters[bestCluster].members.push(i);
+    } else {
+      clusters.push({ members: [i] });
     }
   }
 
-  const groups = uf.groups();
-  const clusters: VocabularyCluster[] = [];
+  const result: VocabularyCluster[] = [];
 
-  for (const [, indices] of groups) {
-    const groupTerms = indices.map(i => terms[i]).filter(t => t.length > 0);
+  for (const cluster of clusters) {
+    const groupTerms = cluster.members.map(i => terms[i]).filter(t => t.length > 0);
     const originalNames = [...new Set(groupTerms)];
     const canonical = pickCanonical(groupTerms, originalNames, meta, seedCanonicals);
     const variants = originalNames.filter(t => t.toLowerCase() !== canonical.toLowerCase());
 
-    clusters.push({ canonical, variants, parent: null });
+    result.push({ canonical, variants, parent: null });
   }
 
-  return clusters;
+  return result;
 }
 
 function collectTermMeta(elements: NormalizedElement[]): {
@@ -333,12 +329,12 @@ export function canonicalizeVocabulary(
   const mechClusters = clusterTerms(remainingMechs, mechMeta, seedCanonicals, {
     jaccardThreshold: 0.5,
     levenshteinThreshold: 0.6,
-  });
+  }, "mechanics");
 
   const skillClusters = clusterTerms(remainingSkills, skillMeta, seedCanonicals, {
     jaccardThreshold: 0.5,
     levenshteinThreshold: 0.6,
-  });
+  }, "skills");
 
   for (const [deTerm, enCanonical] of seeds.mechMap) {
     let found = false;
