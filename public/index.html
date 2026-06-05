@@ -25,7 +25,7 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
 .mermaid{margin:4px 0 0;text-align:center}
 .mermaid svg{max-height:100px}
 
-#graph{flex:1;position:relative;overflow:hidden;min-height:0}
+#graph{flex:1;position:relative;overflow:hidden;min-height:400px}
 #graph svg{width:100%;height:100%}
 #graph canvas{position:absolute;top:0;left:0}
 
@@ -178,10 +178,10 @@ function initGraph(g){
  }
 
  svgEl=d3.select("#graph svg");
- svgEl.selectAll("*").remove();
 
- var W=document.getElementById("graph").clientWidth;
- var H=document.getElementById("graph").clientHeight;
+ var W=document.getElementById("graph").clientWidth||window.innerWidth;
+ var H=document.getElementById("graph").clientHeight||window.innerHeight-150;
+ svgEl.attr("width",W).attr("height",H).attr("viewBox",[-W/2,-H/2,W,H]);
 
  var zoom=d3.zoom().scaleExtent([.15,6]).on("zoom",function(ev){gEl.attr("transform",ev.transform)});
  svgEl.call(zoom);
@@ -463,7 +463,16 @@ var d3Script=document.createElement("script");
 d3Script.src="https://cdn.jsdelivr.net/npm/d3@7";
 d3Script.async=true;
 d3Script.onload=function(){loadGraph()};
+d3Script.onerror=function(){showFallback()};
 document.head.appendChild(d3Script);
+
+// Fallback if D3 fails to load within 8 seconds
+setTimeout(function(){if(!graphData)showFallback()},8000);
+
+function showFallback(){
+ var lb=document.getElementById("loading");
+ if(lb)lb.textContent="Could not load graph visualization. Try refreshing, or access /graph.json directly for raw data.";
+}
 })();
 </script>
 </body>
