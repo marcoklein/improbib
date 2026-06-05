@@ -366,12 +366,18 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
     allNormalized.push(...elements);
   }
 
-  // Compute terms hash for caching
+  // Compute terms hash for caching — use original names to avoid hash drift from canonicalization
   const allMechSet = new Set<string>();
   const allSkillSet = new Set<string>();
   for (const el of allNormalized) {
-    for (const m of el.normalized.mechanics) { if (m.name) allMechSet.add(m.name.toLowerCase()); }
-    for (const s of el.normalized.skills) { if (s.name) allSkillSet.add(s.name.toLowerCase()); }
+    for (const m of el.normalized.mechanics) {
+      const name = m.originalName || m.name;
+      if (name) allMechSet.add(name.toLowerCase());
+    }
+    for (const s of el.normalized.skills) {
+      const name = s.originalName || s.name;
+      if (name) allSkillSet.add(name.toLowerCase());
+    }
   }
   const allMech = [...allMechSet].sort();
   const allSkill = [...allSkillSet].sort();
