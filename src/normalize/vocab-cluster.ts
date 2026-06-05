@@ -158,12 +158,17 @@ function pickCanonical(
     if (aSeeded && !bSeeded) return -1;
     if (!aSeeded && bSeeded) return 1;
 
+    if (countA !== countB) return countB - countA;
+
+    const aMulti = a.includes(" ");
+    const bMulti = b.includes(" ");
+    if (aMulti && !bMulti) return -1;
+    if (!aMulti && bMulti) return 1;
+
     const aEng = isEnglishTerm(a);
     const bEng = isEnglishTerm(b);
     if (aEng && !bEng) return -1;
     if (!aEng && bEng) return 1;
-
-    if (countA !== countB) return countB - countA;
 
     return a.length - b.length;
   });
@@ -190,7 +195,7 @@ function clusterTerms(
         continue;
       }
 
-      if (normalized[i].length <= 10 && normalized[j].length <= 10) {
+      if (normalized[i].length <= 15 && normalized[j].length <= 15) {
         const ratio = levenshteinRatio(normalized[i], normalized[j]);
         if (ratio >= options.levenshteinThreshold) {
           uf.union(i, j);

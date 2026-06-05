@@ -48,12 +48,20 @@ export function applyCanonicalTerms(elements: NormalizedElement[], vocab: Vocabu
         if (canonical && canonical !== m.name) {
           return { ...m, originalName: m.name, name: canonical };
         }
+        if (m.originalName) {
+          const { originalName: _, ...rest } = m;
+          return rest;
+        }
         return m;
       }),
       skills: el.normalized.skills.map(s => {
         const canonical = skillMap.get(s.name.toLowerCase());
         if (canonical && canonical !== s.name) {
           return { ...s, originalName: s.name, name: canonical };
+        }
+        if (s.originalName) {
+          const { originalName: _, ...rest } = s;
+          return rest;
         }
         return s;
       }),
