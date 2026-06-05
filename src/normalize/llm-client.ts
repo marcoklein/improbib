@@ -121,7 +121,8 @@ export function createOpencodeGoClient(
 
 function isCreditExhausted(status: number, body: string): boolean {
   if (status === 402) return true;
-  if ((status === 403 || status === 429) && /insufficient|quota|credit|balance|exhausted|limit.*reached/i.test(body)) return true;
+  if ((status === 403 || status === 429) && /insufficient|quota|credit|balance|usage.?limit|FreeUsageLimitError/i.test(body)) return true;
+  if (status === 429 && /rate.?limit.*exceeded|usage.*exceeded/i.test(body)) return true;
   return false;
 }
 

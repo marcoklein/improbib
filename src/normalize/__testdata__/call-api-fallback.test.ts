@@ -70,6 +70,22 @@ describe("callApi model fallback", () => {
     expect(calls).toBeGreaterThanOrEqual(2);
   });
 
+  it("falls back on HTTP 429 with FreeUsageLimitError (actual opencode.ai format)", async () => {
+    let calls = 0;
+    globalThis.fetch = mock((_input: string, init: RequestInit) => {
+      calls++;
+      const body = JSON.parse(init.body as string);
+      if (body.model === "model-a") {
+        return Promise.resolve(makeErrorResponse(429, '{"type":"error","error":{"type":"FreeUsageLimitError","message":"Rate limit exceeded. Please try again later."}}'));
+      }
+      return Promise.resolve(makeSuccessResponse('{"result": "ok"}'));
+    }) as unknown as typeof fetch;
+
+    const result = await callApi("test-key", ["model-a", "model-b"], "system", "user", 1000, 0);
+    expect(result).toBe('{"result": "ok"}');
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
   it("falls back on HTTP 429 with credit keyword in body", async () => {
     let calls = 0;
     globalThis.fetch = mock((_input: string, init: RequestInit) => {
