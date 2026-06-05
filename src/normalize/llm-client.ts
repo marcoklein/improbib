@@ -132,7 +132,7 @@ export async function callApi(
       await new Promise(r => setTimeout(r, delay));
     }
 
-    const resp = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
+    const resp = await fetch("https://opencode.ai/zen/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
