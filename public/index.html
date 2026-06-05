@@ -5,63 +5,63 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Improbib — Knowledge Graph</title>
 <style>
-:root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d37;--text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;--purple:#a371f7}
+:root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d37;--text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;--purple:#a371f7;--tag:#3a3a4a}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
-/* INFO HEADER */
-#info{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 20px 8px;flex-shrink:0;position:relative;transition:padding .2s}
-#info.collapsed{padding:8px 20px}
-#info h1{font-size:16px;font-weight:700;margin-bottom:2px;color:var(--text)}
-#info .subtitle{font-size:12px;color:var(--muted);margin-bottom:10px}
+#info{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px 8px;flex-shrink:0;position:relative;transition:padding .2s}
+#info.collapsed{padding:4px 20px}
+#info h1{font-size:15px;font-weight:700;margin-bottom:1px}
+#info .subtitle{font-size:11px;color:var(--muted);margin-bottom:4px}
 #info .subtitle a{color:var(--accent);text-decoration:none}
-#info .subtitle a:hover{text-decoration:underline}
-#info .pipeline{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:11px}
-#info .pipeline .step{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;text-align:center;min-width:100px;line-height:1.3}
-#info .pipeline .step strong{display:block;font-size:12px;margin-bottom:2px}
-#info .pipeline .step em{color:var(--muted);font-style:normal;font-size:10px}
-#info .pipeline .arrow{font-size:16px;color:var(--muted);margin:0 2px}
-#info .toggle{position:absolute;top:8px;right:12px;background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:14px;width:24px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;line-height:1}
+#info .toggle{position:absolute;top:8px;right:12px;background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:13px;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center}
 #info .toggle:hover{color:var(--text);border-color:var(--accent)}
-#info.collapsed .pipeline,#info.collapsed h1{display:none}
-#info.collapsed .subtitle{margin-bottom:0;font-size:11px}
+#info.collapsed .subtitle,#info.collapsed .mermaid,#info.collapsed .pipeline{display:none}
+.pipeline{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;font-size:10px}
+.pipeline .step{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 8px;text-align:center;min-width:80px;line-height:1.2}
+.pipeline .step strong{display:block;font-size:11px;margin-bottom:1px}
+.pipeline .step em{color:var(--muted);font-style:normal;font-size:9px}
+.pipeline .arrow{font-size:14px;color:var(--muted);margin:0 1px}
+.mermaid{margin:4px 0 0;text-align:center}
+.mermaid svg{max-height:100px}
 
-/* GRAPH BROWSER (below info) */
-#browser{flex:1;display:flex;overflow:hidden;min-height:0}
-#list{width:360px;min-width:280px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-#filters{padding:10px;border-bottom:1px solid var(--border);background:var(--surface)}
-#filters input{width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;outline:none;font:inherit}
-#filters input:focus{border-color:var(--accent)}
-#chips{padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border);min-height:30px;font-size:11px}
-.chip{font-size:11px;padding:2px 7px;border-radius:3px;cursor:pointer;border:1px solid var(--border);white-space:nowrap;color:var(--muted)}
-.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-#count{padding:8px 10px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)}
-#elements{flex:1;overflow-y:auto}
-.el{padding:10px;border-bottom:1px solid var(--border);cursor:pointer}
-.el:hover,.el.active{background:var(--surface)}
-.el.active{border-left:3px solid var(--accent);padding-left:7px}
-.el-name{font-weight:600;margin-bottom:2px}
-.el-meta{font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center}
-.el-tags{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
-.el-tag{font-size:10px;padding:1px 5px;background:var(--border);border-radius:2px;color:var(--muted)}
-.badge{font-size:10px;padding:1px 6px;border-radius:2px;font-weight:600;display:inline-block}
+#graph{flex:1;position:relative;overflow:hidden;min-height:0}
+#graph svg{width:100%;height:100%}
+#graph canvas{position:absolute;top:0;left:0}
+
+#controls{position:absolute;bottom:12px;left:12px;display:flex;gap:6px;flex-wrap:wrap;z-index:10}
+#controls button{background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit}
+#controls button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#controls button:hover:not(.on){border-color:var(--accent);color:var(--text)}
+#searchBox{position:absolute;top:12px;right:12px;z-index:10}
+#searchBox input{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:4px;outline:none;font:inherit;font-size:12px;width:200px}
+#searchBox input:focus{border-color:var(--accent)}
+#searchBox .hint{color:var(--muted);font-size:10px;margin-top:2px;text-align:right}
+#legend{position:absolute;top:12px;left:12px;display:flex;gap:10px;font-size:10px;z-index:10;background:rgba(15,17,23,.8);padding:4px 8px;border-radius:4px}
+#legend span{display:flex;align-items:center;gap:4px}
+#legend .dot{width:8px;height:8px;border-radius:50%}
+
+#detail{position:absolute;top:0;right:-420px;width:400px;height:100%;background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;z-index:20;transition:right .25s;padding:16px}
+#detail.open{right:0}
+#detail .close{position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:14px;width:24px;height:24px;border-radius:4px}
+#detail .close:hover{color:var(--text)}
+.d-name{font-size:18px;font-weight:700;margin-bottom:2px;padding-right:30px}
+.d-type{font-size:11px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+.d-meta{font-size:11px;color:var(--muted);margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap}
+.d-desc{line-height:1.5;margin-bottom:14px;font-size:12px}
+.d-section{margin-bottom:12px}
+.d-section h3{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.5px;margin-bottom:4px;border-bottom:1px solid var(--border);padding-bottom:3px}
+.d-steps{list-style:decimal inside;line-height:1.5;font-size:12px}
+.d-steps li{margin-bottom:3px}
+.d-step-role{color:var(--purple)}.d-step-constraint{color:var(--orange)}
+.chip-set{display:flex;flex-wrap:wrap;gap:3px}
+.chip{font-size:10px;padding:2px 6px;border-radius:2px;cursor:pointer;border:1px solid var(--border);white-space:nowrap;color:var(--muted)}
+.chip:hover{border-color:var(--accent);color:var(--text)}
+.badge{font-size:10px;padding:1px 5px;border-radius:2px;font-weight:600;display:inline-block}
 .badge-b{background:#1a3a5c;color:var(--accent)}.badge-i{background:#3a2e1a;color:var(--orange)}.badge-a{background:#3a1a1a;color:var(--red)}
 .badge-lo{background:#1a2e1a;color:var(--green)}.badge-me{background:#2e2e1a;color:var(--orange)}.badge-hi{background:#3a1a1a;color:var(--red)}
-#detail{flex:1;overflow-y:auto;padding:20px;min-width:400px}
-.d-name{font-size:20px;font-weight:700;margin-bottom:4px}
-.d-meta{font-size:12px;color:var(--muted);margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-.d-desc{line-height:1.6;margin-bottom:16px}
-.d-section{margin-bottom:16px}
-.d-section h3{font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.5px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
-.d-steps{list-style:decimal inside;line-height:1.6}
-.d-steps li{margin-bottom:4px}
-.d-step-role{color:var(--purple)}.d-step-constraint{color:var(--orange)}
-.chip-set{display:flex;flex-wrap:wrap;gap:4px}
-.empty{color:var(--muted);text-align:center;padding:40px 20px}
-.loading{color:var(--muted);text-align:center;padding:60px}
-.err{color:var(--red);padding:20px;font-size:12px;white-space:pre-wrap}
-.mermaid{margin:4px 0;text-align:center}
-.mermaid svg{max-height:140px}
+.err{color:var(--red);padding:20px;text-align:center;font-size:12px;margin-top:40px}
+.tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);padding:4px 8px;border-radius:4px;font-size:11px;pointer-events:none;z-index:30;display:none;color:var(--text)}
 </style>
 </head>
 <body>
@@ -69,51 +69,53 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
  <button class="toggle" id="toggleBtn" title="Toggle info">−</button>
  <h1>Improbib</h1>
  <div class="subtitle">
-  A knowledge graph of improvisational theatre — derived from open web sources via scraping, LLM extraction, and deterministic clustering.
+  A knowledge graph of improvisational theatre derived from open web sources.
   <a href="https://github.com/marcoklein/improbib" target="_blank">GitHub ↗</a>
+  &middot; Nodes <span id="infoNodes">0</span> &middot; Edges <span id="infoEdges">0</span>
  </div>
  <div class="pipeline">
-  <div class="step"><strong>3 Sources</strong><em>improwiki · learnimprov<br/>ircwiki (~1355 elements)</em></div>
+  <div class="step"><strong>3 Sources</strong><em>improwiki · learnimprov<br/>ircwiki</em></div>
   <span class="arrow">→</span>
-  <div class="step"><strong>Scrape</strong><em>Raw HTML<br/>+ translation links</em></div>
+  <div class="step"><strong>Scrape</strong><em>Raw HTML<br/>+ metadata</em></div>
   <span class="arrow">→</span>
-  <div class="step"><strong>Normalize</strong><em>LLM extracts<br/>mechanics·skills·steps</em></div>
+  <div class="step"><strong>Normalize</strong><em>LLM extracts<br/>mech·skill·steps</em></div>
   <span class="arrow">→</span>
   <div class="step"><strong>Vocab</strong><em>Canonical<br/>synonym groups</em></div>
   <span class="arrow">→</span>
-  <div class="step"><strong>Graph</strong><em>Nodes: Element<br/>Mechanic·Skill·Tag</em></div>
+  <div class="step"><strong>Graph</strong><em>Element·Mech<br/>Skill·Tag·Source</em></div>
   <span class="arrow">→</span>
-  <div class="step"><strong>Apps</strong><em>Workshop Planner<br/>Element Browser</em></div>
+  <div class="step"><strong>Apps</strong><em>Workshop Planner<br/>Browser</em></div>
  </div>
  <div class="mermaid" id="pipelineDiagram"></div>
- <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
- <script>
- mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{
-  background:'#1a1d27',primaryColor:'#0f1117',primaryTextColor:'#c9d1d9',
-  primaryBorderColor:'#2a2d37',lineColor:'#6e7681',secondaryColor:'#1a1d27',
-  tertiaryColor:'#1a1d27',fontSize:'13px',fontFamily:'system-ui,monospace'
- }});
- document.getElementById("pipelineDiagram").textContent=`flowchart LR
-  S["3 Source Websites<br/>improwiki · learnimprov · ircwiki<br/><i>~1355 improv elements</i>"]
-  L1["Layer 1: Scrape<br/>Raw HTML + metadata<br/>translation links resolved"]
-  L15["Layer 1.5: Normalize<br/>LLM extracts structured fields<br/>mechanics · skills · steps"]
-  V["Vocabulary<br/>Deterministic clustering<br/>canonical synonym groups"]
-  L2["Layer 2: Knowledge Graph<br/>Element · Mechanic · Skill<br/>Tag · Source nodes"]
-  L3["Layer 3: Applications<br/>Workshop Planner<br/>Element Browser"]
-  S --> L1 --> L15 --> L2 --> L3
-  L15 --> V --> L2`;
- mermaid.run({nodes:[document.getElementById("pipelineDiagram")]});
- </script>
 </div>
 
-<div id="browser">
-<div id="list">
- <div id="filters"><input type="search" id="search" placeholder="Filter by name..." autofocus></div>
- <div id="chips"></div>
- <div id="count"></div>
- <div id="elements"><div class="loading">Loading graph...</div></div>
+<div id="graph">
+ <svg></svg>
+ <div class="tooltip" id="tooltip"></div>
+ <div id="legend">
+  <span><span class="dot" style="background:var(--accent)"></span>Element</span>
+  <span><span class="dot" style="background:var(--green)"></span>Mechanic</span>
+  <span><span class="dot" style="background:var(--purple)"></span>Skill</span>
+  <span><span class="dot" style="background:var(--tag)"></span>Tag</span>
+  <span><span class="dot" style="background:var(--muted)"></span>Source</span>
+ </div>
+ <div id="searchBox">
+  <input type="search" id="search" placeholder="Search nodes..." autofocus>
+  <div class="hint">type to search, ↑↓ to navigate, enter to select</div>
+ </div>
+ <div id="controls">
+  <button class="on" data-type="Element" onclick="toggleType(this)">Elements</button>
+  <button class="on" data-type="Mechanic" onclick="toggleType(this)">Mechanics</button>
+  <button class="on" data-type="Skill" onclick="toggleType(this)">Skills</button>
+  <button class="on" data-type="Tag" onclick="toggleType(this)">Tags</button>
+  <button class="on" data-type="Source" onclick="toggleType(this)">Sources</button>
+ </div>
+ <div class="err" id="loading">Loading graph...</div>
 </div>
-<div id="detail"><div class="empty">Select an element</div></div>
+
+<div id="detail">
+ <button class="close" onclick="closeDetail()">×</button>
+ <div id="detailContent"></div>
 </div>
 
 <script>
@@ -128,228 +130,340 @@ document.getElementById("toggleBtn").addEventListener("click",function(){
 <script>
 "use strict";
 (function(){
-var DIFF=["beginner","intermediate","advanced"];
-var ENERGY=["low","medium","high"];
-
-var elList=document.getElementById("elements");
-var elCount=document.getElementById("count");
-var elChips=document.getElementById("chips");
-var elDetail=document.getElementById("detail");
-var elSearch=document.getElementById("search");
-
-var g=null, byId={}, elements=[], allTags=[];
-var mechEdge={}, skillEdge={}, tagEdge={}, transEdge={};
-var activeTags={}, activeDiff={}, activeEnergy={};
-var activeMech=null, activeSkill=null, query="";
-var selectedId=null;
+var COLORS={Element:"#58a6ff",Mechanic:"#3fb950",Skill:"#a371f7",Tag:"#5a5a6a",Source:"#6e7681"};
+var RADIUS={Element:6,Mechanic:4,Skill:4,Tag:3,Source:3};
+var visible={Element:true,Mechanic:true,Skill:true,Tag:true,Source:true};
+var selected=null, graphData=null;
+var svgEl, gEl, sim, nodes=[], links=[], nodeById={}, linkByKey={};
+var detailEl=document.getElementById("detailContent");
+var tooltip=document.getElementById("tooltip");
+var searchEl=document.getElementById("search");
 
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 
-function showError(msg){
- elList.innerHTML='<div class="err">'+esc(msg)+'</div>';
+function loadGraph(){
+ fetch("/graph.json").then(function(r){
+  if(!r.ok)throw new Error("HTTP "+r.status);
+  return r.json();
+ }).then(function(data){
+  graphData=data;
+  document.getElementById("infoNodes").textContent=data.meta.nodeCount;
+  document.getElementById("infoEdges").textContent=data.meta.edgeCount;
+  initGraph(data);
+  document.getElementById("loading").style.display="none";
+ }).catch(function(err){
+  document.getElementById("loading").textContent="Failed to load graph: "+err.message;
+ });
 }
 
-elSearch.oninput=function(){query=this.value;render();};
+function initGraph(g){
+ nodes=[]; links=[]; nodeById={}; linkByKey={};
 
-fetch("/graph.json").then(function(r){
- if(!r.ok)throw new Error("HTTP "+r.status);
- return r.json();
-}).then(function(data){
- g=data;
- var nodes=g.nodes, edges=g.edges;
- byId={};
- for(var i=0;i<nodes.length;i++)byId[nodes[i].id]=nodes[i];
- elements=[];
- for(var i=0;i<nodes.length;i++)if(nodes[i].type==="Element")elements.push(nodes[i]);
- allTags=[];
- for(var i=0;i<nodes.length;i++)if(nodes[i].type==="Tag")allTags.push(nodes[i].label);
- allTags.sort();
-
- tagEdge={}; mechEdge={}; skillEdge={};
- for(var k=0;k<allTags.length;k++)tagEdge[allTags[k]]=[];
- for(var j=0;j<edges.length;j++){
-  var e=edges[j];
-  if(e.type==="hasTag"){var tn=byId[e.to];if(tn&&tagEdge[tn.label])tagEdge[tn.label].push(e.from)}
-  if(e.type==="hasMechanic"){var mn=byId[e.to];if(mn){var mk=mn.label;if(!mechEdge[mk])mechEdge[mk]=[];mechEdge[mk].push(e.from)}}
-  if(e.type==="trainsSkill"){var sn=byId[e.to];if(sn){var sk=sn.label;if(!skillEdge[sk])skillEdge[sk]=[];skillEdge[sk].push(e.from)}}
+ for(var i=0;i<g.nodes.length;i++){
+  var n=g.nodes[i];
+  var node={id:n.id,label:n.label,type:n.type,data:n,index:i};
+  nodes.push(node);
+  nodeById[n.id]=node;
  }
- transEdge={};
- for(var j=0;j<edges.length;j++){
-  var e=edges[j];
-  if(e.type==="translationOf"){
-   if(!transEdge[e.from])transEdge[e.from]=[];
-   transEdge[e.from].push(e.to);
+
+ for(var i=0;i<g.edges.length;i++){
+  var e=g.edges[i];
+  var s=nodeById[e.from], t=nodeById[e.to];
+  if(!s||!t)continue;
+  var key=e.from+"→"+e.to;
+  if(linkByKey[key])continue;
+  linkByKey[key]=true;
+  var link={source:e.from,target:e.to,type:e.type,confidence:e.confidence};
+  links.push(link);
+ }
+
+ svgEl=d3.select("#graph svg");
+ svgEl.selectAll("*").remove();
+
+ var W=document.getElementById("graph").clientWidth;
+ var H=document.getElementById("graph").clientHeight;
+
+ var zoom=d3.zoom().scaleExtent([.15,6]).on("zoom",function(ev){gEl.attr("transform",ev.transform)});
+ svgEl.call(zoom);
+ svgEl.call(zoom.transform,d3.zoomIdentity.translate(W/2,H/2));
+
+ gEl=svgEl.append("g");
+
+ sim=d3.forceSimulation(nodes)
+  .force("link",d3.forceLink(links).id(function(d){return d.id}).distance(function(l){
+   if(l.type==="translationOf")return 80;
+   return 50;
+  }))
+  .force("charge",d3.forceManyBody().strength(function(d){
+   if(d.type==="Element")return -200;
+   if(d.type==="Tag")return -40;
+   return -100;
+  }))
+  .force("center",d3.forceCenter(0,0))
+  .force("collision",d3.forceCollide(10))
+  .alphaDecay(.02);
+
+ var linkG=gEl.append("g").attr("class","links").selectAll("line")
+  .data(links).join("line")
+  .attr("stroke",function(l){return COLORS[l.type==="translationOf"?"translation":"muted"]||"var(--border)"})
+  .attr("stroke-width",function(l){return l.type==="translationOf"?1.5:.5})
+  .attr("stroke-opacity",function(l){return l.confidence===1?.6:.15});
+
+ var nodeG=gEl.append("g").attr("class","nodes").selectAll("circle")
+  .data(nodes).join("circle")
+  .attr("r",function(d){return RADIUS[d.type]||3})
+  .attr("fill",function(d){return COLORS[d.type]||COLORS.Element})
+  .attr("stroke","var(--bg)")
+  .attr("stroke-width",1)
+  .attr("opacity",function(d){return visible[d.type]?1:0})
+  .call(d3.drag()
+   .on("start",function(ev,d){if(!ev.active)sim.alphaTarget(.3).restart();d.fx=d.x;d.fy=d.y})
+   .on("drag",function(ev,d){d.fx=ev.x;d.fy=ev.y})
+   .on("end",function(ev,d){if(!ev.active)sim.alphaTarget(0);d.fx=null;d.fy=null}))
+  .on("click",function(ev,d){ev.stopPropagation();selectNode(d)})
+  .on("mouseenter",function(ev,d){
+   tooltip.style.display="block";
+   tooltip.innerHTML="<strong>"+esc(d.label)+"</strong><br>"+d.type+(d.data.languageCode?" &middot; "+d.data.languageCode:"");
+  })
+  .on("mousemove",function(ev){tooltip.style.left=(ev.pageX+10)+"px";tooltip.style.top=(ev.pageY-28)+"px"})
+  .on("mouseleave",function(){tooltip.style.display="none"});
+
+ var labelG=gEl.append("g").attr("class","labels").selectAll("text")
+  .data(nodes.filter(function(d){return d.type==="Element"})).join("text")
+  .text(function(d){return d.label})
+  .attr("font-size",10).attr("font-family","system-ui,monospace")
+  .attr("fill","var(--muted)").attr("text-anchor","middle")
+  .attr("dx",0).attr("dy",-10)
+  .attr("opacity",function(d){return visible[d.type]?1:0});
+
+ sim.on("tick",function(){
+  linkG.attr("x1",function(d){return d.source.x}).attr("y1",function(d){return d.source.y})
+   .attr("x2",function(d){return d.target.x}).attr("y2",function(d){return d.target.y});
+  nodeG.attr("cx",function(d){return d.x}).attr("cy",function(d){return d.y});
+  labelG.attr("x",function(d){return d.x}).attr("y",function(d){return d.y});
+ });
+
+ svgEl.on("click",function(){deselect()});
+
+ window.addEventListener("resize",function(){
+  var W2=document.getElementById("graph").clientWidth;
+  var H2=document.getElementById("graph").clientHeight;
+  svgEl.attr("viewBox",[-W2/2,-H2/2,W2,H2]);
+ });
+}
+
+function selectNode(d){
+ selected=d;
+ document.getElementById("detail").classList.add("open");
+
+ var edges=gEl.select(".links").selectAll("line");
+ var circles=gEl.select(".nodes").selectAll("circle");
+ var labels=gEl.select(".labels").selectAll("text");
+ var connected=new Set();connected.add(d.id);
+ for(var i=0;i<links.length;i++){
+  if(links[i].source.id===d.id||links[i].target.id===d.id){
+   connected.add(links[i].source.id);
+   connected.add(links[i].target.id);
+  }
+ }
+ edges.attr("stroke-opacity",function(l){
+  return (l.source.id===d.id||l.target.id===d.id)?.8:
+   (connected.has(l.source.id)&&connected.has(l.target.id))?.3:.05;
+ }).attr("stroke-width",function(l){
+  return (l.source.id===d.id||l.target.id===d.id)?2.5:.5;
+ });
+ circles.attr("opacity",function(c){
+  return connected.has(c.id)?1:.08;
+ }).attr("stroke-width",function(c){
+  return c.id===d.id?3:1;
+ }).attr("stroke",function(c){
+  return c.id===d.id?"#fff":"var(--bg)";
+ });
+ labels.attr("opacity",function(c){
+  return connected.has(c.id)&&c.type==="Element"?1:0;
+ });
+
+ renderDetail(d);
+}
+
+function deselect(){
+ selected=null;
+ document.getElementById("detail").classList.remove("open");
+ var edges=gEl.select(".links").selectAll("line");
+ var circles=gEl.select(".nodes").selectAll("circle");
+ var labels=gEl.select(".labels").selectAll("text");
+ edges.attr("stroke-opacity",function(l){return l.confidence===1?.6:.15}).attr("stroke-width",.5);
+ circles.attr("opacity",function(d){return visible[d.type]?1:0}).attr("stroke-width",1).attr("stroke","var(--bg)");
+ labels.attr("opacity",function(d){return visible[d.type]&&d.type==="Element"?.5:0});
+ sim.alpha(.1).restart();
+}
+
+window.closeDetail=function(){deselect()};
+
+function renderDetail(d){
+ var el=d.data;
+ var h='<div class="d-name">'+esc(el.label)+'</div>';
+ h+='<div class="d-type">'+el.type+(el.languageCode?' &middot; '+el.languageCode.toUpperCase():"")+(el.sourceName?' &middot; '+el.sourceName:"")+'</div>';
+
+ if(el.type==="Element"){
+  if(el.difficulty)h+='<span class="badge badge-'+el.difficulty[0]+'">'+el.difficulty+'</span> ';
+  if(el.energyLevel)h+='<span class="badge badge-'+el.energyLevel.substring(0,2)+'">'+el.energyLevel+'</span> ';
+  if(el.typicalDurationMinutes)h+='<span>'+el.typicalDurationMinutes+'min</span> ';
+  h+='<a href="'+esc(el.url)+'" target="_blank" style="color:var(--accent);font-size:11px">source ↗</a>';
+  h+='</div><div class="d-desc">'+esc(el.description)+'</div>';
+
+  if(el.howToPlay&&el.howToPlay.steps){
+   h+='<div class="d-section"><h3>How to Play</h3><ol class="d-steps">';
+   for(var i=0;i<el.howToPlay.steps.length;i++){
+    var s=el.howToPlay.steps[i];
+    h+='<li>'+esc(s.action);
+    if(s.role)h+=' <span class="d-step-role">('+esc(s.role)+')</span>';
+    if(s.constraint)h+=' <span class="d-step-constraint">['+esc(s.constraint)+']</span>';
+    h+='</li>';
+   }
+   h+='</ol></div>';
+  }
+
+  // Connected nodes
+  var connMechs=[],connSkills=[],connTags=[],connTrans=[];
+  for(var i=0;i<links.length;i++){
+   var l=links[i];
+   if(l.source.id===d.id||l.target.id===d.id){
+    var other=l.source.id===d.id?nodeById[l.target.id]:nodeById[l.source.id];
+    if(!other)continue;
+    if(l.type==="hasMechanic")connMechs.push(other);
+    else if(l.type==="trainsSkill")connSkills.push(other);
+    else if(l.type==="hasTag")connTags.push(other);
+    else if(l.type==="translationOf")connTrans.push(other);
+   }
+  }
+  if(connMechs.length)h+=section("Mechanics",connMechs);
+  if(connSkills.length)h+=section("Skills",connSkills);
+  if(connTags.length)h+=section("Tags",connTags);
+  if(connTrans.length)h+=section("Translations",connTrans);
+ } else{
+  // Non-element node: show connected elements
+  var connElements=[];
+  for(var i=0;i<links.length;i++){
+   var l=links[i];
+   if(l.source.id===d.id||l.target.id===d.id){
+    var other=l.source.id===d.id?nodeById[l.target.id]:nodeById[l.source.id];
+    if(other&&other.type==="Element")connElements.push(other);
+   }
+  }
+  h+='<div class="d-desc">Connected to '+connElements.length+' elements</div>';
+  if(connElements.length){
+   h+='<div class="d-section"><h3>Elements</h3><div class="chip-set">';
+   connElements.sort(function(a,b){return a.label.localeCompare(b.label)});
+   for(var i=0;i<connElements.length&&i<50;i++)h+='<span class="chip" data-nav="'+esc(connElements[i].id)+'">'+esc(connElements[i].label)+'</span>';
+   if(connElements.length>50)h+='<span class="chip">+'+ (connElements.length-50)+' more</span>';
+   h+='</div></div>';
   }
  }
 
- renderChips();
- render();
- selectFirst();
-}).catch(function(err){
- showError("Failed to load graph: "+err.message+"\n\nCheck that graph derivation has been run: POST /api/graph");
-});
-
-function renderChips(){
- var h="";
- for(var i=0;i<DIFF.length;i++){var d=DIFF[i];h+='<span class="chip'+(activeDiff[d]?' on':'')+'" data-diff="'+esc(d)+'">'+d[0]+'</span>'}
- h+='<span style="color:var(--border);margin:0 4px">|</span>';
- for(var i=0;i<ENERGY.length;i++){var en=ENERGY[i];h+='<span class="chip'+(activeEnergy[en]?' on':'')+'" data-energy="'+esc(en)+'">'+en+'</span>';
- h+='<span style="color:var(--border);margin:0 4px">|</span>';
- if(activeMech)h+='<span class="chip on" data-clear="mech">'+esc(activeMech)+'</span>';
- if(activeSkill)h+='<span class="chip on" data-clear="skill">'+esc(activeSkill)+'</span>';
- var ta=[];
- for(var t in activeTags)if(activeTags[t])ta.push(t);
- ta.sort();
- for(var i=0;i<ta.length;i++)h+='<span class="chip on" data-clear="tag" data-tag="'+esc(ta[i])+'">#'+esc(ta[i])+'</span>';
- if(!h)h='<span style="color:var(--muted);font-size:11px">Click mechanics/skills/tags in detail to filter</span>';
- elChips.innerHTML=h;
+ detailEl.innerHTML=h;
 }
 
-elChips.addEventListener("click",function(ev){
- var t=ev.target;
- if(!t||!t.classList.contains("chip"))return;
- if(t.dataset.diff){var d=t.dataset.diff;if(activeDiff[d])delete activeDiff[d];else activeDiff[d]=true;renderChips();render();reselect();return}
- if(t.dataset.energy){var en=t.dataset.energy;if(activeEnergy[en])delete activeEnergy[en];else activeEnergy[en]=true;renderChips();render();reselect();return}
- if(t.dataset.clear==="mech"){activeMech=null;renderChips();render();reselect();return}
- if(t.dataset.clear==="skill"){activeSkill=null;renderChips();render();reselect();return}
- if(t.dataset.clear==="tag"){var tg=t.dataset.tag;delete activeTags[tg];renderChips();render();reselect();return}
-});
-
-function render(){
- var es=[];
- for(var i=0;i<elements.length;i++){
-  var el=elements[i];
-  if(query&&el.label.toLowerCase().indexOf(query.toLowerCase())<0)continue;
-  var ad=0;for(var d in activeDiff)if(activeDiff[d])ad++;
-  if(ad>0&&(!el.difficulty||!activeDiff[el.difficulty]))continue;
-  var ae=0;for(var e in activeEnergy)if(activeEnergy[e])ae++;
-  if(ae>0&&(!el.energyLevel||!activeEnergy[el.energyLevel]))continue;
-  if(activeMech&&(!mechEdge[activeMech]||mechEdge[activeMech].indexOf(el.id)<0))continue;
-  if(activeSkill&&(!skillEdge[activeSkill]||skillEdge[activeSkill].indexOf(el.id)<0))continue;
-  var ok=true;
-  for(var t in activeTags){if(activeTags[t]&&el.tags.indexOf(t)<0){ok=false;break}}
-  if(!ok)continue;
-  es.push(el);
- }
- es.sort(function(a,b){return a.label.localeCompare(b.label)});
- elCount.textContent=es.length+" elements";
-
- if(es.length===0){elList.innerHTML='<div class="empty">No elements match</div>';return}
- var h="";
- for(var i=0;i<es.length;i++){
-  var el=es[i];
-  var cls="el"+(el.id===selectedId?" active":"");
-  var d=el.difficulty?'<span class="badge badge-'+el.difficulty[0]+'">'+el.difficulty[0]+'</span> ':'';
-  var en=el.energyLevel?'<span class="badge badge-'+el.energyLevel.substring(0,2)+'">'+el.energyLevel+'</span> ':'';
-  var dur=el.typicalDurationMinutes?'<span>'+el.typicalDurationMinutes+'min</span> ':'';
-  var tgs="";
-  for(var j=0;j<el.tags.length&&j<4;j++)tgs+='<span class="el-tag">'+esc(el.tags[j])+'</span>';
-  h+='<div class="'+cls+'" data-id="'+esc(el.id)+'">';
-  h+='<div class="el-name">'+esc(el.label)+'</div>';
-  h+='<div class="el-meta">'+d+en+dur+'<span style="color:var(--muted)">'+esc(el.languageCode)+' &middot; '+esc(el.sourceName)+'</span></div>';
-  h+='<div class="el-tags">'+tgs+'</div></div>';
- }
- elList.innerHTML=h;
+function section(title,items){
+ var s='<div class="d-section"><h3>'+title+'</h3><div class="chip-set">';
+ for(var i=0;i<items.length;i++)s+='<span class="chip" data-nav="'+esc(items[i].id)+'">'+esc(items[i].label)+'</span>';
+ s+='</div></div>';
+ return s;
 }
 
-function reselect(){if(selectedId)showDetail(selectedId)}
-function selectFirst(){
- var first=elList.querySelector(".el");
- if(first)showDetail(first.dataset.id);
-}
-
-elList.addEventListener("click",function(ev){
- var el=ev.target;while(el&&!el.classList.contains("el"))el=el.parentElement;
- if(el)showDetail(el.dataset.id);
-});
-
-function showDetail(id){
- selectedId=id;
- var ds=document.querySelectorAll(".el");
- for(var i=0;i<ds.length;i++)ds[i].classList.toggle("active",ds[i].dataset.id===id);
-
- var el=byId[id];
- if(!el){elDetail.innerHTML='<div class="empty">Element not found</div>';return}
-
- var trs=transEdge[id]||[];
- var trHtml="";
- for(var i=0;i<trs.length;i++){
-  var tn=byId[trs[i]];
-  if(tn)trHtml+='<span class="chip" data-nav="'+esc(tn.id)+'">'+esc(tn.label)+' ('+esc(tn.languageCode)+')</span>';
- }
-
- var diff=el.difficulty?'<span class="badge badge-'+el.difficulty[0]+'">'+el.difficulty+'</span> ':'';
- var energy=el.energyLevel?'<span class="badge badge-'+el.energyLevel.substring(0,2)+'">'+el.energyLevel+'</span> ':'';
- var dur=el.typicalDurationMinutes?'<span>'+el.typicalDurationMinutes+' min</span> ':'';
-
- var mechs=[];
- for(var i=0;i<g.edges.length;i++){var e=g.edges[i];if(e.type==="hasMechanic"&&e.from===id){var mn=byId[e.to];if(mn)mechs.push(mn.label)}}
- var skills=[];
- for(var i=0;i<g.edges.length;i++){var e=g.edges[i];if(e.type==="trainsSkill"&&e.from===id){var sn=byId[e.to];if(sn)skills.push(sn.label)}}
-
- var h='';
- h+='<div class="d-name">'+esc(el.label)+'</div>';
- h+='<div class="d-meta">'+diff+energy+dur+'<span>'+esc(el.languageCode.toUpperCase())+' &middot; '+esc(el.sourceName)+'</span> <a href="'+esc(el.url)+'" target="_blank" style="color:var(--accent)">source</a></div>';
- h+='<div class="d-desc">'+esc(el.description)+'</div>';
-
- if(el.howToPlay&&el.howToPlay.steps){
-  h+='<div class="d-section"><h3>How to Play</h3><ol class="d-steps">';
-  for(var i=0;i<el.howToPlay.steps.length;i++){
-   var s=el.howToPlay.steps[i];
-   h+='<li>'+esc(s.action);
-   if(s.role)h+=' <span class="d-step-role">('+esc(s.role)+')</span>';
-   if(s.constraint)h+=' <span class="d-step-constraint">['+esc(s.constraint)+']</span>';
-   h+='</li>';
-  }
-  h+='</ol></div>';
- }
-
- if(mechs.length){
-  h+='<div class="d-section"><h3>Mechanics</h3><div class="chip-set">';
-  for(var i=0;i<mechs.length;i++)h+='<span class="chip" data-filter="mech" data-name="'+esc(mechs[i])+'">'+esc(mechs[i])+'</span>';
-  h+='</div></div>';
- }
- if(skills.length){
-  h+='<div class="d-section"><h3>Skills</h3><div class="chip-set">';
-  for(var i=0;i<skills.length;i++)h+='<span class="chip" data-filter="skill" data-name="'+esc(skills[i])+'">'+esc(skills[i])+'</span>';
-  h+='</div></div>';
- }
- if(el.tags.length){
-  h+='<div class="d-section"><h3>Tags</h3><div class="chip-set">';
-  for(var i=0;i<el.tags.length;i++)h+='<span class="chip" data-filter="tag" data-name="'+esc(el.tags[i])+'">#'+esc(el.tags[i])+'</span>';
-  h+='</div></div>';
- }
- if(trHtml){
-  h+='<div class="d-section"><h3>Translations</h3><div class="chip-set">'+trHtml+'</div></div>';
- }
-
- elDetail.innerHTML=h;
-}
-
-elDetail.addEventListener("click",function(ev){
- var t=ev.target;
- if(!t||!t.classList.contains("chip"))return;
- if(t.dataset.nav){showDetail(t.dataset.nav);return}
- if(t.dataset.filter==="mech"){
-  activeMech=t.dataset.name===activeMech?null:t.dataset.name;
-  activeDiff={};activeEnergy={};activeTags={};activeSkill=null;
-  renderChips();render();reselect();
-  return;
- }
- if(t.dataset.filter==="skill"){
-  activeSkill=t.dataset.name===activeSkill?null:t.dataset.name;
-  activeDiff={};activeEnergy={};activeTags={};activeMech=null;
-  renderChips();render();reselect();
-  return;
- }
- if(t.dataset.filter==="tag"){
-  var tag=t.dataset.name;
-  if(activeTags[tag])delete activeTags[tag];else activeTags[tag]=true;
-  activeMech=null;activeSkill=null;
-  renderChips();render();reselect();
-  return;
+detailEl.addEventListener("click",function(ev){
+ var t=ev.target;while(t&&!t.classList.contains("chip"))t=t.parentElement;
+ if(t&&t.dataset.nav){
+  var n=nodeById[t.dataset.nav];
+  if(n)selectNode(n);
  }
 });
+
+window.toggleType=function(btn){
+ var type=btn.dataset.type;
+ visible[type]=!visible[type];
+ btn.classList.toggle("on",visible[type]);
+ if(!sim)return;
+ gEl.select(".nodes").selectAll("circle").attr("opacity",function(d){return visible[d.type]?1:0});
+ gEl.select(".labels").selectAll("text").attr("opacity",function(d){return visible[d.type]&&d.type==="Element"?.5:0});
+ gEl.select(".links").selectAll("line").attr("stroke-opacity",function(l){
+  return visible[nodeById[l.source.id].type]&&visible[nodeById[l.target.id].type]?.15:.02;
+ });
+};
+
+// Search
+var searchResults=[], searchIdx=-1;
+searchEl.addEventListener("input",function(){
+ searchResults=[];
+ searchIdx=-1;
+ var q=this.value.toLowerCase();
+ if(!q)return;
+ for(var i=0;i<nodes.length;i++){
+  if(visible[nodes[i].type]&&nodes[i].label.toLowerCase().indexOf(q)>=0)searchResults.push(nodes[i]);
+ }
+ if(searchResults.length)highlightSearch();
+});
+
+searchEl.addEventListener("keydown",function(ev){
+ if(!searchResults.length)return;
+ if(ev.key==="ArrowDown"){searchIdx=Math.min(searchIdx+1,searchResults.length-1);highlightSearch();ev.preventDefault()}
+ if(ev.key==="ArrowUp"){searchIdx=Math.max(searchIdx-1,0);highlightSearch();ev.preventDefault()}
+ if(ev.key==="Enter"&&searchIdx>=0){selectNode(searchResults[searchIdx]);searchResults=[];searchIdx=-1;ev.preventDefault()}
+});
+
+function highlightSearch(){
+ gEl.select(".nodes").selectAll("circle").attr("stroke","var(--bg)").attr("stroke-width",1);
+ gEl.select(".labels").selectAll("text").attr("font-weight","normal");
+ if(searchIdx>=0&&searchResults[searchIdx]){
+  var d=searchResults[searchIdx];
+  // Pan
+  var tx=-d.x+document.getElementById("graph").clientWidth/2;
+  var ty=-d.y+document.getElementById("graph").clientHeight/2;
+  svgEl.transition().duration(400).call(d3.zoom().transform,d3.zoomIdentity.translate(tx,ty).scale(1));
+  // Highlight
+  gEl.select(".nodes").selectAll("circle").filter(function(nd){return nd.id===d.id})
+   .attr("stroke","#fff").attr("stroke-width",3);
+  gEl.select(".labels").selectAll("text").filter(function(nd){return nd.id===d.id})
+   .attr("font-weight","bold");
+ }
+}
+
+// Zoom to fit on load
+setTimeout(function(){
+ if(sim)sim.alpha(.3).restart();
+},500);
+
+// Mermaid (async, non-blocking)
+var mmScript=document.createElement("script");
+mmScript.src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
+mmScript.async=true;
+mmScript.onload=function(){
+ if(typeof mermaid==="undefined")return;
+ mermaid.initialize({startOnLoad:false,theme:'dark',themeVariables:{
+  background:'#1a1d27',primaryColor:'#0f1117',primaryTextColor:'#c9d1d9',
+  primaryBorderColor:'#2a2d37',lineColor:'#6e7681',secondaryColor:'#1a1d27',
+  tertiaryColor:'#1a1d27',fontSize:'11px',fontFamily:'system-ui,monospace'
+ }});
+ var el=document.getElementById("pipelineDiagram");
+ el.textContent=`flowchart LR
+  S["3 Sources<br/>improwiki·learnimprov·ircwiki"]
+  L1["Scrape<br/>Raw HTML+metadata"]
+  L15["Normalize<br/>LLM extraction"]
+  V["Vocabulary<br/>Canonical clusters"]
+  L2["Knowledge Graph<br/>Nodes+Edges"]
+  L3["Applications<br/>Workshop Planner"]
+  S-->L1-->L15-->L2-->L3
+  L15-->V-->L2`;
+ mermaid.run({nodes:[el]});
+};
+document.head.appendChild(mmScript);
+
+// D3
+var d3Script=document.createElement("script");
+d3Script.src="https://cdn.jsdelivr.net/npm/d3@7";
+d3Script.async=true;
+d3Script.onload=function(){loadGraph()};
+document.head.appendChild(d3Script);
 })();
 </script>
 </body>
