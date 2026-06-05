@@ -12,22 +12,20 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
 #filters{padding:10px;border-bottom:1px solid var(--border);background:var(--surface)}
 #filters input{width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;outline:none;font:inherit}
 #filters input:focus{border-color:var(--accent)}
-#chips{padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border);min-height:30px}
-.chip{font-size:11px;padding:2px 7px;border-radius:3px;cursor:pointer;border:1px solid var(--border);white-space:nowrap}
+#chips{padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border);min-height:30px;font-size:11px}
+.chip{font-size:11px;padding:2px 7px;border-radius:3px;cursor:pointer;border:1px solid var(--border);white-space:nowrap;color:var(--muted)}
 .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #count{padding:8px 10px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)}
 #elements{flex:1;overflow-y:auto}
-.el{padding:10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
-.el:hover{background:var(--surface)}
-.el.active{background:var(--surface);border-left:3px solid var(--accent);padding-left:7px}
+.el{padding:10px;border-bottom:1px solid var(--border);cursor:pointer}
+.el:hover,.el.active{background:var(--surface)}
+.el.active{border-left:3px solid var(--accent);padding-left:7px}
 .el-name{font-weight:600;margin-bottom:2px}
 .el-meta{font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center}
 .el-tags{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
 .el-tag{font-size:10px;padding:1px 5px;background:var(--border);border-radius:2px;color:var(--muted)}
-.badge{font-size:10px;padding:1px 6px;border-radius:2px;font-weight:600}
-.badge-b{background:#1a3a5c;color:var(--accent)}
-.badge-i{background:#3a2e1a;color:var(--orange)}
-.badge-a{background:#3a1a1a;color:var(--red)}
+.badge{font-size:10px;padding:1px 6px;border-radius:2px;font-weight:600;display:inline-block}
+.badge-b{background:#1a3a5c;color:var(--accent)}.badge-i{background:#3a2e1a;color:var(--orange)}.badge-a{background:#3a1a1a;color:var(--red)}
 .badge-lo{background:#1a2e1a;color:var(--green)}.badge-me{background:#2e2e1a;color:var(--orange)}.badge-hi{background:#3a1a1a;color:var(--red)}
 #detail{flex:1;overflow-y:auto;padding:20px;min-width:400px}
 .d-name{font-size:20px;font-weight:700;margin-bottom:4px}
@@ -41,6 +39,7 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
 .chip-set{display:flex;flex-wrap:wrap;gap:4px}
 .empty{color:var(--muted);text-align:center;padding:40px 20px}
 .loading{color:var(--muted);text-align:center;padding:60px}
+.err{color:var(--red);padding:20px;font-size:12px;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -51,173 +50,231 @@ body{font:13px/1.5 system-ui,monospace;background:var(--bg);color:var(--text);di
  <div id="elements"><div class="loading">Loading graph...</div></div>
 </div>
 <div id="detail"><div class="empty">Select an element</div></div>
-
 <script>
-(async function(){
-const DIFF=["beginner","intermediate","advanced"];
-const ENERGY=["low","medium","high"];
+"use strict";
+(function(){
+var DIFF=["beginner","intermediate","advanced"];
+var ENERGY=["low","medium","high"];
 
-const r=await fetch("/graph.json");
-const g=await r.json();
-const nodes=g.nodes;
-const edges=g.edges;
+var elList=document.getElementById("elements");
+var elCount=document.getElementById("count");
+var elChips=document.getElementById("chips");
+var elDetail=document.getElementById("detail");
+var elSearch=document.getElementById("search");
 
-const byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
-const elements=nodes.filter(n=>n.type==="Element");
-const tags=[...new Set(nodes.filter(n=>n.type==="Tag").map(n=>n.label))].sort();
+var g=null, byId={}, elements=[], allTags=[];
+var mechEdge={}, skillEdge={}, tagEdge={}, transEdge={};
+var activeTags={}, activeDiff={}, activeEnergy={};
+var activeMech=null, activeSkill=null, query="";
+var selectedId=null;
 
-// Indexes
-const tagEdge=Object.fromEntries(tags.map(t=>[t,[]]));
-const mechEdge={}; const skillEdge={};
-for(const e of edges){
- if(e.type==="hasTag"){const t=byId[e.to];if(t)tagEdge[t.label].push(e.from)}
- if(e.type==="hasMechanic"){const m=byId[e.to];if(m){const k=m.label;mechEdge[k]=mechEdge[k]||[];mechEdge[k].push(e.from)}}
- if(e.type==="trainsSkill"){const s=byId[e.to];if(s){const k=s.label;skillEdge[k]=skillEdge[k]||[];skillEdge[k].push(e.from)}}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+
+function showError(msg){
+ elList.innerHTML='<div class="err">'+esc(msg)+'</div>';
 }
 
-// Translation index
-const trans=new Map();
-for(const e of edges)if(e.type==="translationOf")trans.set(e.from,(trans.get(e.from)||[]).concat(e.to));
+elSearch.oninput=function(){query=this.value;render();};
 
-// Filter state
-let query="",activeTags=new Set(),activeDiff=new Set(),activeEnergy=new Set(),activeMech=null,activeSkill=null;
+fetch("/graph.json").then(function(r){
+ if(!r.ok)throw new Error("HTTP "+r.status);
+ return r.json();
+}).then(function(data){
+ g=data;
+ var nodes=g.nodes, edges=g.edges;
+ byId={};
+ for(var i=0;i<nodes.length;i++)byId[nodes[i].id]=nodes[i];
+ elements=[];
+ for(var i=0;i<nodes.length;i++)if(nodes[i].type==="Element")elements.push(nodes[i]);
+ allTags=[];
+ for(var i=0;i<nodes.length;i++)if(nodes[i].type==="Tag")allTags.push(nodes[i].label);
+ allTags.sort();
 
-function update(){
- let es=elements.filter(el=>{
-  if(query&&!el.label.toLowerCase().includes(query.toLowerCase()))return false;
-  if(activeTags.size&&![...activeTags].every(t=>el.tags.includes(t)))return false;
-  if(activeDiff.size&&!activeDiff.has(el.difficulty))return false;
-  if(activeEnergy.size&&!activeEnergy.has(el.energyLevel))return false;
-  if(activeMech&&!mechEdge[activeMech]?.includes(el.id))return false;
-  if(activeSkill&&!skillEdge[activeSkill]?.includes(el.id))return false;
-  return true;
- });
+ tagEdge={}; mechEdge={}; skillEdge={};
+ for(var k=0;k<allTags.length;k++)tagEdge[allTags[k]]=[];
+ for(var j=0;j<edges.length;j++){
+  var e=edges[j];
+  if(e.type==="hasTag"){var tn=byId[e.to];if(tn&&tagEdge[tn.label])tagEdge[tn.label].push(e.from)}
+  if(e.type==="hasMechanic"){var mn=byId[e.to];if(mn){var mk=mn.label;if(!mechEdge[mk])mechEdge[mk]=[];mechEdge[mk].push(e.from)}}
+  if(e.type==="trainsSkill"){var sn=byId[e.to];if(sn){var sk=sn.label;if(!skillEdge[sk])skillEdge[sk]=[];skillEdge[sk].push(e.from)}}
+ }
+ transEdge={};
+ for(var j=0;j<edges.length;j++){
+  var e=edges[j];
+  if(e.type==="translationOf"){
+   if(!transEdge[e.from])transEdge[e.from]=[];
+   transEdge[e.from].push(e.to);
+  }
+ }
 
- // Sort: name
- es.sort((a,b)=>a.label.localeCompare(b.label));
-
- document.getElementById("count").textContent=`${es.length} elements`;
-
- const list=document.getElementById("elements");
- list.innerHTML=es.length?es.map(e=>{
-  const d=e.difficulty?`<span class="badge badge-${d[0]}">${d[0]}</span>`:"";
-  const en=e.energyLevel?`<span class="badge badge-${en[0]}">${en}</span>`:"";
-  const dur=e.typicalDurationMinutes?`<span>${e.typicalDurationMinutes}min</span>`:"";
-  const tagBadges=(e.tags||[]).slice(0,3).map(t=>`<span class="el-tag">${t}</span>`).join("");
-  return `<div class="el" data-id="${e.id}" onclick="selectEl('${e.id}')">
-   <div class="el-name">${esc(e.label)}</div>
-   <div class="el-meta">${d}${en}${dur} <span style="color:var(--muted)">${e.languageCode} · ${e.sourceName}</span></div>
-   <div class="el-tags">${tagBadges}</div>
-  </div>`;
- }).join(""):"<div class='empty'>No elements match</div>";
-}
-
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c])}
-
-function renderDetail(el){
- const d=document.getElementById("detail");
- const trs=trans.get(el.id)||[];
- const trLinks=trs.map(tid=>{
-  const tn=byId[tid];
-  return tn?`<span class="chip" onclick="selectEl('${tid}')">${esc(tn.label)} (${tn.languageCode})</span>`:"";
- }).join("");
-
- const diff=el.difficulty?`<span class="badge badge-${el.difficulty[0]}">${el.difficulty}</span>`:"";
- const energy=el.energyLevel?`<span class="badge badge-${el.energyLevel[0]}">${el.energyLevel}</span>`:"";
- const dur=el.typicalDurationMinutes?`<span>${el.typicalDurationMinutes} min</span>`:"";
-
- // Get mechanics and skills from edges
- const mechs=edges.filter(e=>e.type==="hasMechanic"&&e.from===el.id).map(e=>byId[e.to]?.label).filter(Boolean);
- const skills=edges.filter(e=>e.type==="trainsSkill"&&e.from===el.id).map(e=>byId[e.to]?.label).filter(Boolean);
- const elTags=el.tags||[];
-
- const steps=el.howToPlay?.steps;
- const stepsHtml=steps?`<ol class="d-steps">${steps.map(s=>`<li>${esc(s.action)}${s.role?` <span class="d-step-role">(${esc(s.role)})</span>`:""}${s.constraint?` <span class="d-step-constraint">[${esc(s.constraint)}]</span>`:""}</li>`).join("")}</ol>`:"";
-
- d.innerHTML=`
-  <div class="d-name">${esc(el.label)}</div>
-  <div class="d-meta">${diff}${energy}${dur} <span>${el.languageCode.toUpperCase()} · ${el.sourceName}</span> <a href="${esc(el.url)}" target="_blank" style="color:var(--accent)">source</a></div>
-  <div class="d-desc">${esc(el.description)}</div>
-  ${stepsHtml?`<div class="d-section"><h3>How to Play</h3>${stepsHtml}</div>`:""}
-  ${mechs.length?`<div class="d-section"><h3>Mechanics</h3><div class="chip-set">${mechs.map(m=>`<span class="chip" onclick="filterMech('${esc(m)}')">${esc(m)}</span>`).join("")}</div></div>`:""}
-  ${skills.length?`<div class="d-section"><h3>Skills</h3><div class="chip-set">${skills.map(s=>`<span class="chip" onclick="filterSkill('${esc(s)}')">${esc(s)}</span>`).join("")}</div></div>`:""}
-  ${elTags.length?`<div class="d-section"><h3>Tags</h3><div class="chip-set">${elTags.map(t=>`<span class="chip" onclick="toggleTag('${esc(t)}')">${esc(t)}</span>`).join("")}</div></div>`:""}
-  ${trLinks?`<div class="d-section"><h3>Translations</h3><div class="chip-set">${trLinks}</div></div>`:""}
- `;
-
- document.querySelectorAll(".el").forEach(e=>e.classList.toggle("active",e.dataset.id===el.id));
- if(el.id) document.querySelector(`[data-id="${el.id}"]`)?.classList.add("active");
-}
-
-function selectFirst(){
- const first=document.querySelector(".el");
- if(first) selectEl(first.dataset.id);
-}
-
-function reselect(){
- const active=document.querySelector(".el.active");
- if(active) selectEl(active.dataset.id);
-}
-
-window.selectEl=function(id){
- const el=byId[id];
- if(!el)return;
- renderDetail(el);
- document.querySelectorAll(".el").forEach(e=>e.classList.toggle("active",e.dataset.id===id));
-};
-
-window.toggleTag=function(t){
- if(activeTags.has(t))activeTags.delete(t);else activeTags.add(t);
- if(activeMech){activeMech=null;updateChips()}
- if(activeSkill){activeSkill=null;updateChips()}
- renderChips();update();reselect();
-};
-
-window.filterMech=function(m){
- activeMech=m===activeMech?null:m;
- activeTags.clear();activeDiff.clear();activeEnergy.clear();activeSkill=null;
- renderChips();update();reselect();
-};
-
-window.filterSkill=function(s){
- activeSkill=s===activeSkill?null:s;
- activeTags.clear();activeDiff.clear();activeEnergy.clear();activeMech=null;
- renderChips();update();reselect();
-};
-
-function toggleDiff(d){
- if(activeDiff.has(d))activeDiff.delete(d);else activeDiff.add(d);
- renderChips();update();reselect();
-}
-function toggleEnergy(e){
- if(activeEnergy.has(e))activeEnergy.delete(e);else activeEnergy.add(e);
- renderChips();update();reselect();
-}
+ renderChips();
+ render();
+ selectFirst();
+}).catch(function(err){
+ showError("Failed to load graph: "+err.message+"\n\nCheck that graph derivation has been run: POST /api/graph");
+});
 
 function renderChips(){
- const chips=document.getElementById("chips");
- let html="";
- for(const d of DIFF)html+=`<span class="chip${activeDiff.has(d)?" on":""}" onclick="toggleDiff('${d}')">${d[0]}</span>`;
- html+='<span style="color:var(--border);margin:0 4px">|</span>';
- for(const e of ENERGY)html+=`<span class="chip${activeEnergy.has(e)?" on":""}" onclick="toggleEnergy('${e}')">${e}</span>`;
- html+='<span style="color:var(--border);margin:0 4px">|</span>';
- if(activeMech)html+=`<span class="chip on">🛠 ${esc(activeMech)}</span>`;
- if(activeSkill)html+=`<span class="chip on">🎯 ${esc(activeSkill)}</span>`;
- for(const t of activeTags)html+=`<span class="chip on" onclick="toggleTag('${esc(t)}')">#${esc(t)}</span>`;
- chips.innerHTML=html||'<span style="color:var(--muted);font-size:11px">Click tags/mechanics/skills in detail to filter</span>';
+ var h="";
+ for(var i=0;i<DIFF.length;i++){var d=DIFF[i];h+='<span class="chip'+(activeDiff[d]?' on':'')+'" data-diff="'+esc(d)+'">'+d[0]+'</span>'}
+ h+='<span style="color:var(--border);margin:0 4px">|</span>';
+ for(var i=0;i<ENERGY.length;i++){var en=ENERGY[i];h+='<span class="chip'+(activeEnergy[en]?' on':'')+'" data-energy="'+esc(en)+'">'+en+'</span>'}
+ h+='<span style="color:var(--border);margin:0 4px">|</span>';
+ if(activeMech)h+='<span class="chip on" data-clear="mech">'+esc(activeMech)+'</span>';
+ if(activeSkill)h+='<span class="chip on" data-clear="skill">'+esc(activeSkill)+'</span>';
+ var ta=[];
+ for(var t in activeTags)if(activeTags[t])ta.push(t);
+ ta.sort();
+ for(var i=0;i<ta.length;i++)h+='<span class="chip on" data-clear="tag" data-tag="'+esc(ta[i])+'">#'+esc(ta[i])+'</span>';
+ if(!h)h='<span style="color:var(--muted);font-size:11px">Click mechanics/skills/tags in detail to filter</span>';
+ elChips.innerHTML=h;
 }
 
-function updateChips(){renderChips()}
+elChips.addEventListener("click",function(ev){
+ var t=ev.target;
+ if(!t||!t.classList.contains("chip"))return;
+ if(t.dataset.diff){var d=t.dataset.diff;if(activeDiff[d])delete activeDiff[d];else activeDiff[d]=true;renderChips();render();reselect();return}
+ if(t.dataset.energy){var en=t.dataset.energy;if(activeEnergy[en])delete activeEnergy[en];else activeEnergy[en]=true;renderChips();render();reselect();return}
+ if(t.dataset.clear==="mech"){activeMech=null;renderChips();render();reselect();return}
+ if(t.dataset.clear==="skill"){activeSkill=null;renderChips();render();reselect();return}
+ if(t.dataset.clear==="tag"){var tg=t.dataset.tag;delete activeTags[tg];renderChips();render();reselect();return}
+});
 
-document.getElementById("search").oninput=function(){
- query=this.value;
- update();
- reselect();
-};
+function render(){
+ var es=[];
+ for(var i=0;i<elements.length;i++){
+  var el=elements[i];
+  if(query&&el.label.toLowerCase().indexOf(query.toLowerCase())<0)continue;
+  var ad=0;for(var d in activeDiff)if(activeDiff[d])ad++;
+  if(ad>0&&(!el.difficulty||!activeDiff[el.difficulty]))continue;
+  var ae=0;for(var e in activeEnergy)if(activeEnergy[e])ae++;
+  if(ae>0&&(!el.energyLevel||!activeEnergy[el.energyLevel]))continue;
+  if(activeMech&&(!mechEdge[activeMech]||mechEdge[activeMech].indexOf(el.id)<0))continue;
+  if(activeSkill&&(!skillEdge[activeSkill]||skillEdge[activeSkill].indexOf(el.id)<0))continue;
+  var ok=true;
+  for(var t in activeTags){if(activeTags[t]&&el.tags.indexOf(t)<0){ok=false;break}}
+  if(!ok)continue;
+  es.push(el);
+ }
+ es.sort(function(a,b){return a.label.localeCompare(b.label)});
+ elCount.textContent=es.length+" elements";
 
-renderChips();
-update();
-selectFirst();
+ if(es.length===0){elList.innerHTML='<div class="empty">No elements match</div>';return}
+ var h="";
+ for(var i=0;i<es.length;i++){
+  var el=es[i];
+  var cls="el"+(el.id===selectedId?" active":"");
+  var d=el.difficulty?'<span class="badge badge-'+el.difficulty[0]+'">'+el.difficulty[0]+'</span> ':'';
+  var en=el.energyLevel?'<span class="badge badge-'+el.energyLevel.substring(0,2)+'">'+el.energyLevel+'</span> ':'';
+  var dur=el.typicalDurationMinutes?'<span>'+el.typicalDurationMinutes+'min</span> ':'';
+  var tgs="";
+  for(var j=0;j<el.tags.length&&j<4;j++)tgs+='<span class="el-tag">'+esc(el.tags[j])+'</span>';
+  h+='<div class="'+cls+'" data-id="'+esc(el.id)+'">';
+  h+='<div class="el-name">'+esc(el.label)+'</div>';
+  h+='<div class="el-meta">'+d+en+dur+'<span style="color:var(--muted)">'+esc(el.languageCode)+' &middot; '+esc(el.sourceName)+'</span></div>';
+  h+='<div class="el-tags">'+tgs+'</div></div>';
+ }
+ elList.innerHTML=h;
+}
+
+function reselect(){if(selectedId)showDetail(selectedId)}
+function selectFirst(){
+ var first=elList.querySelector(".el");
+ if(first)showDetail(first.dataset.id);
+}
+
+elList.addEventListener("click",function(ev){
+ var el=ev.target;while(el&&!el.classList.contains("el"))el=el.parentElement;
+ if(el)showDetail(el.dataset.id);
+});
+
+function showDetail(id){
+ selectedId=id;
+ var ds=document.querySelectorAll(".el");
+ for(var i=0;i<ds.length;i++)ds[i].classList.toggle("active",ds[i].dataset.id===id);
+
+ var el=byId[id];
+ if(!el){elDetail.innerHTML='<div class="empty">Element not found</div>';return}
+
+ var trs=transEdge[id]||[];
+ var trHtml="";
+ for(var i=0;i<trs.length;i++){
+  var tn=byId[trs[i]];
+  if(tn)trHtml+='<span class="chip" data-nav="'+esc(tn.id)+'">'+esc(tn.label)+' ('+esc(tn.languageCode)+')</span>';
+ }
+
+ var diff=el.difficulty?'<span class="badge badge-'+el.difficulty[0]+'">'+el.difficulty+'</span> ':'';
+ var energy=el.energyLevel?'<span class="badge badge-'+el.energyLevel.substring(0,2)+'">'+el.energyLevel+'</span> ':'';
+ var dur=el.typicalDurationMinutes?'<span>'+el.typicalDurationMinutes+' min</span> ':'';
+
+ var mechs=[];
+ for(var i=0;i<g.edges.length;i++){var e=g.edges[i];if(e.type==="hasMechanic"&&e.from===id){var mn=byId[e.to];if(mn)mechs.push(mn.label)}}
+ var skills=[];
+ for(var i=0;i<g.edges.length;i++){var e=g.edges[i];if(e.type==="trainsSkill"&&e.from===id){var sn=byId[e.to];if(sn)skills.push(sn.label)}}
+
+ var h='';
+ h+='<div class="d-name">'+esc(el.label)+'</div>';
+ h+='<div class="d-meta">'+diff+energy+dur+'<span>'+esc(el.languageCode.toUpperCase())+' &middot; '+esc(el.sourceName)+'</span> <a href="'+esc(el.url)+'" target="_blank" style="color:var(--accent)">source</a></div>';
+ h+='<div class="d-desc">'+esc(el.description)+'</div>';
+
+ if(el.howToPlay&&el.howToPlay.steps){
+  h+='<div class="d-section"><h3>How to Play</h3><ol class="d-steps">';
+  for(var i=0;i<el.howToPlay.steps.length;i++){
+   var s=el.howToPlay.steps[i];
+   h+='<li>'+esc(s.action);
+   if(s.role)h+=' <span class="d-step-role">('+esc(s.role)+')</span>';
+   if(s.constraint)h+=' <span class="d-step-constraint">['+esc(s.constraint)+']</span>';
+   h+='</li>';
+  }
+  h+='</ol></div>';
+ }
+
+ if(mechs.length){
+  h+='<div class="d-section"><h3>Mechanics</h3><div class="chip-set">';
+  for(var i=0;i<mechs.length;i++)h+='<span class="chip" data-filter="mech" data-name="'+esc(mechs[i])+'">'+esc(mechs[i])+'</span>';
+  h+='</div></div>';
+ }
+ if(skills.length){
+  h+='<div class="d-section"><h3>Skills</h3><div class="chip-set">';
+  for(var i=0;i<skills.length;i++)h+='<span class="chip" data-filter="skill" data-name="'+esc(skills[i])+'">'+esc(skills[i])+'</span>';
+  h+='</div></div>';
+ }
+ if(el.tags.length){
+  h+='<div class="d-section"><h3>Tags</h3><div class="chip-set">';
+  for(var i=0;i<el.tags.length;i++)h+='<span class="chip" data-filter="tag" data-name="'+esc(el.tags[i])+'">#'+esc(el.tags[i])+'</span>';
+  h+='</div></div>';
+ }
+ if(trHtml){
+  h+='<div class="d-section"><h3>Translations</h3><div class="chip-set">'+trHtml+'</div></div>';
+ }
+
+ elDetail.innerHTML=h;
+}
+
+elDetail.addEventListener("click",function(ev){
+ var t=ev.target;
+ if(!t||!t.classList.contains("chip"))return;
+ if(t.dataset.nav){showDetail(t.dataset.nav);return}
+ if(t.dataset.filter==="mech"){
+  activeMech=t.dataset.name===activeMech?null:t.dataset.name;
+  activeDiff={};activeEnergy={};activeTags={};activeSkill=null;
+  renderChips();render();reselect();
+  return;
+ }
+ if(t.dataset.filter==="skill"){
+  activeSkill=t.dataset.name===activeSkill?null:t.dataset.name;
+  activeDiff={};activeEnergy={};activeTags={};activeMech=null;
+  renderChips();render();reselect();
+  return;
+ }
+ if(t.dataset.filter==="tag"){
+  var tag=t.dataset.name;
+  if(activeTags[tag])delete activeTags[tag];else activeTags[tag]=true;
+  activeMech=null;activeSkill=null;
+  renderChips();render();reselect();
+  return;
+ }
+});
 })();
 </script>
 </body>
