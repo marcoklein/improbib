@@ -30,9 +30,14 @@ function jsonResponse(data: unknown, req: Request): Response {
   return new Response(body, { headers });
 }
 
-function serveFile(filePath: string, req: Request): Response | null {
+function serveFile(filePath: string, req: Request, contentType: string = "application/json; charset=utf-8"): Response | null {
   if (!existsSync(filePath)) return null;
   const content = readFileSync(filePath, "utf-8");
+  if (contentType.startsWith("text/html")) {
+    return new Response(content, {
+      headers: { "content-type": contentType, "access-control-allow-origin": "*" },
+    });
+  }
   return jsonResponse(JSON.parse(content), req);
 }
 
@@ -101,7 +106,14 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
 
-    if (url.pathname === "/" || url.pathname === "/status") {
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      const htmlPath = path.join(process.cwd(), "public", "index.html");
+      const res = serveFile(htmlPath, req, "text/html; charset=utf-8");
+      if (res) return res;
+      return new Response("Not Found", { status: 404 });
+    }
+
+    if (url.pathname === "/status") {
       const storage = process.env.STORAGE_PATH || process.cwd();
       const rawDir = path.join(storage, "output", "raw");
       const normDir = path.join(storage, "output", "normalized");
