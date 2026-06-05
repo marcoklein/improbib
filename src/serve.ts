@@ -81,12 +81,49 @@ async function runScrape(force: boolean = false) {
   try {
     await scanner.scrape();
     console.log(`[${new Date().toISOString()}] Scrape complete.`);
-    console.log(`[${new Date().toISOString()}] To normalize: curl -X POST https://improbib.host.impromat.app:5000/api/normalize`);
+    runNormalizationChain().catch((err) => {
+      console.error(`[${new Date().toISOString()}] Normalization chain failed:`, err);
+    });
   } catch (err) {
     console.error(`[${new Date().toISOString()}] Scrape failed:`, err);
   } finally {
     scrapeRunning = false;
   }
+}
+
+async function runNormalizationChain() {
+  if (normalizeRunning) {
+    console.log(`[${new Date().toISOString()}] Normalization already running — skipping chain.`);
+    return;
+  }
+  normalizeRunning = true;
+  console.log(`[${new Date().toISOString()}] Starting normalization chain (Stages 1-3 + graph)...`);
+
+  try {
+    await scanner.normalizeAll();
+    console.log(`[${new Date().toISOString()}] Stages 1+2 complete.`);
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] Stages 1+2 failed:`, err.message);
+  }
+
+  try {
+    const { normalizeVocabularyStage } = await import("./normalize/normalize");
+    await normalizeVocabularyStage();
+    console.log(`[${new Date().toISOString()}] Stage 3 (vocabulary) complete.`);
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] Stage 3 (vocabulary) failed:`, err.message);
+  }
+
+  try {
+    const { writeGraph } = await import("./graph/derive");
+    await writeGraph();
+    console.log(`[${new Date().toISOString()}] Graph derivation complete.`);
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] Graph derivation failed:`, err.message);
+  }
+
+  normalizeRunning = false;
+  console.log(`[${new Date().toISOString()}] Normalization chain finished.`);
 }
 
 let lastRunDate: string | null = null;
