@@ -362,11 +362,74 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   console.log("\n=== Normalization complete ===");
 }
 
+export async function normalizeVocabularyStage(): Promise<void> {
+  const outDir = path.join(process.cwd(), "output", "normalized");
+  const vocabPath = path.join(process.cwd(), "output", "vocabulary.json");
+  const allSources = ["improwiki", "learnimprov", "ircwiki"];
+  const allElements: NormalizedElement[] = [];
+
+  console.log("=== VOCABULARY NORMALIZATION ===\n");
+
+  for (const source of allSources) {
+    const srcPath = path.join(outDir, `${source}.json`);
+    const f = Bun.file(srcPath);
+    if (!(await f.exists())) {
+      console.log(`  Skipping ${source}: no normalized output found`);
+      continue;
+    }
+    const data = await f.json();
+    allElements.push(...data.elements);
+    console.log(`  Loaded ${source}: ${data.elements.length} elements`);
+  }
+
+  if (allElements.length === 0) {
+    console.log("\nNo normalized elements found. Run Stage 1+2 first.");
+    return;
+  }
+
+  const { normalizeVocabulary: clusterVocab, applyCanonicalTerms } = await import("./vocabulary");
+  const vocab = await clusterVocab(allElements);
+
+  await Bun.write(vocabPath, JSON.stringify(vocab, null, 2));
+  console.log(`\nWrote ${vocabPath}`);
+
+  // Write back canonical terms to each source file
+  for (const source of allSources) {
+    const srcPath = path.join(outDir, `${source}.json`);
+    const f = Bun.file(srcPath);
+    if (!(await f.exists())) continue;
+
+    const data = await f.json();
+    const updated = applyCanonicalTerms(data.elements, vocab);
+    data.elements = updated;
+
+    const parsed = normalizedSourceSchema.safeParse(data);
+    await Bun.write(srcPath, JSON.stringify(parsed.success ? parsed.data : data, null, 2));
+
+    const changedCount = updated.filter((e: NormalizedElement) =>
+      e.normalized.mechanics.some(m => m.originalName) ||
+      e.normalized.skills.some(s => s.originalName),
+    ).length;
+    console.log(`  Updated ${source}: ${changedCount}/${updated.length} elements canonicalized`);
+  }
+
+  console.log("\n=== Vocabulary normalization complete ===");
+}
+
 // Allow running directly: bun run src/normalize/normalize.ts
 if (import.meta.main) {
+  const args = process.argv.slice(2);
   const maxElements = process.env.NORMALIZE_MAX ? parseInt(process.env.NORMALIZE_MAX) : undefined;
-  normalizeAll({ maxElements }).catch((err) => {
-    console.error("Normalization failed:", err);
-    process.exit(1);
-  });
+
+  if (args.includes("--vocabulary")) {
+    normalizeVocabularyStage().catch((err) => {
+      console.error("Vocabulary normalization failed:", err);
+      process.exit(1);
+    });
+  } else {
+    normalizeAll({ maxElements }).catch((err) => {
+      console.error("Normalization failed:", err);
+      process.exit(1);
+    });
+  }
 }

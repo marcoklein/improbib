@@ -20,6 +20,7 @@ export interface ConfirmedMatch {
 export interface VocabularyCluster {
   canonical: string;
   variants: string[];
+  parent: string | null;
 }
 
 export interface VocabularyMap {
@@ -322,9 +323,11 @@ ${skillList}
 
 Return a JSON object:
 {
-  "mechanics": [{"canonical": "canonical name", "variants": ["synonym1", "synonym2"]}],
-  "skills": [{"canonical": "canonical name", "variants": ["synonym1", "synonym2"]}]
+  "mechanics": [{"canonical": "canonical name", "variants": ["synonym1", "synonym2"], "parent": null}],
+  "skills": [{"canonical": "canonical name", "variants": ["synonym1", "synonym2"], "parent": null}]
 }
+
+parent is always null — reserved for future taxonomy hierarchy.
 
 Each term must appear in exactly one cluster. Terms that are already canonical should appear as their own cluster with just themselves as a variant. Include German terms and map them to English canonical names.`;
 }
@@ -335,10 +338,12 @@ function parseVocabularyResponse(text: string): VocabularyMap {
     mechanics: (json.mechanics || []).map((c: any) => ({
       canonical: String(c.canonical || ""),
       variants: (c.variants || []).map(String),
+      parent: typeof c.parent === "string" ? c.parent : null,
     })),
     skills: (json.skills || []).map((c: any) => ({
       canonical: String(c.canonical || ""),
       variants: (c.variants || []).map(String),
+      parent: typeof c.parent === "string" ? c.parent : null,
     })),
   };
 }
