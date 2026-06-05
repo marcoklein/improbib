@@ -86,18 +86,16 @@ Three LLM-driven stages plus structural validation. No deterministic content-pro
 └──────────────────────────┬───────────────────────────────┘
                            │
 ┌──────────────────────────▼───────────────────────────────┐
-│  STAGE 3: VOCABULARY NORMALIZATION (batched LLM)         │
-│  • All unique mechanics, skills collected from all sources│
-│  • LLM clusters synonyms, assigns canonical terms         │
-│  • Produces `output/vocabulary.json` mapping              │
-│  • Optionally writes canonical terms back into normalized │
-│    elements                                               │
-└──────────────────────────┬───────────────────────────────┘
-                           │
-                           ▼
-                output/normalized/{source}.json
-                output/vocabulary.json
+│                         ▼                               │
+│  Stage 3 (Vocabulary Normalization) deferred to Layer 2  │
+│  See ADR-0009 for the vocabulary approach in the graph    │
+└──────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+                 output/normalized/{source}.json
 ```
+
+> **Decision (2026-06-05)**: Stage 3 vocabulary normalization has been deferred to Layer 2 (Knowledge Graph). The flash LLM model hits a hard limit at ~50 terms per clustering call, making vocabulary LLM-based clustering impractical (~60 minutes of API time for full coverage). The normalized output already contains raw mechanics and skills — the graph layer will handle synonym deduplication via deterministic string similarity, translation-link seeds, and a curated thesaurus. The `vocabulary.ts` code is retained for future use.
 
 ### Stage 1: LLM Extraction
 
@@ -300,53 +298,13 @@ The LLM receives the remaining elements as two lists (element names, description
 
 Cross-source matching points to **atomic targets**: if a match is found with a parent index page, the match resolves to the appropriate child element instead.
 
-### Stage 3: Vocabulary Normalization
+### Stage 3: Vocabulary Normalization (DEFERRED to Layer 2)
 
-After all sources are normalized and cross-referenced, the extracted terms for mechanics, skills, and other concept types will contain synonyms and inconsistencies. "Freeze" in one element, "freeze signal" in another, "Einfrieren" in a German element — all refer to the same mechanic. "Handle", "inspiration", "Vorgabe", and "ask-for" all describe the same concept type.
+> **Status**: Deferred as of 2026-06-05. See decision note at top of this ADR.
 
-Stage 3 collects all unique terms from every normalized element and sends them to the LLM for synonym clustering and canonical naming.
+The original plan called for LLM-based vocabulary clustering to canonicalize mechanic and skill names. Benchmark testing revealed the flash model maxes out at ~50 terms per call, making full-coverage LLM clustering impractical (~60 minutes of API time for 2312 mechanics + 689 skills).
 
-#### What is normalized
-
-- **Mechanics**: All unique `mechanics[].name` values across all elements → canonical mechanic names (English preferred)
-- **Skills**: All unique `skills[].name` values across all elements → canonical skill names (English preferred)
-
-Concept types (e.g., "handle" → "ask-for", "Vorgabe" → "ask-for") are deferred to Layer 2's tag taxonomy work. Tags have their own source-specific flat systems that need restructuring, which is a taxonomy problem, not a terminology mapping problem.
-
-#### Process
-
-1. Collect all unique mechanic names and skill names from every normalized element across all sources
-2. Send the combined sets to the LLM in a single batch call
-3. The LLM returns clusters: groups of synonyms unified under one canonical name
-4. Output `output/vocabulary.json` as a mapping artifact
-5. Optionally: write canonical terms back into the normalized source files so Layer 2 receives clean data directly
-
-#### Output format
-
-```
-{
-  "mechanics": [
-    {
-      "canonical": "freeze signal",
-      "variants": ["freeze", "freeze signal", "stop signal", "tap out", "einfrieren"]
-    },
-    ...
-  ],
-  "skills": [
-    {
-      "canonical": "active listening",
-      "variants": ["listening", "active listening", "zuhören", "attentive listening"]
-    },
-    ...
-  ]
-}
-```
-
-#### Writing back
-
-If enabled, each normalized element's `mechanics[].name` and `skills[].name` are replaced with their canonical forms. The original extracted term is preserved in a new field: `mechanics[].originalName` and `skills[].originalName`. The `contentHash` is not affected — canonicalization is a non-destructive mapping applied on top of extraction.
-
-This makes Layer 2's job simpler: `hasMechanic: "freeze signal"` appears consistently across all elements, regardless of the term the LLM originally extracted from each page.
+Vocabulary normalization will be handled in Layer 2 using deterministic string similarity, translation-link seeds, and a curated thesaurus. The `vocabulary.ts` code and types in `llm-client.ts` are retained for that layer.
 
 ### Derived sub-elements
 

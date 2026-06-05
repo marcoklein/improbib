@@ -214,45 +214,9 @@ Use LLM-confirmed matches (confidence ≥ 0.7 default threshold) combined with t
 
 **Deliverable**: Updated `cross-source-matching.ts` with LLM-driven matching.
 
-### T5: Build vocabulary normalization (`src/normalize/vocabulary.ts`)
+### T5: Build vocabulary normalization (`src/normalize/vocabulary.ts`) — DEFERRED
 
-New module implementing Stage 3 from ADR-0008.
-
-**5a. Collect terms**
-
-Function `collectTerms(elements: NormalizedElement[]): {mechanics: string[], skills: string[]}`
-
-Aggregates all unique `mechanics[].name` and `skills[].name` values across all normalized elements from all sources.
-
-**5b. Normalize with LLM**
-
-Function `normalizeVocabulary(client: LlmClient, terms: {mechanics: string[], skills: string[]}): Promise<VocabularyMap>`
-
-Sends the term sets to the LLM. If the combined set fits in a single call (typical: ~100-200 unique terms), use one call. If too large, split by category (mechanics call + skills call) or alphabetically chunk. The LLM returns clusters of synonyms with canonical names. Prompt includes examples of expected clustering from the golden set.
-
-**5c. Output vocabulary file**
-
-Function `writeVocabulary(vocab: VocabularyMap): Promise<void>`
-
-Writes `output/vocabulary.json` in the format:
-```json
-{
-  "mechanics": [{"canonical": "freeze signal", "variants": ["freeze", "stop signal", "einfrieren"]}],
-  "skills": [{"canonical": "active listening", "variants": ["listening", "zuhören"]}]
-}
-```
-
-**5d. Optional write-back**
-
-Function `applyCanonicalTerms(elements: NormalizedElement[], vocab: VocabularyMap): NormalizedElement[]`
-
-Replaces each element's `mechanics[].name` and `skills[].name` with the canonical form. Preserves the original term in `mechanics[].originalName` and `skills[].originalName`. Does not change `contentHash`.
-
-**5e. Integration**
-
-`normalizeAll()` calls vocabulary normalization after all sources are processed and cross-source matching is complete. Write-back is enabled by default.
-
-**Deliverable**: `src/normalize/vocabulary.ts` with tests.
+> **Status**: Deferred to Layer 2 as of 2026-06-05. The flash LLM model maxes out at ~50 terms per clustering call, making full-coverage LLM vocabulary impractical. Vocabulary canonicalization will use deterministic string similarity + translation seeds + curated thesaurus in the graph layer.
 
 ### T6: Expand golden test set (`src/normalize/__testdata__/golden-set.ts`)
 
@@ -328,14 +292,12 @@ T1 (schema) ──► T6 (golden set) ──► T7 (benchmark)
      │
      ├──► T3 (pipeline) ──┐
      │                    │
-     ├──► T4 (cross-source)┤
-     │                    │
-     └────────────────────┬──► T5 (vocabulary) ──► T9 (index/server) ──► T10 (cleanup)
-                          │           │
-                          └──► T8 (tests) ─────────┘
+  └────────────────────┬──────────────────────────────────────► T9 (index/server) ──► T10 (cleanup)
+                           │
+                           └──► T8 (tests) ─────────┘
 ```
 
-T1-T4 can be done in parallel. T6-T7 start once T1 is stable. T3 depends on T2. T5 depends on T3 (needs normalized elements) and T4 (needs written output files). T8 runs alongside everything. T9-T10 are final integration and cleanup.
+T1-T4 can be done in parallel. T6-T7 start once T1 is stable. T3 depends on T2. T8 runs alongside everything. T9-T10 are final integration and cleanup. **T5 deferred to Layer 2 (vocabulary canonicalization via deterministic methods).**
 
 ## Verification
 
@@ -343,10 +305,8 @@ After all tasks:
 1. `bun test` — all tests pass
 2. `bun run src/analyze.ts` — runs without errors
 3. Golden set benchmark: per-field metrics for all new fields
-4. Full normalization: < 2 min wall time with 20 concurrent calls
+4. Full normalization: < 2 min wall time with cache hits
 5. Multi-element pages produce split children with `splitFrom` set
 6. Show format pages remain as single atomic elements
 7. Cross-source matching produces `relatedIdentifiers` with LLM-confirmed matches
-8. Vocabulary normalization produces `output/vocabulary.json` with synonym clusters
-9. Canonical terms are written back into normalized elements
-10. Output validates against Zod schema with zero errors
+8. Output validates against Zod schema with zero errors

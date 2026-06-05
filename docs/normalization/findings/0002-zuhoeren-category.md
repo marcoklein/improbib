@@ -26,7 +26,7 @@ Add category guidance with examples to the system prompt:
 - Skill categories: social (acceptance, status play, trust), physical (body awareness, mirroring, spatial awareness), cognitive (spontaneity, pattern recognition, quick thinking), narrative (storytelling, character creation, theme exploration), vocal (singing, projection, vocal range).
 ```
 
-This gives the LLM concrete examples to anchor its categorization decisions. The vocabulary layer (Stage 3) will still handle deduplication and canonical naming regardless.
+This gives the LLM concrete examples to anchor its categorization decisions. Synonym deduplication and canonical naming will be handled in Layer 2 (Stage 3 vocabulary normalization has been deferred — see ADR-0008).
 
 ## Verification
 

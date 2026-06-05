@@ -137,11 +137,6 @@ Bun.serve({
       if (res) return res;
     }
 
-    if (url.pathname === "/vocabulary.json") {
-      const res = serveFile(path.join(process.cwd(), "output", "vocabulary.json"), req);
-      if (res) return res;
-    }
-
     if (url.pathname === "/api/version") {
       return jsonResponse({ version: GIT_REV }, req);
     }

@@ -530,27 +530,4 @@ export const goldenSet: GoldenEntry[] = [
     },
   },
 
-  // ── Category: vocabulary ──
-  {
-    id: "vocabulary-clusters",
-    category: "vocabulary",
-    input: {
-      name: "Vocabulary Test",
-      languageCode: "en",
-      sourceName: "improwiki",
-      tags: [],
-      htmlContent: "",
-    },
-    expectedOutput: {
-      summary: "A test case for golden set validation.",
-      description: "Vocabulary clustering test data — not a real element.",
-      howToPlay: null,
-      variations: [],
-      tips: [],
-      referencedElements: [],
-      mechanics: [],
-      skills: [],
-      practical: {},
-    },
-  },
 ];

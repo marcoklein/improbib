@@ -5,7 +5,6 @@ import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
 import { createOpencodeGoClient, getPromptHash } from "./llm-client";
 import { seedTranslationPairs, buildRelatedIdentifiers } from "./cross-source-matching";
-import { normalizeVocabulary, applyCanonicalTerms } from "./vocabulary";
 
 function hashContent(html: string): string {
   return createHash("md5").update(html).digest("hex");
@@ -13,7 +12,7 @@ function hashContent(html: string): string {
 
 export interface NormalizeProgress {
   sourceName: string;
-  stage: "extraction" | "matching" | "vocabulary" | "done" | "error";
+  stage: "extraction" | "matching" | "done" | "error";
   dispatched: number;
   total: number;
   cached: number;
@@ -280,7 +279,7 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   const statePath = path.join(process.cwd(), "output", ".normalize-state.json");
 
   // Read previous state
-  let state: { promptHash?: string; stage2?: { inputHash: string; completedAt: string }; stage3?: { termsHash: string; completedAt: string } } = {};
+  let state: { promptHash?: string; stage2?: { inputHash: string; completedAt: string } } = {};
   try {
     const sf = Bun.file(statePath);
     if (await sf.exists()) {
@@ -358,75 +357,6 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
       console.log(`  Updated ${source}: ${matchCount} total cross-source match pairs`);
     }
   }
-
-  console.log("\n=== STAGE 3: Vocabulary Normalization ===\n");
-
-  const allNormalized: NormalizedElement[] = [];
-  for (const elements of allElements.values()) {
-    allNormalized.push(...elements);
-  }
-
-  // Compute terms hash for caching — use original names to avoid hash drift from canonicalization
-  const allMechSet = new Set<string>();
-  const allSkillSet = new Set<string>();
-  for (const el of allNormalized) {
-    for (const m of el.normalized.mechanics) {
-      const name = m.originalName || m.name;
-      if (name) allMechSet.add(name.toLowerCase());
-    }
-    for (const s of el.normalized.skills) {
-      const name = s.originalName || s.name;
-      if (name) allSkillSet.add(name.toLowerCase());
-    }
-  }
-  const allMech = [...allMechSet].sort();
-  const allSkill = [...allSkillSet].sort();
-  const stage3TermsHash = createHash("md5").update(JSON.stringify({ mechanics: allMech, skills: allSkill })).digest("hex");
-
-  const vocabExists = await Bun.file(path.join(outDir, "..", "vocabulary.json")).exists();
-  const skipStage3 = !anyElementChanged && state.stage3?.termsHash === stage3TermsHash && vocabExists;
-
-  if (skipStage3) {
-    console.log(`  Terms hash unchanged (${stage3TermsHash.slice(0, 8)}) — skipping vocabulary normalization.`);
-    currentProgress = { ...currentProgress!, stage: "done" };
-    console.log("\n=== Normalization complete ===");
-    return;
-  }
-
-  console.log(`  Terms hash: ${stage3TermsHash.slice(0, 8)}${state.stage3?.termsHash ? ` (was ${state.stage3.termsHash.slice(0, 8)})` : " (first run)"}${anyElementChanged ? " — anyElementChanged" : ""} (${allMech.length} mechanics, ${allSkill.length} skills)`);
-
-  const vocab = await normalizeVocabulary(client, allNormalized);
-
-  if (vocab.mechanics.length > 0 || vocab.skills.length > 0) {
-    await Bun.write(
-      path.join(outDir, "..", "vocabulary.json"),
-      JSON.stringify(vocab, null, 2),
-    );
-    console.log(`Wrote vocabulary.json: ${vocab.mechanics.length} mechanic clusters, ${vocab.skills.length} skill clusters`);
-
-    for (const [source, elements] of allElements) {
-      const canonicalized = applyCanonicalTerms(elements, vocab);
-      const srcPath = path.join(outDir, `${source}.json`);
-      const f = Bun.file(srcPath);
-      if (!(await f.exists())) continue;
-      const data = await f.json();
-      data.elements = canonicalized;
-
-      const parsed = normalizedSourceSchema.safeParse(data);
-      await Bun.write(srcPath, JSON.stringify(parsed.success ? parsed.data : data, null, 2));
-
-      const changed = canonicalized.filter((el, i) => {
-        const orig = elements[i];
-        if (!orig) return false;
-        return el.normalized.mechanics.some((m, j) => m.originalName) ||
-               el.normalized.skills.some((s, j) => s.originalName);
-      }).length;
-      console.log(`  Canonicalized ${changed} elements in ${source}`);
-    }
-  }
-
-  state.stage3 = { termsHash: stage3TermsHash, completedAt: new Date().toISOString() };
-  await writeState();
 
   currentProgress = { ...currentProgress!, stage: "done" };
   console.log("\n=== Normalization complete ===");
