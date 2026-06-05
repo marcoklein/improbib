@@ -24,6 +24,14 @@ No build step — Bun runs `.ts` directly (`noEmit: true` in tsconfig).
 - Normalization layer in `src/normalize/` — 2-stage pipeline (LLM extraction, cross-source matching) per ADR-0008. Stage 3 (vocabulary normalization) uses deterministic clustering per ADR-0009.
 - Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–1000 elements
 
+## Data access
+
+- Always fetch scraped and normalized artifacts from the deployed server at `https://improbib.host.impromat.app:5000/` rather than reading local `output/` files.
+- Raw sources: `GET /raw/{source}.json`
+- Normalized sources: `GET /normalized/{source}.json`
+- Vocabulary: `GET /vocabulary.json`
+- Status/metadata: `GET /`
+
 ## Key details
 
 - `.cache/` — file-based HTTP cache (URL-encoded filenames). Delete to force re-fetch from web.

@@ -10,6 +10,60 @@ function hashContent(html: string): string {
   return createHash("md5").update(html).digest("hex");
 }
 
+export interface FillerWarning {
+  name: string;
+  count: number;
+  percentage: number;
+  field: "mechanics" | "skills";
+}
+
+export interface FillerReport {
+  warnings: FillerWarning[];
+  totalElements: number;
+  threshold: number;
+  minAbsoluteCount: number;
+}
+
+export function detectFillers(
+  elements: NormalizedElement[],
+  threshold: number = 0.05,
+  minAbsoluteCount: number = 2,
+): FillerReport {
+  const mechCounts = new Map<string, number>();
+  const skillCounts = new Map<string, number>();
+
+  for (const el of elements) {
+    for (const m of el.normalized.mechanics) {
+      const name = m.name.toLowerCase().trim();
+      if (name) mechCounts.set(name, (mechCounts.get(name) || 0) + 1);
+    }
+    for (const s of el.normalized.skills) {
+      const name = s.name.toLowerCase().trim();
+      if (name) skillCounts.set(name, (skillCounts.get(name) || 0) + 1);
+    }
+  }
+
+  const warnings: FillerWarning[] = [];
+  const total = elements.length;
+
+  for (const [name, count] of mechCounts) {
+    const pct = count / total;
+    if (pct > threshold && count >= minAbsoluteCount) {
+      warnings.push({ name, count, percentage: pct, field: "mechanics" });
+    }
+  }
+  for (const [name, count] of skillCounts) {
+    const pct = count / total;
+    if (pct > threshold && count >= minAbsoluteCount) {
+      warnings.push({ name, count, percentage: pct, field: "skills" });
+    }
+  }
+
+  warnings.sort((a, b) => b.percentage - a.percentage);
+
+  return { warnings, totalElements: total, threshold, minAbsoluteCount };
+}
+
 export interface NormalizeProgress {
   sourceName: string;
   stage: "extraction" | "matching" | "done" | "error";
@@ -251,6 +305,15 @@ async function normalizeSource(
   await Bun.write(sourcePath, JSON.stringify(finalOutput, null, 2));
 
   console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors, ${totalTime}s`);
+
+  const fillerReport = detectFillers(finalOutput.elements);
+  if (fillerReport.warnings.length > 0) {
+    console.warn(`  FILLER WARNING: ${fillerReport.warnings.length} names above ${(fillerReport.threshold * 100).toFixed(0)}% threshold in ${sourceName}:`);
+    for (const w of fillerReport.warnings) {
+      console.warn(`    ${w.field}: "${w.name}" appears in ${w.count}/${fillerReport.totalElements} elements (${(w.percentage * 100).toFixed(1)}%)`);
+    }
+  }
+
   return { elements: finalOutput.elements, anyElementChanged };
 }
 
@@ -274,6 +337,21 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
       console.error(`Failed to normalize ${source}: ${err.message}`);
     }
   }));
+
+  const allForFillerCheck: NormalizedElement[] = [];
+  for (const [, elements] of allElements) {
+    allForFillerCheck.push(...elements);
+  }
+
+  if (allForFillerCheck.length > 0) {
+    const aggregateReport = detectFillers(allForFillerCheck);
+    if (aggregateReport.warnings.length > 0) {
+      console.warn(`\n  CROSS-SOURCE FILLER WARNING: ${aggregateReport.warnings.length} names above ${(aggregateReport.threshold * 100).toFixed(0)}% threshold across ${allElements.size} sources:`);
+      for (const w of aggregateReport.warnings) {
+        console.warn(`    ${w.field}: "${w.name}" appears in ${w.count}/${aggregateReport.totalElements} elements (${(w.percentage * 100).toFixed(1)}%)`);
+      }
+    }
+  }
 
   const promptHash = getPromptHash();
   const statePath = path.join(process.cwd(), "output", ".normalize-state.json");
