@@ -82,7 +82,7 @@ export function getPromptHash(): string {
 }
 
 export function createOpencodeGoClient(
-  model: string = "deepseek-v4-flash",
+  model: string = "opencode-go/deepseek-v4-flash",
 ): LlmClient {
   const apiKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
   if (!apiKey) console.warn("No OPENCODE_GO_API_KEY set — normalization will fail.");
