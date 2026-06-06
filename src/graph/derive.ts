@@ -3,6 +3,8 @@ import path from "path";
 import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "../normalize/normalized-schema";
 import type { VocabularyMap } from "../normalize/llm-client";
+import { applyDedupOverrides, applyEdgeOverrides, loadOverrides } from "./overrides";
+import type { Override, OverrideStats } from "./overrides";
 
 interface GraphNode {
   id: string;
@@ -35,14 +37,14 @@ interface ElementNode extends GraphNode {
   tags: string[];
 }
 
-interface GraphEdge {
+export interface GraphEdge {
   type: "hasMechanic" | "trainsSkill" | "hasTag" | "sourcedFrom" | "translationOf" | "derivedFrom" | "canonicalOf";
   from: string;
   to: string;
   confidence?: number;
 }
 
-interface KnowledgeGraph {
+export interface KnowledgeGraph {
   meta: {
     derivedAt: string;
     nodeCount: number;
@@ -54,6 +56,8 @@ interface KnowledgeGraph {
     skillCount: number;
     tagCount: number;
     sourceCount: number;
+    overridesApplied?: number;
+    overridesStale?: number;
   };
   nodes: (GraphNode | ElementNode)[];
   edges: GraphEdge[];
@@ -417,9 +421,33 @@ function dedupSteps(steps: { action: string; role?: string; constraint?: string 
   return result;
 }
 
+function computeClusterConfidence(
+  el: NormalizedElement,
+  memberIds: Set<string>,
+): number {
+  let totalConf = 0;
+  let count = 0;
+  for (const ri of el.relatedIdentifiers || []) {
+    if (memberIds.has(ri.identifier)) {
+      totalConf += ri.confidence;
+      count++;
+    }
+  }
+  if (el.translationLinkEnIdentifier && memberIds.has(el.translationLinkEnIdentifier)) {
+    totalConf += 1.0;
+    count++;
+  }
+  if (el.translationLinkDeIdentifier && memberIds.has(el.translationLinkDeIdentifier)) {
+    totalConf += 1.0;
+    count++;
+  }
+  return count > 0 ? Math.round((totalConf / count) * 100) / 100 : 0;
+}
+
 export function deriveGraph(
   elements: NormalizedElement[],
   vocabulary: VocabularyMap,
+  overrides?: Override[],
 ): KnowledgeGraph {
   const { mechMap, skillMap } = buildVocabMap(vocabulary);
   const nodes: (GraphNode | ElementNode)[] = [];
@@ -485,6 +513,17 @@ export function deriveGraph(
     }
   }
 
+  // ── Apply dedup overrides before cluster building ──
+  let dedupStats: OverrideStats = { applied: 0, stale: 0, staleDetails: [] };
+  let edgeStats: OverrideStats = { applied: 0, stale: 0, staleDetails: [] };
+  if (overrides && overrides.length > 0) {
+    const dedupResult = applyDedupOverrides(elements, overrides);
+    dedupStats = dedupResult.stats;
+    for (const detail of dedupStats.staleDetails) {
+      console.log(`  override stale: ${detail}`);
+    }
+  }
+
   // ── Phase 2: Build clusters and create canonical nodes ──
   const clusters = buildClusters(elements, idMap);
   const canonicalNodes: { en?: ElementNode; de?: ElementNode; memberIds: string[] }[] = [];
@@ -507,17 +546,21 @@ export function deriveGraph(
       deResult.memberIds.forEach(id => allMemberIds.add(id));
     }
 
+    // Compute cluster member IDs for confidence calculation
+    const memberIdSet = new Set(members.map(m => m.identifier));
+
     // canonicalOf edges
     for (const el of members) {
+      const confidence = computeClusterConfidence(el, memberIdSet);
       if (el.languageCode === "en" && enResult) {
-        addEdge("canonicalOf", el.identifier, enResult.node.id);
+        addEdge("canonicalOf", el.identifier, enResult.node.id, confidence);
       } else if (el.languageCode === "de" && deResult) {
-        addEdge("canonicalOf", el.identifier, deResult.node.id);
+        addEdge("canonicalOf", el.identifier, deResult.node.id, confidence);
       } else if (el.languageCode === "de" && enResult && !deResult) {
         // DE element in cluster but no DE canonical — point to EN canonical
-        addEdge("canonicalOf", el.identifier, enResult.node.id);
+        addEdge("canonicalOf", el.identifier, enResult.node.id, confidence);
       } else if (el.languageCode === "en" && deResult && !enResult) {
-        addEdge("canonicalOf", el.identifier, deResult.node.id);
+        addEdge("canonicalOf", el.identifier, deResult.node.id, confidence);
       }
     }
 
@@ -626,11 +669,22 @@ export function deriveGraph(
   const tagCount = nodes.filter(n => n.type === "Tag").length;
   const sourceCount = nodes.filter(n => n.type === "Source").length;
 
+  // ── Apply edge overrides ──
+  let finalEdges = edges;
+  if (overrides && overrides.length > 0) {
+    const result = applyEdgeOverrides(edges, overrides, elements);
+    finalEdges = result.edges as GraphEdge[];
+    edgeStats = result.stats;
+    for (const detail of edgeStats.staleDetails) {
+      console.log(`  override stale: ${detail}`);
+    }
+  }
+
   return {
     meta: {
       derivedAt: new Date().toISOString(),
       nodeCount: nodes.length,
-      edgeCount: edges.length,
+      edgeCount: finalEdges.length,
       elementCount: allElementNodes.length,
       sourceElementCount,
       canonicalElementCount,
@@ -638,9 +692,13 @@ export function deriveGraph(
       skillCount,
       tagCount,
       sourceCount,
+      ...(overrides && overrides.length > 0 ? {
+        overridesApplied: dedupStats.applied + edgeStats.applied,
+        overridesStale: dedupStats.stale + edgeStats.stale,
+      } : {}),
     },
     nodes,
-    edges,
+    edges: finalEdges,
   };
 }
 
@@ -664,7 +722,14 @@ export async function deriveGraphFromFiles(): Promise<KnowledgeGraph> {
     vocabulary = await vf.json();
   }
 
-  return deriveGraph(allElements, vocabulary);
+  const overridesPath = process.env.GRAPH_OVERRIDES_PATH ||
+    path.join(process.cwd(), "graph-overrides.json");
+  const overrides = await loadOverrides(overridesPath);
+  if (overrides.length > 0) {
+    console.log(`Loaded ${overrides.length} overrides from ${overridesPath}`);
+  }
+
+  return deriveGraph(allElements, vocabulary, overrides);
 }
 
 export async function writeGraph(outputPath?: string): Promise<KnowledgeGraph> {
