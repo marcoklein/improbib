@@ -122,19 +122,38 @@ function formatConf(c: number | undefined): string {
 function showClusters(data: ReviewData, limit: number) {
   const canonicalOfEdges = data.edgesByType.get("canonicalOf") || [];
 
-  // Group by canonical node (to)
-  const clusterGroups = new Map<string, GraphEdge[]>();
-  for (const e of canonicalOfEdges) {
-    const list = clusterGroups.get(e.to) || [];
-    list.push(e);
-    clusterGroups.set(e.to, list);
+  // Build Union-Find over canonical nodes linked by translationOf edges (same concept)
+  const translationEdges = data.edgesByType.get("translationOf") || [];
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    const p = parent.get(x) ?? x;
+    if (p !== x) {
+      const root = find(p);
+      parent.set(x, root);
+      return root;
+    }
+    parent.set(x, x);
+    return x;
+  };
+  for (const e of translationEdges) {
+    const a = find(e.from);
+    const b = find(e.to);
+    parent.set(a, b);
   }
 
-  // Compute per-cluster stats
+  // Group canonicalOf edges by concept root (merged canonical set via translation links)
+  const conceptGroups = new Map<string, GraphEdge[]>();
+  for (const e of canonicalOfEdges) {
+    const root = find(e.to);
+    const list = conceptGroups.get(root) || [];
+    list.push(e);
+    conceptGroups.set(root, list);
+  }
+
+  // Compute per-concept stats
   interface ClusterInfo {
     canonicalId: string;
-    canonicalName: string;
-    canonicalLang: string;
+    canonicalNames: { id: string; name: string; lang: string }[];
     edgeCount: number;
     minConf: number;
     avgConf: number;
@@ -143,8 +162,17 @@ function showClusters(data: ReviewData, limit: number) {
   }
 
   const clusters: ClusterInfo[] = [];
-  for (const [canonicalId, edges] of clusterGroups) {
-    const canonical = data.elementById.get(canonicalId);
+  for (const [rootId, edges] of conceptGroups) {
+    // Collect all canonical node IDs in this translation-linked concept
+    const canonicalNodes = new Set<string>();
+    for (const e of edges) {
+      canonicalNodes.add(e.to);
+    }
+    const canonicalNames = [...canonicalNodes].map(id => {
+      const node = data.elementById.get(id);
+      return { id, name: node?.label ?? id, lang: node?.languageCode ?? "?" };
+    });
+
     const confidences = edges.map(e => e.confidence ?? 0);
     const members = edges.map(e => {
       const el = data.elementById.get(e.from);
@@ -158,9 +186,8 @@ function showClusters(data: ReviewData, limit: number) {
     });
 
     clusters.push({
-      canonicalId,
-      canonicalName: canonical?.label ?? canonicalId,
-      canonicalLang: canonical?.languageCode ?? "?",
+      canonicalId: rootId,
+      canonicalNames,
       edgeCount: edges.length,
       minConf: Math.min(...confidences),
       avgConf: confidences.reduce((a, b) => a + b, 0) / confidences.length,
@@ -178,8 +205,18 @@ function showClusters(data: ReviewData, limit: number) {
 
   for (const c of shown) {
     const sigil = c.minConf >= 0.9 ? "✓" : c.minConf >= 0.75 ? "~" : "⚠";
-    console.log(`${sigil} ${c.canonicalName} [${c.canonicalLang}]  conf: ${formatConf(c.minConf)}–${formatConf(c.maxConf)}`);
-    console.log(`  canonical: ${c.canonicalId}`);
+    // Show primary name (prefer EN) and all canonical names
+    const primary = c.canonicalNames.find(n => n.lang === "en")?.name
+      ?? c.canonicalNames[0]?.name;
+    const langs = [...new Set(c.canonicalNames.map(n => n.lang))].join("/");
+    console.log(`${sigil} ${primary} [${langs}]  conf: ${formatConf(c.minConf)}–${formatConf(c.maxConf)}`);
+    if (c.canonicalNames.length > 1) {
+      for (const cn of c.canonicalNames) {
+        console.log(`  canonical [${cn.lang}]: ${cn.id}`);
+      }
+    } else {
+      console.log(`  canonical: ${c.canonicalNames[0]?.id}`);
+    }
     for (const m of c.members) {
       console.log(`    ${formatConf(m.conf)} ${m.name} (${m.source} ${m.lang})`);
     }

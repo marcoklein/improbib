@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "overrides": [
+    {
+      "type": "reject_match",
+      "elementA": "87d64c6b3adac2c066a8856dbf77df3b",
+      "elementB": "78c783b4d7025059b3e0af191275b482"
+    },
+    {
+      "type": "reject_match",
+      "elementA": "87d64c6b3adac2c066a8856dbf77df3b",
+      "elementB": "f5ec70b772ef9cef92f6d4807b641443"
+    },
+    {
+      "type": "reject_match",
+      "elementA": "0fbfaa9b40b7b69260f88e0cce3352b1",
+      "elementB": "448828af2775bc91b6c14db70695e0e5"
+    },
+    {
+      "type": "reject_match",
+      "elementA": "3b6ace332a0b46a269b317ce06df5e3c",
+      "elementB": "436079188c46bd36012ef8de69197841"
+    },
+    {
+      "type": "reject_match",
+      "elementA": "dfc31b02ef5b462712842bc2d692f529",
+      "elementB": "448828af2775bc91b6c14db70695e0e5"
+    }
+  ]
+}
