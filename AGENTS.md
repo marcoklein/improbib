@@ -30,6 +30,7 @@ bun test                   # run tests (bun:test)
 - Graph derivation in `src/graph/` — deterministic graph from normalized + vocabulary + dedup: nodes (Element with canonical: true/false, Mechanic, Skill, Tag, Source) and edges (hasMechanic, trainsSkill, hasTag, sourcedFrom, translationOf, canonicalOf).
 - `canonicalOf` edges include `confidence` (0–1) derived from dedup matching scores. Lower confidence flags weaker matches for human review.
 - Graph overrides in `src/graph/overrides.ts` — human-curated corrections (reject_match, add_match, remove_edge, add_edge) applied during graph derivation. Stored in `graph-overrides.json`.
+- Review workflow via `src/review.ts` — see `.opencode/skills/review-graph/SKILL.md` for the full QA workflow. Always review against the production graph.
 - Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–1000 elements
 
 ## Data access
