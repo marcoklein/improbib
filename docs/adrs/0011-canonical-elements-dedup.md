@@ -122,6 +122,16 @@ define clusters. Within a cluster:
   participate via the EN source's canonicalOf edge. They also get `canonicalOf`
   → DE canonical.
 
+### Source uniqueness invariant
+
+Each source is assumed to have no internal duplicates — two elements from the
+same source never describe the same game. If a cluster contains multiple elements
+from the same source (possible when the thesaurus or deterministic matching
+indirectly merges them via a shared cross-source anchor), only the element with
+the highest average cross-source confidence is kept. Weaker matches are dropped
+and become singletons. This prevents cluster contamination from source-internal
+variants.
+
 ### Singleton handling
 
 - **EN singleton** (single EN source, no matches): No canonical — the source

@@ -93,6 +93,82 @@ function resolveTerm(
   return vocabMap.get(name.toLowerCase()) ?? name;
 }
 
+// Enforce: at most one element per source+language in a canonical cluster.
+// Assumption: each source+language has no internal duplicates — if two elements
+// from the same source+language end up in the same cluster, only the strongest
+// match survives. Weaker matches are dropped (become singletons).
+// DE↔EN translations on the same source are NOT considered duplicates.
+// Documented in ADR-0011.
+function deduplicateClusterBySource(
+  members: NormalizedElement[],
+): NormalizedElement[] {
+  // Group by source+language (improwiki DE and improwiki EN are distinct)
+  const key = (el: NormalizedElement) => `${el.sourceName}:${el.languageCode}`;
+  const bySourceLang = new Map<string, NormalizedElement[]>();
+  for (const el of members) {
+    const k = key(el);
+    const list = bySourceLang.get(k) || [];
+    list.push(el);
+    bySourceLang.set(k, list);
+  }
+
+  const hasDuplicate = [...bySourceLang.values()].some(list => list.length > 1);
+  if (!hasDuplicate) return members;
+
+  // Build a map of identifier → average cross-source confidence
+  const scoreMap = new Map<string, number>();
+  for (const el of members) {
+    let totalConf = 0;
+    let count = 0;
+    for (const ri of el.relatedIdentifiers || []) {
+      const other = members.find(m => m.identifier === ri.identifier);
+      if (other && key(other) !== key(el)) {
+        totalConf += ri.confidence;
+        count++;
+      }
+    }
+    // Also count translation links as confidence 1.0 (but only to different source+lang)
+    if (el.translationLinkEnIdentifier &&
+      members.some(m => m.identifier === el.translationLinkEnIdentifier && key(m) !== key(el))) {
+      totalConf += 1.0;
+      count++;
+    }
+    if (el.translationLinkDeIdentifier &&
+      members.some(m => m.identifier === el.translationLinkDeIdentifier && key(m) !== key(el))) {
+      totalConf += 1.0;
+      count++;
+    }
+    scoreMap.set(el.identifier, count > 0 ? totalConf / count : 0);
+  }
+
+  // Per source+language, keep only the element with the highest cross-source confidence
+  const keep = new Set<string>();
+  for (const [k, els] of bySourceLang) {
+    if (els.length === 1) {
+      keep.add(els[0].identifier);
+    } else {
+      let best: NormalizedElement | null = null;
+      let bestScore = -1;
+      for (const el of els) {
+        const score = scoreMap.get(el.identifier) ?? 0;
+        if (score > bestScore) {
+          bestScore = score;
+          best = el;
+        }
+      }
+      if (best) {
+        keep.add(best.identifier);
+        const dropped = els.filter(el => el.identifier !== best!.identifier);
+        if (dropped.length > 0) {
+          console.log(`  Cluster dedup: source+lang="${k}" kept="${best.name}" dropped="${dropped.map(e => e.name).join('", "')}"`);
+        }
+      }
+    }
+  }
+
+  return members.filter(el => keep.has(el.identifier));
+}
+
 // Build connected-component clusters from relatedIdentifiers
 function buildClusters(
   elements: NormalizedElement[],
@@ -135,11 +211,13 @@ function buildClusters(
     groups.set(root, list);
   }
 
-  // Filter to clusters with ≥2 elements
+  // Filter to clusters with ≥2 elements, enforce one-per-source
   const clusters = new Map<string, NormalizedElement[]>();
   for (const [root, members] of groups) {
-    if (members.length >= 2) {
-      clusters.set(root, members);
+    if (members.length < 2) continue;
+    const deduped = deduplicateClusterBySource(members);
+    if (deduped.length >= 2) {
+      clusters.set(root, deduped);
     }
   }
 

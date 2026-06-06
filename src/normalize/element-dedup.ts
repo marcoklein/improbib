@@ -188,6 +188,8 @@ function findDeterministicMatches(
       }
 
       for (const { a, b } of similarPairs) {
+        // Guard: never match within the same source
+        if (a.sourceName === b.sourceName) continue;
         const score = computeMatchScore(a, b, thesaurus);
         if (score >= 0.65) {
           addPair(a.identifier, b.identifier, score);
@@ -468,7 +470,7 @@ export async function dedupElements(): Promise<void> {
 
     const updated = data.elements.map((el: NormalizedElement) => ({
       ...el,
-      relatedIdentifiers: allMatches.get(el.identifier) || el.relatedIdentifiers || [],
+      relatedIdentifiers: allMatches.get(el.identifier) || [],
     }));
 
     data.elements = updated;
