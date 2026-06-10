@@ -4,6 +4,17 @@
 
 Build the application layer (P4–P6 from 0001) by planning backwards from what a workshop facilitator actually needs. The graph is the contract — the application consumes `graph.json` and translates human intent into graph queries.
 
+## Project Context (for the implementing agent)
+
+- **Runtime**: Bun. `bun test` for tests, `bun run` for scripts.
+- **Dependencies**: None beyond what's already in `package.json`. No UI framework, no router library. Zero new deps.
+- **Server entry**: `src/serve.ts` — uses `Bun.serve()` with a manual `if/else` route chain. Each route is a separate `if` block checking `url.pathname`. Helper functions: `jsonResponse(data, req)` for JSON, `serveFile(path, req, contentType?)` for file serving. HTML files are served from `public/` via the catch-all at the top of the fetch handler.
+- **Graph derivation**: `src/graph/derive.ts` — `deriveGraph(elements, vocabulary, overrides)` takes normalized elements and produces `KnowledgeGraph` (nodes + edges). Edges are added in three phases: Phase 1 (source elements), Phase 2 (clusters + canonicals), Phase 3 (domain edges — mechanics, skills, tags wired via `addEdge()`). New edges in this plan go into Phase 3.
+- **Overrides system**: `src/graph/overrides.ts` — `Override = DedupOverride | EdgeOverride`. Each override has a `type` string discriminant. Extending to new types follows the same pattern.
+- **Normalized schema**: `src/normalize/normalized-schema.ts` defines `NormalizedElement`. The field `derivedElements` (array of sub-elements from inline variations) already exists on the normalized output.
+- **Existing graph.json structure**: `src/graph/derive.ts` exports `KnowledgeGraph { meta, nodes: (GraphNode | ElementNode)[], edges: GraphEdge[] }`. Nodes have `{ id, type, label }`. Elements add `{ canonical, description, summary, languageCode, sourceName, url, tags, sources, difficulty, typicalDurationMinutes, playerCountMin, playerCountMax }`. Edges have `{ type, from, to, confidence? }`. See `src/graph/derive.ts:35-52` for the exported interfaces.
+- **Conventions**: Edges are added via a helper function pattern. New node/edge types are added by extending the existing `if/else` chains. Graph derivation uses `createHash("md5")` for stable IDs. Tests live alongside source files or in `__testdata__/` directories. The project uses no comments in code (see AGENTS.md convention).
+
 ## Approach: Plan Backwards from User Intentions
 
 Instead of "what can the graph do → build UI," ask: "what does a facilitator ask → what graph capabilities enable that → what do we build?"
@@ -74,13 +85,65 @@ vocabulary.json ────────┘                                     
 
 Data flows one direction. Layers are independent. The application consumes only the graph.
 
+**Server startup flow**: `serve.ts` loads `output/graph.json` via `Bun.file(...).json()`, calls `createGraphIndex(graph)` from `graph-query.ts`, stores the index in module scope. All API handlers read from the in-memory index — no file I/O per request.
+
 ## What We Build
 
 ### 1. Graph Enrichment (no LLM changes, deterministic derivation)
 
+These changes happen during `deriveGraph()` in `src/graph/derive.ts`. All new edges are added in Phase 3 (alongside existing hasMechanic/trainsSkill/hasTag wiring).
+
 **A. Requirement edges** (`requires`)
 
-New node type `Requirement` with 5 canonical concepts. Derived deterministically from existing tags + mechanics during graph derivation. Mapping defined in a config file.
+New node type `Requirement`. New edge type `requires` from Element → Requirement. Derived deterministically from existing tags + mechanics on each element.
+
+**New file: `src/graph/requirement-mapping.ts`**
+
+```typescript
+// Config: which tags and mechanics imply which requirement
+export const REQUIREMENT_MAP: {
+  requirement: string;       // canonical requirement ID label
+  mechanics: string[];       // normalized mechanic labels that trigger it
+  tags: string[];            // raw tag labels that trigger it
+}[] = [
+  {
+    requirement: "audience_input",
+    mechanics: ["audience suggestion", "audience voting"],
+    tags: ["Ask For", "Zuschauer auf der Bühne"],
+  },
+  {
+    requirement: "physical_contact",
+    mechanics: ["physical contact", "touch to speak"],
+    tags: ["Physical Contact", "Körperkontakt und Berührung"],
+  },
+  {
+    requirement: "music_singing",
+    mechanics: ["singing constraint", "musical accompaniment"],
+    tags: ["Musik und Gesang", "Musikspiele"],
+  },
+  {
+    requirement: "props_objects",
+    mechanics: ["object prompt", "Human Props"],
+    tags: ["Objects", "Spiele mit Gegenständen"],
+  },
+  {
+    requirement: "audience_on_stage",
+    mechanics: [],
+    tags: ["Audience on stage", "Zuschauer auf der Bühne"],
+  },
+];
+
+/**
+ * Returns the set of requirement labels that apply to a given element,
+ * based on its mechanics and tags intersecting with REQUIREMENT_MAP.
+ */
+export function deriveRequirements(
+  mechanics: string[],  // normalized mechanic labels (already canonicalized via vocabulary)
+  tags: string[],       // raw tag labels from source
+): string[]
+```
+
+**Implementation in `derive.ts`** — Phase 3, after hasMechanic/trainsSkill/hasTag are wired. For each element (source AND canonical), call `deriveRequirements(elementMechanics, elementTags)`, add a `Requirement` node per requirement label (if not already added), add a `requires` edge from element → requirement node. Node IDs for requirements use the same `createHash("md5").update("requirement:" + label)` pattern as mechanics and skills.
 
 | Requirement | Triggered by mechanic | Triggered by tag |
 |-------------|----------------------|------------------|
@@ -90,208 +153,546 @@ New node type `Requirement` with 5 canonical concepts. Derived deterministically
 | `props_objects` | `object prompt`, `Human Props` | `Objects`, `Spiele mit Gegenständen` |
 | `audience_on_stage` | — | `Audience on stage`, `Zuschauer auf der Bühne` |
 
-Supports manual overrides via `graph-overrides.json`. In the graph, a requirement edge means "this element requires X" — to filter it out, query by "exclude elements with `requires → X`."
+**Overrides in `graph-overrides.json`**: Support `requires` overrides with the following format:
+
+```json
+{
+  "type": "add_requires",
+  "elementId": "<32-char-md5>",
+  "requirementLabel": "audience_input",
+  "note": "This exercise needs audience input but wasn't auto-detected"
+}
+{
+  "type": "remove_requires",
+  "elementId": "<32-char-md5>",
+  "requirementLabel": "physical_contact",
+  "note": "This exercise was incorrectly flagged for physical contact"
+}
+```
+
+The `requires` overrides use the same element-identifier-based pattern as existing `EdgeOverride`s but target Requirement nodes by label string (not node ID) since Requirement node IDs are derived from labels.
 
 **B. Dependency edges** (`buildsOn`)
 
-Heuristic inference: if element A's targetQuantity ⊂ element B's targetQuantity AND A ≤ difficulty AND ≤ duration AND same source, then B `buildsOn` A. Exclude cross-source dedup pairs (same name, different source). Supports manual overrides.
+New edge type `buildsOn` from Element → Element (both canonical and source). Edge direction: B `buildsOn` A means "B requires skills/mechanics from A" — A is the prerequisite, B is the dependent.
 
-Enables: "if they've done Harold-French, do Harold-Sheila next."
+**Heuristic inference** — implemented in Phase 3 of `derive.ts`, after canonical elements are created:
+
+1. Build a map of element ID → set of mechanic IDs (the node IDs of mechanics connected via `hasMechanic` edges)
+2. For every pair of elements (A, B) from the same source (NOT cross-source — those are dedup targets, not dependencies):
+   - If A's mechanic set ⊂ B's mechanic set (proper subset, A is strictly simpler)
+   - AND A's difficulty ≤ B's difficulty (using numeric ranking: beginner=0, intermediate=1, advanced=2)
+   - AND A's duration ≤ B's duration (if both have duration set)
+   - AND A and B have different labels (not the same name from different rows)
+3. Then B `buildsOn` A
+
+**Overrides in `graph-overrides.json`**:
+
+```json
+{
+  "type": "add_buildsOn",
+  "fromElementId": "<element-B-id>",
+  "toElementId": "<prerequisite-A-id>",
+  "note": "Harold-Sheila requires Harold-French"
+}
+{
+  "type": "remove_buildsOn",
+  "fromElementId": "<element-B-id>",
+  "toElementId": "<prerequisite-A-id>",
+  "note": "False dependency — these are siblings not prerequisites"
+}
+```
 
 **C. Variation edges** (`variationOf`)
 
-From normalized `derivedElements` — if element X was extracted as an inline variation of parent Y, add `variationOf` edge from X → Y. Already in the data, just not wired as graph edges.
+New edge type `variationOf` from Element → Element. Edge direction: X `variationOf` Y means X is an inline variation of exercise Y.
 
-Enables: "show me all variations of Freeze Tag."
+**Implementation in `derive.ts`** — during Phase 1 (source element creation), when processing a normalized element that has `derivedElements`:
+
+1. The parent element gets source element node(s) created normally.
+2. Each entry in `derivedElements` already has a `splitFrom` field pointing to the parent identifier. Find the parent's graph node ID via the idMap.
+3. Add `variationOf` edge from the child element's node ID → parent element's node ID.
+
+The field `derivedElements` on `NormalizedElement` is defined in `src/normalize/normalized-schema.ts`. Each derived element has: `{ identifier, name, description, mechanics, skills, tags, splitFrom (parent identifier) }`.
+
+**Overrides in `graph-overrides.json`**:
+
+```json
+{
+  "type": "add_variationOf",
+  "fromElementId": "<variation-child-id>",
+  "toElementId": "<parent-id>",
+  "note": "This is a variation of Freeze Tag"
+}
+{
+  "type": "remove_variationOf",
+  "fromElementId": "<variation-child-id>",
+  "toElementId": "<parent-id>",
+  "note": "Not actually a variation — distinct exercise"
+}
+```
 
 ### 2. Query Layer (server-side, consumes in-memory graph)
 
-**New file: `src/query/graph-query.ts`** — loads `graph.json` once, builds in-memory indexes (by id, by type, by edge type, by label). All query functions run against in-memory data. No file I/O at query time.
+All query files live under `src/query/`. They import the `KnowledgeGraph` type from `src/graph/derive.ts`. They have no knowledge of sources, scraping, or normalization — they consume only the graph.
 
-**A. Filtered element list**
+**Core file: `src/query/graph-query.ts`**
 
-```
-GET /api/elements?difficulty=beginner&minPlayers=8&maxPlayers=12
-                  &tag=emotion&mechanic=freeze_signal&skill=storytelling
-                  &excludeRequirement=audience_input,physical_contact
-                  &page=1&limit=20
-        → { results: [{id, label, summary, difficulty, duration, mechanics, skills}], total, page }
-```
+Loads `output/graph.json` once into typed in-memory structures. Exports query functions used by both the API server and the CLI.
 
-Paginated. All filters optional. Exclude filters invert (remove elements with the given requirement edge).
+```typescript
+import type { KnowledgeGraph, GraphEdge } from "../graph/derive";
 
-**B. Element detail**
+// ── Graph Index (in-memory) ──
 
-```
-GET /api/elements/:id
-        → { element, edges: { hasMechanic, trainsSkill, hasTag, requires, canonicalOf,
-              sourcedFrom, translationOf, buildsOn_from, buildsOn_to,
-              variationOf_from, variationOf_to }, similar: [...] }
-```
-
-Returns full element + all inbound/outbound edges + top 20 similar elements.
-
-**C. Similar elements**
-
-```
-GET /api/elements/:id/similar?limit=10
-```
-
-On-the-fly Jaccard overlap of mechanic + skill sets against all other canonical elements. No pre-computation — ~2ms for 2000 elements. Returns ranked by overlap score.
-
-**D. Theme expansion**
-
-```
-POST /api/themes/expand
-{ "theme": "creative world building" }
-        → { "nodes": [{ "type": "Skill", "id": "...", "label": "world building" },
-                       { "type": "Mechanic", "id": "...", "label": "environment creation" },
-                       ...] }
-```
-
-Deterministic substring matching of theme words against all mechanic/skill/tag labels. Returns matching nodes ranked by overlap count. Cached per theme string in memory. No LLM dependency for MVP.
-
-**E. Workshop plan**
-
-```
-POST /api/workshop/plan
-{
-  "duration": 120,
-  "players": 12,
-  "difficulty": "beginner",
-  "constraints": ["no-audience", "no-physical-contact"],
-  "theme": "storytelling"
+export interface GraphIndex {
+  meta: KnowledgeGraph["meta"];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  nodeById: Map<string, GraphNode>;
+  edgesByFrom: Map<string, GraphEdge[]>;   // node ID → outgoing edges
+  edgesByTo: Map<string, GraphEdge[]>;     // node ID → incoming edges
+  edgesByType: Map<string, GraphEdge[]>;   // edge type → all edges of that type
+  elements: ElementNode[];                  // all Element nodes (source + canonical)
+  canonicals: ElementNode[];               // Element nodes where canonical: true
 }
-        → { "warmUp": [...], "main": [...], "closer": [...], "fallbacks": {...} }
-```
 
-Pipeline:
-1. **Theme expansion** — deterministic substring match → target node IDs (cached per string)
-2. **Multi-hop traversal** — for each target node, find connected elements. Score by number of target nodes the element connects to.
-3. **Constraint filter** — remove elements with `requires → audience_input`, `requires → physical_contact`, etc.
-4. **Deduplicate** — prefer canonical elements, filter out source variants already represented in results
-5. **Sequence** — sort into warm-up (beginner, short duration, `suitableFor=warmup`), main (respect `buildsOn` prerequisite chains), closer (high energy, `suitableFor=performance`)
-6. **Fill gaps** — if total plan duration < target, add fallbacks from similar elements
-7. **Graceful degradation** — if no elements match all constraints, return partial results with explanations. If theme expansion finds no matches, broaden search to related mechanics.
+export function createGraphIndex(graph: KnowledgeGraph): GraphIndex;
+export function getGraphIndex(): GraphIndex;       // throws if not loaded
+export function reloadGraph(path: string): GraphIndex;
 
-**F. Show set**
+// ── Element Queries ──
 
-```
-POST /api/shows/build
-{
-  "format": "short-form",
-  "slotCount": 5,
-  "totalDuration": 30,
-  "constraints": ["include-audience-participation"]
+export interface ElementResult {
+  id: string;
+  label: string;
+  summary: string;
+  canonical: boolean;
+  languageCode: string;
+  difficulty?: string;
+  typicalDurationMinutes?: number;
+  playerCountMin?: number;
+  playerCountMax?: number;
+  energyLevel?: string;
+  tags: string[];
+  mechanicLabels: string[];
+  skillLabels: string[];
+  requirementLabels: string[];
 }
-        → { "slots": [{ "slot": 1, "element": {...}, "alternatives": [...] }, ...] }
+
+export interface ElementFilters {
+  difficulty?: string;
+  minPlayers?: number;
+  maxPlayers?: number;
+  minDuration?: number;
+  maxDuration?: number;
+  tag?: string;                    // element must have this tag
+  mechanic?: string;               // element must have this mechanic (label match)
+  skill?: string;                  // element must train this skill (label match)
+  excludeRequirements?: string[];  // exclude elements with ANY of these requirement edges
+  requireRequirements?: string[];  // include ONLY elements with ALL of these requirement edges
+  canonicalOnly?: boolean;         // default: true
+  language?: string;               // default: "en"
+}
+
+export interface PaginatedResult {
+  results: ElementResult[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export function queryElements(filters: ElementFilters & { page?: number; limit?: number }): PaginatedResult;
+
+// ── Element Detail ──
+
+export interface ElementDetail {
+  element: ElementNode;
+  edges: {
+    sourcedFrom: GraphEdge[];
+    canonicalOf: GraphEdge[];
+    translationOf: GraphEdge[];
+    hasMechanic: GraphEdge[];
+    trainsSkill: GraphEdge[];
+    hasTag: GraphEdge[];
+    requires: GraphEdge[];
+    buildsOn_from: GraphEdge[];    // outgoing buildsOn (this builds on others)
+    buildsOn_to: GraphEdge[];      // incoming buildsOn (others build on this)
+    variationOf_from: GraphEdge[]; // outgoing variationOf (this is a variation of...)
+    variationOf_to: GraphEdge[];   // incoming variationOf (...is a variation of this)
+  };
+  similar: ElementResult[];
+}
+
+export function getElementDetail(id: string): ElementDetail | null;
+
+// ── Similarity ──
+
+export function getSimilarElements(id: string, limit?: number): ElementResult[];
+
+// ── Theme Expansion ──
+
+export interface ThemeNode {
+  type: "Mechanic" | "Skill" | "Tag";
+  id: string;
+  label: string;
+}
+
+export function expandTheme(theme: string): ThemeNode[];
 ```
 
-Format templates stored as a config file (`src/formats/formats.json`). Each format defines slots with constraints (duration range, mechanic requirements, variety rules). The builder fits elements into slots using the same query layer.
+**Implementation notes for `graph-query.ts`**:
 
-### 3. suitableFor Heuristic
+- `queryElements()`: Start with `canonicals` (or all elements if `canonicalOnly: false`). Apply each filter as a separate pass. For tag/mechanic/skill filters, resolve label → node ID via an in-memory label index (lowercase), then check if the element has the corresponding edge. For requirement filters, resolve label → requirement node ID, check `requires` edges.
+- `getElementDetail()`: Look up node by ID, collect all outbound edges from `edgesByFrom`, inbound from `edgesByTo`. Call `getSimilarElements()` for the similar list.
+- `getSimilarElements()`: Compute Jaccard coefficient between this element's mechanic+skill edge target set and every other canonical element's. Filter out the element itself. Sort descending by overlap. Return top N. If the element has 0 mechanics and 0 skills, return empty array (can't compute similarity).
+- `createGraphIndex()`: Also builds lowercase label → node ID index maps for mechanics, skills, tags, and requirements for fast label-based lookups.
 
-The `suitableFor` field (`warmup | exercise | performance | encore`) exists in the 0002 schema but is not yet extracted. Derive it heuristically from existing data:
+**`src/query/similarity.ts`** — extracted from `graph-query.ts` if it grows complex. Otherwise, inline.
 
-| suitableFor | Heuristic |
-|-------------|-----------|
-| `warmup` | difficulty = beginner AND duration ≤ 10 min AND energyLevel = medium/high |
-| `exercise` | difficulty = beginner/intermediate AND duration 5–20 min (default) |
-| `performance` | difficulty = intermediate/advanced AND duration ≥ 15 min |
-| `encore` | energyLevel = high AND duration ≤ 5 min |
+**`src/query/suitable-for.ts`**:
 
-These are added as properties during graph query, not stored in the graph. LLM extraction can replace heuristics later.
+```typescript
+export type SuitableFor = "warmup" | "exercise" | "performance" | "encore";
 
-### 4. User Interfaces
+export function deriveSuitableFor(
+  difficulty?: string,
+  durationMinutes?: number,
+  energyLevel?: string,
+): SuitableFor
+```
 
-**Web UI** — zero new dependencies. Vanilla HTML + JS in `public/`. The existing server already serves files from this directory.
+Heuristic rules (applied in order, first match wins):
+
+| Heuristic | Condition |
+|-----------|-----------|
+| `encore` | energyLevel = "high" AND duration ≤ 5 min |
+| `warmup` | difficulty = "beginner" AND duration ≤ 10 min AND energyLevel IN ("medium", "high") |
+| `performance` | difficulty IN ("intermediate", "advanced") AND duration ≥ 15 min |
+| `exercise` | fallback default (all other cases) |
+
+If `energyLevel` is missing/undefined, skip the `encore` check. If `difficulty` is missing, skip warmup and performance checks. `exercise` is always the fallback.
+
+**`src/query/theme.ts`**:
+
+```typescript
+import type { ThemeNode } from "./graph-query";
+export function expandTheme(theme: string): ThemeNode[];
+```
+
+- Lowers theme string, splits into words, filters stop words (a, the, is, of, in, and, to, for, with, on)
+- For each remaining word, searches all mechanic/skill/tag labels (case-insensitive substring match)
+- Each matched label adds one entry to results, with score = how many theme words matched
+- Results ranked by score descending
+- In-memory cache: `Map<string, ThemeNode[]>` — cache key is the theme string. Cache cleared on graph reload.
+
+**`src/query/workshop-planner.ts`**:
+
+```typescript
+export interface WorkshopConstraints {
+  duration: number;             // total minutes
+  players: number;
+  difficulty?: string;
+  constraints?: string[];       // "no-audience", "no-physical-contact", "no-music", "no-props"
+  theme?: string;
+}
+
+export interface WorkshopPlan {
+  warmUp: ElementResult[];
+  main: ElementResult[];
+  closer: ElementResult[];
+  totalDuration: number;
+  fallbacks: Record<string, ElementResult[]>;  // by slot position, for "replace with..."
+  warnings: string[];                           // degradation explanations
+}
+
+export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan;
+```
+
+Pipeline (each step is a function, chainable):
+
+1. **`expandTheme(theme)`** — if theme provided: deterministic substring match → target `ThemeNode[]`. Skip if no theme.
+2. **`findThematicElements(targetNodes)`** — for each target node, collect connected elements from edges. Score elements by unique target node count connected to. Return sorted by score descending.
+3. **`applyConstraints(elements, constraints)`** — map constraint strings to exclusion rules:
+   - `"no-audience"` → excludeRequirement: `["audience_input", "audience_on_stage"]`
+   - `"no-physical-contact"` → excludeRequirement: `["physical_contact"]`
+   - `"no-music"` → excludeRequirement: `["music_singing"]`
+   - `"no-props"` → excludeRequirement: `["props_objects"]`
+4. **`dedupeElements(elements)`** — group by canonical cluster (elements with same `canonicalOf → canonicalId`). Keep only the canonical element per cluster. If an element has no canonicalOf edge (it IS a canonical), keep it directly.
+5. **`filterByPlayers(elements, count)`** — keep elements where `playerCountMin ≤ count ≤ playerCountMax`, or where both are undefined/unset.
+6. **`classifySuitableFor(elements)`** — apply `deriveSuitableFor()` heuristic to each element.
+7. **`sequence(elements)`** — three passes:
+   - **Warm-up**: pick elements with `suitableFor = warmup`, sort by duration ascending. Fill until ~15% of total duration.
+   - **Main**: remaining elements, sorted by difficulty ascending then duration ascending. Respect `buildsOn` chains: if B `buildsOn` A, A must appear before B in the sequence. Fill until ~70% of total duration.
+   - **Closer**: elements with `suitableFor = performance` or `encore`, sorted by energyLevel (high first). Fill until total duration.
+8. **`fillGaps(plan, targetDuration)`** — if total duration < target, find `getSimilarElements()` for elements already in the plan that fit the remaining time. Add to `fallbacks` map.
+9. **`addWarnings(plan, originalConstraints)`** — if not all constraints could be met, or fewer elements than expected, add warning strings.
+
+**`src/query/similarity.ts`** (if needed as separate file):
+
+```typescript
+export function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
+  const intersection = new Set([...setA].filter(x => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+  return union.size > 0 ? intersection.size / union.size : 0;
+}
+```
+
+### 3. User Interfaces
+
+**Web UI** — zero new dependencies. Vanilla HTML + CSS + JS in `public/`.
+
+The existing server serves files from `public/` at line 154-163 of `src/serve.ts`. Any `.html` file placed there is served automatically. API calls from HTML pages use `fetch()` to the API endpoints defined below. All API responses are JSON.
 
 | Page | Route | Content |
 |------|-------|---------|
-| Home | `/` | Graph stats, quick links, theme search bar |
-| Workshop planner | `/workshop` | Form (duration, players, difficulty, constraints, theme) → POST to `/api/workshop/plan` → rendered plan with exercise cards |
-| Element browser | `/elements` | Filter form (difficulty, duration, tags, mechanics) → GET `/api/elements?...` → paginated card grid |
-| Element detail | `/elements/:id` | Full element view: description, steps, mechanics, skills, similar exercises, build chain |
-| Show builder | `/shows` | Format picker → POST `/api/shows/build` → rendered set list with fallback alternatives |
+| Home | `/` (served as `public/index.html`) | Graph stats from `/status`, quick links, theme search bar that POSTs to `/api/themes/expand` |
+| Workshop planner | `/workshop.html` | Form: duration (number), players (number), difficulty (select), constraints (checkboxes), theme (text). Submit → POST `/api/workshop/plan` → render exercise cards grouped as warm-up / main / closer, with fallback alternatives |
+| Element browser | `/elements.html` | Filter form: difficulty, min/max duration, min/max players, tag/mechanic/skill text inputs. Submit → GET `/api/elements?...` → paginated card grid with "Next page" button |
+| Element detail | `/elements-detail.html?id=<id>` | Full element view: description, steps, mechanics list, skills list, tags, requirements, similar exercises (fetched from detail endpoint), build chain (if buildsOn edges exist) |
+| Show builder | `/shows.html` | Format picker (select from available formats), slot count, total duration. Submit → POST `/api/shows/build` → rendered set list |
 
-Each page is a standalone HTML file. JS handles form submission via `fetch()`, renders results into the DOM. No client-side routing, no build step.
+Each page is a standalone HTML file. JS is inline or a `<script>` tag. No client-side routing, no build step. Pages read query params from `URLSearchParams` for element IDs. Use `fetch()` with `Content-Type: application/json` for POST requests. Render results by creating DOM elements with `document.createElement()`.
 
-**CLI** — thin wrapper over the same query functions, using local `output/graph.json`:
+**CLI** — `src/workshop.ts` (new file):
 
 ```
 bun run src/workshop.ts --duration 120 --players 12 --theme storytelling --no-audience
 bun run src/workshop.ts --similar-to "Zip Zap Zop" --harder
 bun run src/workshop.ts --show short-form --slots 5 --duration 30
+bun run src/workshop.ts --element "Freeze Tag"
 ```
 
-The CLI loads `graph.json` locally and calls the same `graph-query.ts` functions (no HTTP). Useful for CI, scripting, and offline use.
+Implementation: parse args from `process.argv`, load `output/graph.json` via `Bun.file(...).json()`, call `createGraphIndex()`, then call the appropriate query function. Output results as formatted text to stdout (table format or JSON with `--json` flag). Does NOT import from `serve.ts` — it uses `graph-query.ts` directly with a local file path.
+
+### 4. Format Templates (Phase 3)
+
+**New file: `src/formats/formats.json`** — checked into git, defines show format structures.
+
+```json
+{
+  "short-form": {
+    "name": "Short Form Set",
+    "slots": [
+      { "type": "opener", "durationMin": 2, "durationMax": 5, "energyMin": "medium" },
+      { "type": "game", "count": 3, "durationMin": 3, "durationMax": 8 },
+      { "type": "closer", "durationMin": 3, "durationMax": 5, "energyMin": "high" }
+    ],
+    "varietyRules": ["no-repeat-mechanic"]
+  },
+  "harold": {
+    "name": "Harold",
+    "phases": [
+      { "name": "Opening", "durationMin": 3, "durationMax": 7, "mechanicRequired": "opening" },
+      { "name": "Scene A", "durationMin": 3, "durationMax": 5 },
+      { "name": "Group Game", "durationMin": 2, "durationMax": 4 },
+      { "name": "Scene B", "durationMin": 3, "durationMax": 5 },
+      { "name": "Scene C", "durationMin": 3, "durationMax": 5 },
+      { "name": "Closer", "durationMin": 3, "durationMax": 5 }
+    ],
+    "varietyRules": ["alternate-energy", "no-repeat-mechanic"]
+  }
+}
+```
+
+**New file: `src/formats/builder.ts`**:
+
+```typescript
+export interface FormatSlot {
+  name: string;
+  element: ElementResult;
+  alternatives: ElementResult[];
+}
+
+export interface ShowSet {
+  format: string;
+  slots: FormatSlot[];
+  totalDuration: number;
+  warnings: string[];
+}
+
+export function buildShowSet(
+  formatName: string,
+  constraints: { slotCount?: number; totalDuration?: number; includeRequirements?: string[] }
+): ShowSet;
+```
+
+For each slot in the format definition, call `queryElements()` with the slot's constraints (duration range, mechanic requirements, energy). If `includeRequirements` is provided (e.g. `["audience_on_stage"]`), one slot is forced to include an element with that requirement. For `varietyRules`: check that selected elements don't have the same mechanics as previously selected elements. Store 2-3 alternatives per slot for each selected element.
+
+### 5. API Endpoints (added to `src/serve.ts`)
+
+All added to the existing `if/else` chain in the `fetch` handler. Each is a separate `if (url.pathname === "...")` block above the final `return new Response("Not Found", { status: 404 })`.
+
+All endpoints return `jsonResponse(data, req)`. POST endpoints parse the body with `await req.json()`.
+
+| Method | Path | Handler |
+|--------|------|---------|
+| `GET` | `/api/elements` | `queryElements(params)` — parse query string to `ElementFilters` + `page`/`limit`. Return `PaginatedResult`. |
+| `GET` | `/api/elements/:id` | Extract id from path segment. Call `getElementDetail(id)`. Return 404 if null. |
+| `GET` | `/api/elements/:id/similar` | Parse `?limit=N`. Call `getSimilarElements(id, limit)`. |
+| `POST` | `/api/themes/expand` | Parse `{ theme }` from body. Call `expandTheme(theme)`. Return `{ nodes }`. |
+| `POST` | `/api/workshop/plan` | Parse `WorkshopConstraints` from body. Call `planWorkshop()`. Return `WorkshopPlan`. |
+| `POST` | `/api/shows/build` | Parse `{ format, slotCount?, totalDuration?, constraints? }` from body. Call `buildShowSet()`. Return `ShowSet`. |
+
+**Route parameter extraction**: The server doesn't use a router. For paths like `/api/elements/:id`, split `url.pathname` on `/` and extract the last segment.
+
+**Server startup changes** — near the top of `serve.ts`, after the imports:
+
+```typescript
+import { createGraphIndex, getGraphIndex } from "./query/graph-query";
+
+// Load graph into memory at startup
+const graphPath = path.join(process.cwd(), "output", "graph.json");
+try {
+  const graphFile = Bun.file(graphPath);
+  if (await graphFile.exists()) {
+    const graph = await graphFile.json();
+    createGraphIndex(graph);
+    console.log(`Graph loaded: ${graph.meta.nodeCount} nodes, ${graph.meta.edgeCount} edges`);
+  } else {
+    console.log("No graph.json found — query API will return 503 until graph is derived");
+  }
+} catch (err) {
+  console.error("Failed to load graph:", err);
+}
+```
+
+API endpoints check `getGraphIndex()` and return `jsonResponse({ error: "Graph not available" }, req)` with status 503 if no graph is loaded.
 
 ## Node & Edge Types (additions)
 
-New node type:
+New node type added to graph nodes (same shape as existing `Mechanic`, `Skill`, `Tag`, `Source`):
 
-| Node | What it represents | Example |
-|------|-------------------|---------|
-| `Requirement` | A setup constraint on an exercise | "audience_input", "music_singing" |
+| Node | `type` value | `label` example | ID derivation |
+|------|-------------|-----------------|---------------|
+| `Requirement` | `"Requirement"` | `"audience_input"` | `createHash("md5").update("requirement:" + label.toLowerCase())` |
 
-New edge types:
+New edge types added to `GraphEdge.type` union:
 
-| Edge | From → To | Source | Meaning |
-|------|-----------|--------|---------|
-| `requires` | Element → Requirement | Derived from tags + mechanics | "Playing this exercise requires X" |
-| `buildsOn` | Element → Element | Heuristic + manual | "This exercise builds on skills from that one" |
-| `variationOf` | Element → Element | Derived from `derivedElements` | "This is an inline variation of that" |
+| Edge | `type` value | From → To | Meaning |
+|------|-------------|-----------|---------|
+| `requires` | `"requires"` | Element → Requirement | "Playing this exercise requires X" |
+| `buildsOn` | `"buildsOn"` | Element → Element | "This exercise builds on skills from that one" |
+| `variationOf` | `"variationOf"` | Element → Element | "This is an inline variation of that" |
 
 ## Multi-Language Strategy
 
-EN is the source of truth. All UI pages show EN canonical elements by default. DE canonicals are accessible via translation links. An element detail page showing an EN canonical also lists `translationOf → DE canonical` if available.
+EN is the source of truth. All UI pages show EN canonical elements by default. DE canonicals are accessible via `translationOf` edges from their EN counterparts. An element detail page showing an EN canonical also lists its `translationOf` outbound edge to the DE canonical. The `queryElements()` function defaults to `language: "en"` and filters to elements with `languageCode === "en"`. Pass `language: undefined` to get both languages.
 
 ## Error Handling
 
-Graceful degradation throughout:
+Graceful degradation at every layer:
 
-- **No elements match constraints** → return partial results with explanation of which constraint was relaxed
-- **Theme expansion finds nothing** → broaden to related mechanics via mechanic overlap, fall back to substring match
-- **LLM unavailable** → deterministic substring matching only (no LLM dependency for MVP)
-- **Graph not derived** → `/api/elements`, `/api/workshop/plan` return clear error: "Graph not available — run graph derivation first"
-- **Invalid parameters** → 400 with field-level error messages
+| Situation | Behavior |
+|-----------|----------|
+| Graph not derived yet | API returns 503 `{ error: "Graph not available — run graph derivation first" }` |
+| No elements match all constraints | Return partial results. `warnings` array explains which constraint was relaxed |
+| Theme expansion finds no matches | Broaden: remove the shortest theme word, retry. If still empty, return `{ nodes: [], warning: "No matching concepts found for theme 'X'" }` |
+| Element ID not found | Return 404 `{ error: "Element not found: <id>" }` |
+| Invalid request body (POST) | Return 400 `{ error: "Invalid request", details: "<specific field>" }` |
+| EnergyLevel missing on element | `suitableFor` heuristic skips energy-dependent checks, falls back to `exercise` |
+| Element has 0 mechanics + 0 skills | `getSimilarElements()` returns empty array |
+| LLM unavailable | Not applicable — MVP uses deterministic substring matching only |
 
 ## Phasing
 
 ### Phase 0: Requirement Edges
 
-- New file: `src/graph/requirement-mapping.ts` — config mapping tags+mechanics → requirement concepts
-- Modified: `src/graph/derive.ts` — add `Requirement` nodes + `requires` edges during Phase 3
-- Modified: `src/graph/overrides.ts` — support `requires` overrides
-- No LLM changes. No schema changes. Deterministic derivation.
+**New file: `src/graph/requirement-mapping.ts`**
+- Export `REQUIREMENT_MAP` constant (see format above)
+- Export `deriveRequirements(mechanics: string[], tags: string[]): string[]`
+
+**Modified: `src/graph/derive.ts`**
+- In Phase 3 (after mechanics/skills/tags are wired), iterate over all elements
+- Call `deriveRequirements()` for each element's mechanics and tags
+- Add `Requirement` nodes (idempotent — check if node exists before adding)
+- Add `requires` edges from element → requirement node
+- Export `Requirement` as valid node type in `GraphNode` type union
+- Export `"requires"` as valid edge type in `GraphEdge.type` union
+
+**Modified: `src/graph/overrides.ts`**
+- Add `AddRequiresOverride` and `RemoveRequiresOverride` to `Override` type union
+- Format: `{ type: "add_requires" | "remove_requires", elementId: string, requirementLabel: string, note?: string }`
+- In `applyEdgeOverrides()` (or a new function), handle these overrides by adding/removing `requires` edges post-derivation
+- No content hash needed for MVP — these target requirement labels, not element content
+
+**Tests: `src/graph/__testdata__/requirement.test.ts`**
+- Test that elements with `audience suggestion` mechanic get `requires → audience_input` edge
+- Test that elements with `Ask For` tag get `requires → audience_input` edge
+- Test that elements with neither don't get the edge
+- Test that `add_requires` and `remove_requires` overrides work
 
 ### Phase 1: Dependency + Variation Edges
 
-- Modified: `src/graph/derive.ts` — heuristic `buildsOn` from mechanic subsets, `variationOf` from `derivedElements`
-- Modified: `src/graph/overrides.ts` — support `buildsOn` and `variationOf` overrides
-- No LLM changes. No schema changes.
+**Modified: `src/graph/derive.ts`**
+- In Phase 3, add `buildsOn` inference:
+  - Build map of element ID → set of mechanic node IDs
+  - For each pair (A, B) from same source: if A's mechanics ⊂ B's mechanics, A ≤ difficulty, A ≤ duration, different labels → B `buildsOn` A
+- In Phase 1, add `variationOf` edges:
+  - When creating source element nodes, check if the normalized element has `derivedElements`
+  - For each derived element, find its graph node via the idMap, add `variationOf` edge from derived element → parent element
+- Export `"buildsOn"` and `"variationOf"` as valid edge types
+
+**Modified: `src/graph/overrides.ts`**
+- Add override types to `Override` union:
+  - `{ type: "add_buildsOn", fromElementId, toElementId, note? }`
+  - `{ type: "remove_buildsOn", fromElementId, toElementId, note? }`
+  - `{ type: "add_variationOf", fromElementId, toElementId, note? }`
+  - `{ type: "remove_variationOf", fromElementId, toElementId, note? }`
+- Apply in `applyEdgeOverrides()`: for add, inject edge. For remove, filter edge.
+
+**Tests: `src/graph/__testdata__/dependency.test.ts`**
+- Test `buildsOn` heuristic: element B with superset mechanics + higher difficulty → `buildsOn` A
+- Test exclusion: same-name cross-source elements don't get `buildsOn`
+- Test `variationOf`: derived elements get edge to parent
+- Test `add_buildsOn` and `remove_buildsOn` overrides
 
 ### Phase 2: Query Layer + API + UI
 
-- New file: `src/query/graph-query.ts` — in-memory graph index + query functions
-- New file: `src/query/similarity.ts` — on-the-fly Jaccard overlap
-- New file: `src/query/theme.ts` — deterministic theme expansion
-- New file: `src/query/workshop-planner.ts` — workshop plan pipeline
-- New file: `src/query/suitable-for.ts` — heuristic suitableFor derivation
-- New file: `src/workshop.ts` — CLI entry point
-- Modified: `src/serve.ts` — new API endpoints, load graph at startup
-- New files: `public/index.html`, `public/workshop.html`, `public/elements.html`, `public/elements-detail.html`, `public/shows.html`
+**New files under `src/query/`:**
+- `graph-query.ts` — `GraphIndex`, `createGraphIndex()`, `queryElements()`, `getElementDetail()`, `getSimilarElements()`, `expandTheme()`
+- `similarity.ts` — `jaccardSimilarity()` helper
+- `theme.ts` — `expandTheme()` with caching
+- `workshop-planner.ts` — `planWorkshop()` pipeline
+- `suitable-for.ts` — `deriveSuitableFor()` heuristic
+
+**New file: `src/workshop.ts`** — CLI entry point
+
+**Modified: `src/serve.ts`**
+- Add startup graph loading (see "Server startup changes" above)
+- Add 6 new API endpoints (see "API Endpoints" table above)
+- Each endpoint: guard with `getGraphIndex()` check, parse params/body, call query function, return JSON
+
+**New files in `public/`:**
+- `index.html` — landing page with graph stats and quick links
+- `workshop.html` — workshop planner form + results
+- `elements.html` — element browser with filters + pagination
+- `elements-detail.html` — single element view
+- `shows.html` — show set builder
+
+**Tests:**
+- `src/query/__testdata__/query.test.ts` — unit tests for query functions using a minimal test graph
+- `src/query/__testdata__/api.test.ts` — integration tests: mock graph, start server, call endpoints, verify responses
 
 ### Phase 3: Format Templates
 
-- New file: `src/formats/formats.json` — show format definitions
-- New file: `src/formats/builder.ts` — format-aware element fitting
-- Modified: `src/serve.ts` — `/api/shows/build` endpoint
+**New file: `src/formats/formats.json`** — format definitions (see format above)
 
-### Phase 4: Integration + Update 0001
+**New file: `src/formats/builder.ts`** — `buildShowSet()` function
 
-- Modified: `docs/plans/0001-knowledge-graph-and-application.md` — mark P1–P3 as ✅, add forward reference to 0003
-- Final: `bun test` all pass
+**Modified: `src/serve.ts`** — add `POST /api/shows/build` endpoint
+
+**Tests: `src/formats/__testdata__/formats.test.ts`**
+- Test that short-form format produces 5 slots when slotCount=5
+- Test that `includeRequirements: ["audience_on_stage"]` forces one slot to contain an audience-participation element
+- Test that invalid format name returns error
+
+### Phase 4: Integration
+
+- Verify `bun test` passes for all new and existing tests
+- Verify `bun run src/normalize/normalize.ts --graph` produces graph with new edges
+- Verify `bun run src/review.ts --clusters` still works (new edges counted in meta)
+- Plan 0001 is already updated with phase status and forward references
 
 ## Deliverables per Phase
 
@@ -299,9 +700,9 @@ Graceful degradation throughout:
 |-------|-----------|---------------|-------|
 | 0 | `src/graph/requirement-mapping.ts` | `derive.ts`, `overrides.ts` | `requirement.test.ts` |
 | 1 | — | `derive.ts`, `overrides.ts` | `dependency.test.ts` |
-| 2 | `src/query/graph-query.ts`, `src/query/similarity.ts`, `src/query/theme.ts`, `src/query/workshop-planner.ts`, `src/query/suitable-for.ts`, `src/workshop.ts`, `public/*.html` (5 files) | `serve.ts` | `query.test.ts`, `api.test.ts` |
+| 2 | `src/query/graph-query.ts`, `src/query/similarity.ts`, `src/query/theme.ts`, `src/query/workshop-planner.ts`, `src/query/suitable-for.ts`, `src/workshop.ts`, `public/index.html`, `public/workshop.html`, `public/elements.html`, `public/elements-detail.html`, `public/shows.html` | `serve.ts` | `query.test.ts`, `api.test.ts` |
 | 3 | `src/formats/formats.json`, `src/formats/builder.ts` | `serve.ts` | `formats.test.ts` |
-| 4 | — | `docs/plans/0001-*.md` | — |
+| 4 | — | — (verify only) | `bun test` (existing + new) |
 
 ## Execution Order
 
@@ -315,12 +716,12 @@ Phase 0 (requirements) ──► Phase 1 (dependencies)
                               Phase 3 (format templates)
                                     │
                                     ▼
-                              Phase 4 (integration + 0001 update)
+                              Phase 4 (integration + verify)
 ```
 
-Phases 0 and 1 can partially overlap (different derive.ts sections). Phases 2 and 3 are strictly sequential (3 builds on 2's query layer).
+Phases 0 and 1 can partially overlap (different sections of `derive.ts`). Phases 2 and 3 are strictly sequential (3 depends on 2's query functions). Phase 4 is verification only.
 
-## Open Questions (resolved)
+## Open Questions (all resolved)
 
 | # | Question | Decision |
 |---|----------|----------|
@@ -331,7 +732,7 @@ Phases 0 and 1 can partially overlap (different derive.ts sections). Phases 2 an
 | 5 | Sequencing algorithm depth? | **Simple sort + buildsOn chains** for MVP. |
 | 6 | suitableFor — LLM extraction or heuristic? | **Heuristic derivation** now. LLM extraction in future. |
 | 7 | movementType for physical constraints? | **Skip for MVP.** Not part of initial scope. |
-| 8 | Update Plan 0001? | **Yes.** Mark P1–P3 as complete. |
+| 8 | Update Plan 0001? | **Already done.** P1–P3 marked ✅, forward refs to 0003. |
 | 9 | Workshop plan caching? | **Per-theme-string cache** for theme expansion. No plan-level caching. |
 | 10 | Error handling strategy? | **Graceful degradation.** Partial results with explanations. |
 | 11 | Client-side portability? | **Server-side only for now.** Design query functions as pure functions. |
