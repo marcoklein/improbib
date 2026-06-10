@@ -7,7 +7,7 @@ import { applyDedupOverrides, applyEdgeOverrides, loadOverrides } from "./overri
 import type { Override, OverrideStats } from "./overrides";
 import { deriveRequirements } from "./requirement-mapping";
 
-interface GraphNode {
+export interface GraphNode {
   id: string;
   type: "Element" | "Mechanic" | "Skill" | "Tag" | "Source" | "Requirement";
   label: string;
@@ -19,7 +19,7 @@ interface SourceProvenance {
   identifier: string;
 }
 
-interface ElementNode extends GraphNode {
+export interface ElementNode extends GraphNode {
   type: "Element";
   canonical: boolean;
   description: string;

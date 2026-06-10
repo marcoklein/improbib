@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Element Browser — Improbib</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; color: #1a1a2e; background: #f0f2f5; line-height: 1.5; }
+header { background: #1a1a2e; color: white; padding: 16px 24px; }
+header h1 { font-size: 1.25rem; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+.filters { background: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.filter-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.filter-row .filter-group { flex: 1; min-width: 100px; }
+.filter-group label { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 2px; }
+.filter-group input, .filter-group select { width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem; }
+button { background: #1a1a2e; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+button:hover { background: #2d2d4a; }
+.pagination { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 16px 0; font-size: 0.85rem; }
+.pagination span { color: #6b7280; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: box-shadow 0.15s; }
+.card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.card.active { box-shadow: 0 0 0 2px #1a1a2e; }
+.card-title { font-weight: 700; font-size: 0.95rem; }
+.card-meta { font-size: 0.7rem; color: #6b7280; margin-top: 2px; }
+.card-summary { font-size: 0.8rem; color: #4b5563; margin-top: 6px; }
+.card-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.tag { background: #e5e7eb; padding: 1px 6px; border-radius: 10px; font-size: 0.65rem; color: #374151; }
+.detail-panel { background: white; border-radius: 8px; padding: 24px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: none; }
+.detail-panel.open { display: block; }
+.detail-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.detail-title { font-size: 1.2rem; font-weight: 700; }
+.detail-meta { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
+.detail-desc { margin-top: 12px; font-size: 0.9rem; line-height: 1.6; }
+.detail-section { margin-top: 16px; }
+.detail-section h3 { font-size: 0.9rem; font-weight: 700; margin-bottom: 6px; }
+.detail-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.detail-list .tag { font-size: 0.75rem; }
+.similar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px; }
+.similar-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; font-size: 0.8rem; cursor: pointer; }
+.similar-card:hover { background: #f3f4f6; }
+.similar-card .title { font-weight: 600; }
+.similar-card .meta { font-size: 0.7rem; color: #6b7280; }
+.close-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #6b7280; padding: 0 4px; }
+.close-btn:hover { color: #1a1a2e; }
+.loading { text-align: center; padding: 40px; color: #6b7280; }
+.error { background: #fee2e2; color: #991b1b; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+.no-results { text-align: center; padding: 40px; color: #6b7280; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<header><h1>Element Browser</h1></header>
+<div class="container">
+  <div id="error" class="error" style="display:none"></div>
+  <div class="filters">
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Difficulty</label>
+        <select id="f-difficulty"><option value="">Any</option><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Min duration (min)</label>
+        <input type="number" id="f-minDuration" min="0" placeholder="0">
+      </div>
+      <div class="filter-group">
+        <label>Max duration (min)</label>
+        <input type="number" id="f-maxDuration" min="0" placeholder="60">
+      </div>
+      <div class="filter-group">
+        <label>Min players</label>
+        <input type="number" id="f-minPlayers" min="0" placeholder="0">
+      </div>
+      <div class="filter-group">
+        <label>Max players</label>
+        <input type="number" id="f-maxPlayers" min="0" placeholder="100">
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Tag</label>
+        <input type="text" id="f-tag" placeholder="e.g. Warm-ups">
+      </div>
+      <div class="filter-group">
+        <label>Mechanic</label>
+        <input type="text" id="f-mechanic" placeholder="e.g. circle formation">
+      </div>
+      <div class="filter-group">
+        <label>Skill</label>
+        <input type="text" id="f-skill" placeholder="e.g. focus">
+      </div>
+      <div class="filter-group">
+        <label>Exclude requirements</label>
+        <input type="text" id="f-exclude" placeholder="e.g. audience_input">
+      </div>
+      <div class="filter-group" style="align-self:flex-end">
+        <button id="search-btn">Search</button>
+      </div>
+    </div>
+  </div>
+  <div id="results"><div class="loading">Search for elements to begin</div></div>
+  <div id="detail" class="detail-panel"></div>
+</div>
+
+<script>
+let currentPage = 1;
+let totalResults = 0;
+const limit = 20;
+
+document.getElementById("search-btn").addEventListener("click", () => { currentPage = 1; search(); });
+document.getElementById("search-btn").click();
+
+async function search() {
+  const results = document.getElementById("results");
+  const error = document.getElementById("error");
+  error.style.display = "none";
+  results.innerHTML = '<div class="loading">Searching...</div>';
+  document.getElementById("detail").classList.remove("open");
+
+  const params = new URLSearchParams();
+  const f = (id) => document.getElementById(id).value;
+  if (f("f-difficulty")) params.set("difficulty", f("f-difficulty"));
+  if (f("f-minDuration")) params.set("minDuration", f("f-minDuration"));
+  if (f("f-maxDuration")) params.set("maxDuration", f("f-maxDuration"));
+  if (f("f-minPlayers")) params.set("minPlayers", f("f-minPlayers"));
+  if (f("f-maxPlayers")) params.set("maxPlayers", f("f-maxPlayers"));
+  if (f("f-tag")) params.set("tag", f("f-tag"));
+  if (f("f-mechanic")) params.set("mechanic", f("f-mechanic"));
+  if (f("f-skill")) params.set("skill", f("f-skill"));
+  if (f("f-exclude")) params.set("excludeRequirements", f("f-exclude"));
+  params.set("page", String(currentPage));
+  params.set("limit", String(limit));
+
+  try {
+    const res = await fetch("/api/elements?" + params.toString());
+    const data = await res.json();
+    if (!res.ok) { error.textContent = data.error; error.style.display = "block"; results.innerHTML = ""; return; }
+    totalResults = data.total;
+    renderResults(data);
+  } catch (err) {
+    error.textContent = "Failed to connect to server";
+    error.style.display = "block";
+    results.innerHTML = "";
+  }
+}
+
+function renderResults(data) {
+  const el = document.getElementById("results");
+  if (data.results.length === 0) {
+    el.innerHTML = '<div class="no-results">No elements found matching your filters</div>';
+    return;
+  }
+
+  let html = '<div class="grid">';
+  for (const r of data.results) {
+    html += `<div class="card" data-id="${r.id}" onclick="showDetail('${r.id}')">`;
+    html += `<div class="card-title">${esc(r.label)}</div>`;
+    html += `<div class="card-meta">${renderMeta(r)}</div>`;
+    html += `<div class="card-summary">${truncate(r.summary, 100)}</div>`;
+    html += `<div class="card-tags">${renderTags(r)}</div>`;
+    html += '</div>';
+  }
+  html += '</div>';
+
+  const totalPages = Math.ceil(totalResults / limit);
+  html += '<div class="pagination">';
+  html += `<button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">Prev</button>`;
+  html += `<span>Page ${currentPage} of ${totalPages} (${totalResults} total)</span>`;
+  html += `<button ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">Next</button>`;
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+function goPage(p) { currentPage = p; search(); window.scrollTo(0, 0); }
+
+async function showDetail(id) {
+  document.querySelectorAll(".card").forEach(c => c.classList.remove("active"));
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (card) card.classList.add("active");
+
+  const panel = document.getElementById("detail");
+  panel.classList.add("open");
+  panel.innerHTML = '<div class="loading">Loading...</div>';
+  panel.scrollIntoView({ behavior: "smooth" });
+
+  try {
+    const res = await fetch(`/api/elements/${id}`);
+    if (!res.ok) { panel.innerHTML = '<div class="error">Element not found</div>'; return; }
+    const data = await res.json();
+    renderDetail(data, id);
+  } catch {
+    panel.innerHTML = '<div class="error">Failed to load element detail</div>';
+  }
+}
+
+function renderDetail(data, id) {
+  const el = data.element;
+  const ee = data.edges;
+
+  let html = `<button class="close-btn" onclick="document.getElementById('detail').classList.remove('open')">x</button>`;
+  html += `<div class="detail-header"><div class="detail-title">${esc(el.label)}</div></div>`;
+  html += `<div class="detail-meta">${renderMetaFull(el)}</div>`;
+  html += `<div class="detail-desc">${esc(el.description || el.summary)}</div>`;
+
+  const mechLabels = data.mechanicLabels || [];
+  const skillLabels = data.skillLabels || [];
+  const tagLabels = data.tagLabels || [];
+  const reqLabels = data.requirementLabels || [];
+
+  if (mechLabels.length) html += detailSection("Mechanics", mechLabels);
+  if (skillLabels.length) html += detailSection("Skills", skillLabels);
+  if (tagLabels.length) html += detailSection("Tags", tagLabels);
+  if (reqLabels.length) html += detailSection("Requirements", reqLabels);
+
+  if (ee.buildsOn_from.length) {
+    const deps = ee.buildsOn_from.map((e, i) =>
+      `<span class="tag" style="cursor:pointer" onclick="showDetail('${e.to}')">${esc(data.buildsOn_from_labels?.[i] || e.to.slice(0,8))}</span>`);
+    html += detailSectionRaw("Prerequisites (builds on)", deps.join(""));
+  }
+  if (ee.buildsOn_to.length) {
+    const deps = ee.buildsOn_to.map((e, i) =>
+      `<span class="tag" style="cursor:pointer" onclick="showDetail('${e.from}')">${esc(data.buildsOn_to_labels?.[i] || e.from.slice(0,8))}</span>`);
+    html += detailSectionRaw("Harder exercises (builds on this)", deps.join(""));
+  }
+  if (ee.variationOf_from.length) {
+    const vars = ee.variationOf_from.map((e, i) =>
+      `<span class="tag" style="cursor:pointer" onclick="showDetail('${e.to}')">${esc(data.variationOf_from_labels?.[i] || e.to.slice(0,8))}</span>`);
+    html += detailSectionRaw("Variations of", vars.join(""));
+  }
+  if (ee.variationOf_to.length) {
+    const vars = ee.variationOf_to.map((e, i) =>
+      `<span class="tag" style="cursor:pointer" onclick="showDetail('${e.from}')">${esc(data.variationOf_to_labels?.[i] || e.from.slice(0,8))}</span>`);
+    html += detailSectionRaw("Has variations", vars.join(""));
+  }
+
+  if (data.similar && data.similar.length > 0) {
+    html += `<div class="detail-section"><h3>Similar Exercises</h3><div class="similar-grid">`;
+    for (const s of data.similar) {
+      html += `<div class="similar-card" onclick="showDetail('${s.id}')">`;
+      html += `<div class="title">${esc(s.label)}</div>`;
+      html += `<div class="meta">${renderMeta(s)}</div>`;
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  const panel = document.getElementById("detail");
+  panel.innerHTML = html;
+  panel.classList.add("open");
+}
+
+function detailSection(title, labels) {
+  return `<div class="detail-section"><h3>${title}</h3><div class="detail-list">${labels.map(l => `<span class="tag">${esc(l)}</span>`).join("")}</div></div>`;
+}
+
+function detailSectionRaw(title, content) {
+  return `<div class="detail-section"><h3>${title}</h3><div class="detail-list">${content}</div></div>`;
+}
+
+function renderMeta(el) {
+  const parts = [];
+  if (el.difficulty) parts.push(esc(el.difficulty));
+  if (el.typicalDurationMinutes) parts.push(`${el.typicalDurationMinutes}m`);
+  if (el.playerCountMin || el.playerCountMax) {
+    parts.push(`${el.playerCountMin || 0}–${el.playerCountMax || "∞"}p`);
+  }
+  return parts.join(" · ");
+}
+
+function renderMetaFull(el) {
+  const parts = [];
+  if (el.difficulty) parts.push(`Difficulty: ${esc(el.difficulty)}`);
+  if (el.typicalDurationMinutes) parts.push(`Duration: ${el.typicalDurationMinutes} min`);
+  if (el.playerCountMin || el.playerCountMax) parts.push(`Players: ${el.playerCountMin || 0}–${el.playerCountMax || "∞"}`);
+  parts.push(`Language: ${esc(el.languageCode || "en")}`);
+  if (el.canonical !== undefined) parts.push(el.canonical ? "Canonical" : "Source element");
+  return parts.join(" · ");
+}
+
+function renderTags(el) {
+  const tags = [];
+  for (const t of (el.mechanicLabels || []).slice(0, 2)) tags.push(`<span class="tag">${esc(t)}</span>`);
+  for (const t of (el.skillLabels || []).slice(0, 2)) tags.push(`<span class="tag">${esc(t)}</span>`);
+  for (const t of (el.requirementLabels || []).slice(0, 2)) tags.push(`<span class="tag" style="background:#fecaca;color:#991b1b">${esc(t)}</span>`);
+  return tags.join("");
+}
+
+function truncate(text, max) {
+  if (!text) return "";
+  return text.length > max ? text.slice(0, max) + "..." : text;
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

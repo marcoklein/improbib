@@ -11,6 +11,8 @@ import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import path from "path";
+import { createGraphIndex, getGraphIndex } from "./query/graph-query";
+import type { GraphIndex } from "./query/graph-query";
 
 const PORT = parseInt(process.env.PORT || "5000");
 
@@ -59,6 +61,21 @@ function rawSourcesExist(): boolean {
 
 const scanner = new Improbib();
 await scanner.enableLogging();
+
+let graphIndex: GraphIndex | null = null;
+const graphPath = path.join(process.cwd(), "output", "graph.json");
+try {
+  const graphFile = Bun.file(graphPath);
+  if (await graphFile.exists()) {
+    const graph = await graphFile.json();
+    graphIndex = createGraphIndex(graph);
+    console.log(`Graph loaded: ${graphIndex.meta.nodeCount} nodes, ${graphIndex.meta.edgeCount} edges`);
+  } else {
+    console.log("No graph.json found — query API will return 503 until graph is derived");
+  }
+} catch (err) {
+  console.error("Failed to load graph:", err);
+}
 
 let scrapeRunning = false;
 let normalizeRunning = false;
@@ -304,6 +321,82 @@ Bun.serve({
         return jsonResponse({ ok: true, result }, req);
       } catch (err: any) {
         return jsonResponse({ ok: false, error: err.message }, req);
+      }
+    }
+
+    // ── Query API endpoints ──
+
+    if (url.pathname === "/api/elements") {
+      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req);
+      const { queryElements } = await import("./query/graph-query");
+      const filters: Record<string, any> = {};
+      if (url.searchParams.has("difficulty")) filters.difficulty = url.searchParams.get("difficulty");
+      if (url.searchParams.has("minPlayers")) filters.minPlayers = parseInt(url.searchParams.get("minPlayers")!);
+      if (url.searchParams.has("maxPlayers")) filters.maxPlayers = parseInt(url.searchParams.get("maxPlayers")!);
+      if (url.searchParams.has("minDuration")) filters.minDuration = parseInt(url.searchParams.get("minDuration")!);
+      if (url.searchParams.has("maxDuration")) filters.maxDuration = parseInt(url.searchParams.get("maxDuration")!);
+      if (url.searchParams.has("tag")) filters.tag = url.searchParams.get("tag");
+      if (url.searchParams.has("mechanic")) filters.mechanic = url.searchParams.get("mechanic");
+      if (url.searchParams.has("skill")) filters.skill = url.searchParams.get("skill");
+      if (url.searchParams.has("excludeRequirements")) filters.excludeRequirements = url.searchParams.get("excludeRequirements")!.split(",");
+      if (url.searchParams.has("requireRequirements")) filters.requireRequirements = url.searchParams.get("requireRequirements")!.split(",");
+      if (url.searchParams.has("language")) filters.language = url.searchParams.get("language");
+      if (url.searchParams.has("canonicalOnly")) filters.canonicalOnly = url.searchParams.get("canonicalOnly") === "true";
+      if (url.searchParams.has("page")) filters.page = parseInt(url.searchParams.get("page")!);
+      if (url.searchParams.has("limit")) filters.limit = parseInt(url.searchParams.get("limit")!);
+      const result = queryElements(filters);
+      return jsonResponse(result, req);
+    }
+
+    if (url.pathname.startsWith("/api/elements/") && url.pathname !== "/api/elements/") {
+      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req);
+      const parts = url.pathname.slice("/api/elements/".length).split("/");
+      const id = parts[0];
+      if (!id) return jsonResponse({ error: "Missing element ID" }, req);
+
+      if (parts.length === 2 && parts[1] === "similar") {
+        const { getSimilarElements } = await import("./query/graph-query");
+        const limit = parseInt(url.searchParams.get("limit") || "10");
+        const similar = getSimilarElements(id, limit);
+        return jsonResponse({ results: similar }, req);
+      }
+
+      const { getElementDetail } = await import("./query/graph-query");
+      const detail = getElementDetail(id);
+      if (!detail) return jsonResponse({ error: `Element not found: ${id}` }, req);
+      return jsonResponse(detail, req);
+    }
+
+    if (url.pathname === "/api/themes/expand" && req.method === "POST") {
+      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req);
+      const { expandTheme } = await import("./query/theme");
+      try {
+        const body = await req.json() as { theme: string };
+        if (!body.theme || typeof body.theme !== "string") {
+          return jsonResponse({ error: "Invalid request", details: "theme string required" }, req);
+        }
+        const nodes = expandTheme(body.theme);
+        return jsonResponse({ nodes, warning: nodes.length === 0 ? `No matching concepts found for theme "${body.theme}"` : undefined }, req);
+      } catch {
+        return jsonResponse({ error: "Invalid request body" }, req);
+      }
+    }
+
+    if (url.pathname === "/api/workshop/plan" && req.method === "POST") {
+      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req);
+      const { planWorkshop } = await import("./query/workshop-planner");
+      try {
+        const body = await req.json();
+        if (!body.duration || typeof body.duration !== "number" || body.duration <= 0) {
+          return jsonResponse({ error: "Invalid request", details: "duration must be a positive number" }, req);
+        }
+        if (!body.players || typeof body.players !== "number" || body.players <= 0) {
+          return jsonResponse({ error: "Invalid request", details: "players must be a positive number" }, req);
+        }
+        const plan = planWorkshop(body);
+        return jsonResponse(plan, req);
+      } catch {
+        return jsonResponse({ error: "Invalid request body" }, req);
       }
     }
 

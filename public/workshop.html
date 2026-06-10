@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workshop Planner — Improbib</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; color: #1a1a2e; background: #f0f2f5; line-height: 1.5; }
+header { background: #1a1a2e; color: white; padding: 16px 24px; }
+header h1 { font-size: 1.25rem; }
+.stats { font-size: 0.8rem; opacity: 0.7; margin-top: 4px; }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem; }
+.form-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.form-row .form-group { flex: 1; min-width: 120px; }
+input, select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
+button { background: #1a1a2e; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 0.95rem; }
+button:hover { background: #2d2d4a; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.constraint-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.constraint-group label { display: flex; align-items: center; gap: 6px; font-weight: 400; cursor: pointer; font-size: 0.85rem; }
+.constraint-group input[type="checkbox"] { width: auto; }
+.results { margin-top: 32px; }
+.section-title { font-size: 1.1rem; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #1a1a2e; }
+.card { background: white; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.card-title { font-weight: 700; font-size: 1rem; }
+.card-meta { font-size: 0.75rem; color: #6b7280; margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+.card-summary { font-size: 0.85rem; color: #4b5563; margin-top: 8px; }
+.card-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.tag { background: #e5e7eb; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; color: #374151; }
+.replace-btn { background: #6b7280; padding: 4px 12px; font-size: 0.75rem; border-radius: 4px; }
+.replace-btn:hover { background: #4b5563; }
+.fallback-list { margin-top: 8px; padding-left: 16px; font-size: 0.8rem; }
+.fallback-list li { margin-bottom: 4px; }
+.fallback-list button { background: none; color: #2563eb; padding: 2px 4px; font-size: 0.75rem; text-decoration: underline; }
+.warnings { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; }
+.warnings li { font-size: 0.85rem; color: #92400e; }
+.total-duration { font-size: 0.85rem; color: #6b7280; margin-bottom: 16px; }
+.loading { text-align: center; padding: 40px; color: #6b7280; }
+.error { background: #fee2e2; color: #991b1b; padding: 12px 16px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Workshop Planner</h1>
+  <div class="stats" id="stats">Loading graph stats...</div>
+</header>
+<div class="container">
+  <div id="error" class="error" style="display:none"></div>
+  <form id="planner-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="duration">Duration (minutes)</label>
+        <input type="number" id="duration" name="duration" min="10" max="480" value="120" required>
+      </div>
+      <div class="form-group">
+        <label for="players">Number of players</label>
+        <input type="number" id="players" name="players" min="2" max="100" value="12" required>
+      </div>
+      <div class="form-group">
+        <label for="difficulty">Difficulty</label>
+        <select id="difficulty" name="difficulty">
+          <option value="">Any</option>
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="theme">Theme (e.g. storytelling, status, music)</label>
+      <input type="text" id="theme" name="theme" placeholder="storytelling">
+    </div>
+    <div class="form-group">
+      <label>Constraints</label>
+      <div class="constraint-group">
+        <label><input type="checkbox" name="constraints" value="no-audience"> No audience</label>
+        <label><input type="checkbox" name="constraints" value="no-physical-contact"> No physical contact</label>
+        <label><input type="checkbox" name="constraints" value="no-music"> No music/singing</label>
+        <label><input type="checkbox" name="constraints" value="no-props"> No props</label>
+      </div>
+    </div>
+    <button type="submit" id="submit-btn">Plan Workshop</button>
+  </form>
+  <div id="results" class="results"></div>
+</div>
+<script>
+async function fetchStats() {
+  try {
+    const res = await fetch("/graph.json");
+    if (res.ok) {
+      const g = await res.json();
+      document.getElementById("stats").textContent =
+        `${g.meta.nodeCount} nodes · ${g.meta.edgeCount} edges · ${g.meta.canonicalElementCount} canonical elements`;
+    }
+  } catch { document.getElementById("stats").textContent = "Graph not available"; }
+}
+fetchStats();
+
+document.getElementById("planner-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const results = document.getElementById("results");
+  const error = document.getElementById("error");
+  const btn = document.getElementById("submit-btn");
+  error.style.display = "none";
+  results.innerHTML = '<div class="loading">Planning workshop...</div>';
+  btn.disabled = true;
+
+  const form = e.target;
+  const constraints = [...form.querySelectorAll("input[name=constraints]:checked")].map(c => c.value);
+  const body = {
+    duration: parseInt(form.duration.value),
+    players: parseInt(form.players.value),
+    difficulty: form.difficulty.value || undefined,
+    theme: form.theme.value.trim() || undefined,
+    constraints: constraints.length > 0 ? constraints : undefined,
+  };
+
+  try {
+    const res = await fetch("/api/workshop/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) { error.textContent = data.error || "Plan failed"; error.style.display = "block"; results.innerHTML = ""; return; }
+    renderPlan(data);
+  } catch (err) {
+    error.textContent = "Failed to connect to server";
+    error.style.display = "block";
+    results.innerHTML = "";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderPlan(plan) {
+  const el = document.getElementById("results");
+  let html = "";
+
+  if (plan.warnings && plan.warnings.length > 0) {
+    html += '<div class="warnings"><ul>' + plan.warnings.map(w => `<li>${esc(w)}</li>`).join("") + "</ul></div>";
+  }
+
+  html += `<div class="total-duration">Planned total: ${plan.totalDuration} min</div>`;
+
+  html += renderSection("Warm-up", plan.warmUp, plan.fallbacks, "warmUp");
+  html += renderSection("Main Exercises", plan.main, plan.fallbacks, "main");
+  html += renderSection("Closer", plan.closer, plan.fallbacks, "closer");
+
+  el.innerHTML = html;
+
+  document.querySelectorAll(".replace-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (target) target.style.display = target.style.display === "none" ? "block" : "none";
+    });
+  });
+
+  document.querySelectorAll(".fallback-select").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const slotKey = btn.dataset.slot;
+      const elemId = btn.dataset.elemId;
+      fetch(`/api/elements/${elemId}`).then(r => r.json()).then(detail => {
+        const card = document.getElementById("card-" + slotKey);
+        if (card && detail.element) {
+          card.querySelector(".card-title").textContent = detail.element.label;
+          card.querySelector(".card-summary").textContent = truncate(detail.element.summary, 150);
+          card.querySelector(".card-meta").innerHTML = renderMeta(detail.element);
+          card.querySelector(".card-tags").innerHTML = renderTags(detail.element);
+        }
+        const list = btn.closest(".fallback-list");
+        if (list) list.style.display = "none";
+      });
+    });
+  });
+}
+
+function renderSection(title, items, fallbacks, prefix) {
+  let html = `<div class="section-title">${title} (${items.length})</div>`;
+  if (items.length === 0) { html += '<p style="color:#6b7280;font-size:0.85rem">No exercises found</p>'; return html; }
+  for (let i = 0; i < items.length; i++) {
+    const el = items[i];
+    const key = prefix + "_" + i;
+    html += `<div class="card" id="card-${key}">`;
+    html += `<div class="card-header"><div class="card-title">${esc(el.label)}</div>`;
+    const fbs = fallbacks[key];
+    if (fbs && fbs.length > 0) {
+      html += `<button class="replace-btn" data-target="fb-${key}">Replace</button>`;
+    }
+    html += `</div>`;
+    html += `<div class="card-meta">${renderMeta(el)}</div>`;
+    html += `<div class="card-summary">${truncate(el.summary, 150)}</div>`;
+    html += `<div class="card-tags">${renderTags(el)}</div>`;
+    if (fbs && fbs.length > 0) {
+      html += `<div class="fallback-list" id="fb-${key}" style="display:none">Alternatives:<ul>`;
+      for (const fb of fbs) {
+        html += `<li>${esc(fb.label)} — ${truncate(fb.summary, 60)} <button class="fallback-select" data-slot="${key}" data-elem-id="${fb.id}">use this</button></li>`;
+      }
+      html += "</ul></div>";
+    }
+    html += "</div>";
+  }
+  return html;
+}
+
+function renderMeta(el) {
+  const parts = [];
+  if (el.difficulty) parts.push(`<span>${esc(el.difficulty)}</span>`);
+  if (el.typicalDurationMinutes) parts.push(`<span>${el.typicalDurationMinutes} min</span>`);
+  if (el.playerCountMin || el.playerCountMax) {
+    const min = el.playerCountMin || 0;
+    const max = el.playerCountMax || "∞";
+    parts.push(`<span>${min}–${max} players</span>`);
+  }
+  return parts.join(" · ");
+}
+
+function renderTags(el) {
+  const tags = [...(el.mechanicLabels || []).slice(0, 3).map(t => `<span class="tag">${esc(t)}</span>`),
+    ...(el.skillLabels || []).slice(0, 3).map(t => `<span class="tag">${esc(t)}</span>`)];
+  return tags.join("");
+}
+
+function truncate(text, max) {
+  if (!text) return "";
+  return text.length > max ? text.slice(0, max) + "..." : text;
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>
