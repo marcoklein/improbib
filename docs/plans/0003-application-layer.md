@@ -41,18 +41,7 @@ Instead of "what can the graph do → build UI," ask: "what does a facilitator a
 | Find harder version | ❌ | `buildsOn` edges or difficulty-ordered similarity |
 | Show variations | ❌ | `variationOf` edges from `derivedElements` |
 
-### Scene 3: Show Set Building
-
-> *"Build me a 5-game short-form set for a 30-minute slot. Include one audience participation game."*
-
-| Need | Current | Action |
-|------|---------|--------|
-| Duration fitting | ✅ | — |
-| Format template (Harold phases, short-form slots) | ❌ | Format definitions as configurable data |
-| Filter by audience participation | ❌ | `requires → audience_on_stage` |
-| Variety constraint (avoid repeating mechanics) | ❌ | Dedup check in sequence planner |
-
-### Scene 4: Thematic Browsing
+### Scene 3: Thematic Browsing
 
 > *"Show me everything about status games."*
 
@@ -72,15 +61,15 @@ vocabulary.json ────────┘                                     
                                                           src/query/graph-query.ts
                                                           (in-memory index + query functions)
                                                                          │
-                                                          ┌──────────────┼──────────────┐
-                                                          ▼              ▼              ▼
-                                                     /api/elements   /api/workshop   /api/shows
-                                                          │              │              │
-                                                          ▼              ▼              ▼
-                                                     public/*.html  (vanilla JS fetches API, renders)
-                                                          │
-                                                          ▼
-                                                     src/workshop.ts (CLI — same functions, local file)
+                                                          ┌──────────────┴──────────────┐
+                                                          ▼                             ▼
+                                                     /api/elements                 /api/workshop
+                                                     /api/elements/:id             /api/themes/expand
+                                                     /api/elements/:id/similar     /api/workshop/plan
+                                                          │                             │
+                                                          ▼                             ▼
+                                                     public/elements.html        public/workshop.html
+                                                     (vanilla JS fetches API, renders inline)
 ```
 
 Data flows one direction. Layers are independent. The application consumes only the graph.
@@ -238,7 +227,7 @@ All query files live under `src/query/`. They import the `KnowledgeGraph` type f
 
 **Core file: `src/query/graph-query.ts`**
 
-Loads `output/graph.json` once into typed in-memory structures. Exports query functions used by both the API server and the CLI.
+Loads `output/graph.json` once into typed in-memory structures. Exports query functions used by the API server.
 
 ```typescript
 import type { KnowledgeGraph, GraphEdge } from "../graph/derive";
@@ -440,86 +429,20 @@ export function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number 
 
 ### 3. User Interfaces
 
-**Web UI** — zero new dependencies. Vanilla HTML + CSS + JS in `public/`.
+**Web UI** — zero new dependencies. Vanilla HTML + CSS + JS in `public/`. Two pages total.
 
 The existing server serves files from `public/` at line 154-163 of `src/serve.ts`. Any `.html` file placed there is served automatically. API calls from HTML pages use `fetch()` to the API endpoints defined below. All API responses are JSON.
 
 | Page | Route | Content |
 |------|-------|---------|
-| Home | `/` (served as `public/index.html`) | Graph stats from `/status`, quick links, theme search bar that POSTs to `/api/themes/expand` |
-| Workshop planner | `/workshop.html` | Form: duration (number), players (number), difficulty (select), constraints (checkboxes), theme (text). Submit → POST `/api/workshop/plan` → render exercise cards grouped as warm-up / main / closer, with fallback alternatives |
-| Element browser | `/elements.html` | Filter form: difficulty, min/max duration, min/max players, tag/mechanic/skill text inputs. Submit → GET `/api/elements?...` → paginated card grid with "Next page" button |
-| Element detail | `/elements-detail.html?id=<id>` | Full element view: description, steps, mechanics list, skills list, tags, requirements, similar exercises (fetched from detail endpoint), build chain (if buildsOn edges exist) |
-| Show builder | `/shows.html` | Format picker (select from available formats), slot count, total duration. Submit → POST `/api/shows/build` → rendered set list |
+| Workshop planner | `/workshop.html` | Landing page + workshop planner. Top: graph stats, theme search bar (POSTs to `/api/themes/expand`). Below: form (duration, players, difficulty, constraints as checkboxes, theme text field). Submit → POST `/api/workshop/plan` → renders exercise cards grouped as warm-up / main / closer, with "Replace" button per slot showing fallbacks. |
+| Element browser | `/elements.html` | Combined browse + detail. Top: filter form (difficulty, min/max duration, min/max players, tag/mechanic/skill text inputs, requirement exclusions). Submit → GET `/api/elements?...` → paginated card grid. Click any card → inline detail expands below: full description, mechanics, skills, tags, requirements, similar exercises, build chain (prerequisites + harder versions), variations. |
 
-Each page is a standalone HTML file. JS is inline or a `<script>` tag. No client-side routing, no build step. Pages read query params from `URLSearchParams` for element IDs. Use `fetch()` with `Content-Type: application/json` for POST requests. Render results by creating DOM elements with `document.createElement()`.
+Each page is a standalone HTML file with inline `<script>` and `<style>`. No client-side routing, no build step. Element detail is shown inline within the same page (click card → fetch `/api/elements/:id` → expand detail panel below grid). Pages read query params from `URLSearchParams`. Use `fetch()` with `Content-Type: application/json` for POST requests. Render results by creating DOM elements with `document.createElement()`.
 
-**CLI** — `src/workshop.ts` (new file):
+**No CLI, no separate landing page, no show builder** — stripped to the two core facilitator actions: plan a workshop, explore exercises.
 
-```
-bun run src/workshop.ts --duration 120 --players 12 --theme storytelling --no-audience
-bun run src/workshop.ts --similar-to "Zip Zap Zop" --harder
-bun run src/workshop.ts --show short-form --slots 5 --duration 30
-bun run src/workshop.ts --element "Freeze Tag"
-```
-
-Implementation: parse args from `process.argv`, load `output/graph.json` via `Bun.file(...).json()`, call `createGraphIndex()`, then call the appropriate query function. Output results as formatted text to stdout (table format or JSON with `--json` flag). Does NOT import from `serve.ts` — it uses `graph-query.ts` directly with a local file path.
-
-### 4. Format Templates (Phase 3)
-
-**New file: `src/formats/formats.json`** — checked into git, defines show format structures.
-
-```json
-{
-  "short-form": {
-    "name": "Short Form Set",
-    "slots": [
-      { "type": "opener", "durationMin": 2, "durationMax": 5, "energyMin": "medium" },
-      { "type": "game", "count": 3, "durationMin": 3, "durationMax": 8 },
-      { "type": "closer", "durationMin": 3, "durationMax": 5, "energyMin": "high" }
-    ],
-    "varietyRules": ["no-repeat-mechanic"]
-  },
-  "harold": {
-    "name": "Harold",
-    "phases": [
-      { "name": "Opening", "durationMin": 3, "durationMax": 7, "mechanicRequired": "opening" },
-      { "name": "Scene A", "durationMin": 3, "durationMax": 5 },
-      { "name": "Group Game", "durationMin": 2, "durationMax": 4 },
-      { "name": "Scene B", "durationMin": 3, "durationMax": 5 },
-      { "name": "Scene C", "durationMin": 3, "durationMax": 5 },
-      { "name": "Closer", "durationMin": 3, "durationMax": 5 }
-    ],
-    "varietyRules": ["alternate-energy", "no-repeat-mechanic"]
-  }
-}
-```
-
-**New file: `src/formats/builder.ts`**:
-
-```typescript
-export interface FormatSlot {
-  name: string;
-  element: ElementResult;
-  alternatives: ElementResult[];
-}
-
-export interface ShowSet {
-  format: string;
-  slots: FormatSlot[];
-  totalDuration: number;
-  warnings: string[];
-}
-
-export function buildShowSet(
-  formatName: string,
-  constraints: { slotCount?: number; totalDuration?: number; includeRequirements?: string[] }
-): ShowSet;
-```
-
-For each slot in the format definition, call `queryElements()` with the slot's constraints (duration range, mechanic requirements, energy). If `includeRequirements` is provided (e.g. `["audience_on_stage"]`), one slot is forced to include an element with that requirement. For `varietyRules`: check that selected elements don't have the same mechanics as previously selected elements. Store 2-3 alternatives per slot for each selected element.
-
-### 5. API Endpoints (added to `src/serve.ts`)
+### 4. API Endpoints (added to `src/serve.ts`)
 
 All added to the existing `if/else` chain in the `fetch` handler. Each is a separate `if (url.pathname === "...")` block above the final `return new Response("Not Found", { status: 404 })`.
 
@@ -532,7 +455,6 @@ All endpoints return `jsonResponse(data, req)`. POST endpoints parse the body wi
 | `GET` | `/api/elements/:id/similar` | Parse `?limit=N`. Call `getSimilarElements(id, limit)`. |
 | `POST` | `/api/themes/expand` | Parse `{ theme }` from body. Call `expandTheme(theme)`. Return `{ nodes }`. |
 | `POST` | `/api/workshop/plan` | Parse `WorkshopConstraints` from body. Call `planWorkshop()`. Return `WorkshopPlan`. |
-| `POST` | `/api/shows/build` | Parse `{ format, slotCount?, totalDuration?, constraints? }` from body. Call `buildShowSet()`. Return `ShowSet`. |
 
 **Route parameter extraction**: The server doesn't use a router. For paths like `/api/elements/:id`, split `url.pathname` on `/` and extract the last segment.
 
@@ -596,56 +518,38 @@ Graceful degradation at every layer:
 
 ## Phasing
 
-### Phase 0: Requirement Edges
+### Phase 1: Graph Enrichment (requirements + dependencies + variations)
 
 **New file: `src/graph/requirement-mapping.ts`**
 - Export `REQUIREMENT_MAP` constant (see format above)
 - Export `deriveRequirements(mechanics: string[], tags: string[]): string[]`
 
 **Modified: `src/graph/derive.ts`**
-- In Phase 3 (after mechanics/skills/tags are wired), iterate over all elements
-- Call `deriveRequirements()` for each element's mechanics and tags
-- Add `Requirement` nodes (idempotent — check if node exists before adding)
-- Add `requires` edges from element → requirement node
-- Export `Requirement` as valid node type in `GraphNode` type union
-- Export `"requires"` as valid edge type in `GraphEdge.type` union
-
-**Modified: `src/graph/overrides.ts`**
-- Add `AddRequiresOverride` and `RemoveRequiresOverride` to `Override` type union
-- Format: `{ type: "add_requires" | "remove_requires", elementId: string, requirementLabel: string, note?: string }`
-- In `applyEdgeOverrides()` (or a new function), handle these overrides by adding/removing `requires` edges post-derivation
-- No content hash needed for MVP — these target requirement labels, not element content
-
-**Tests: `src/graph/__testdata__/requirement.test.ts`**
-- Test that elements with `audience suggestion` mechanic get `requires → audience_input` edge
-- Test that elements with `Ask For` tag get `requires → audience_input` edge
-- Test that elements with neither don't get the edge
-- Test that `add_requires` and `remove_requires` overrides work
-
-### Phase 1: Dependency + Variation Edges
-
-**Modified: `src/graph/derive.ts`**
-- In Phase 3, add `buildsOn` inference:
+- In Phase 3 (after mechanics/skills/tags are wired), iterate over all elements:
+  - Call `deriveRequirements()` for each element's mechanics and tags
+  - Add `Requirement` nodes (idempotent — check if node exists before adding)
+  - Add `requires` edges from element → requirement node
+- Add `buildsOn` inference in same phase:
   - Build map of element ID → set of mechanic node IDs
   - For each pair (A, B) from same source: if A's mechanics ⊂ B's mechanics, A ≤ difficulty, A ≤ duration, different labels → B `buildsOn` A
-- In Phase 1, add `variationOf` edges:
+- In Phase 1 (source element creation), add `variationOf` edges:
   - When creating source element nodes, check if the normalized element has `derivedElements`
   - For each derived element, find its graph node via the idMap, add `variationOf` edge from derived element → parent element
-- Export `"buildsOn"` and `"variationOf"` as valid edge types
+- Export new node type `"Requirement"` in `GraphNode` type union
+- Export new edge types `"requires"`, `"buildsOn"`, `"variationOf"` in `GraphEdge.type` union
 
 **Modified: `src/graph/overrides.ts`**
-- Add override types to `Override` union:
+- Add these override types to `Override` union:
+  - `{ type: "add_requires" | "remove_requires", elementId, requirementLabel, note? }`
   - `{ type: "add_buildsOn", fromElementId, toElementId, note? }`
   - `{ type: "remove_buildsOn", fromElementId, toElementId, note? }`
   - `{ type: "add_variationOf", fromElementId, toElementId, note? }`
   - `{ type: "remove_variationOf", fromElementId, toElementId, note? }`
-- Apply in `applyEdgeOverrides()`: for add, inject edge. For remove, filter edge.
+- Apply in `applyEdgeOverrides()`: add_* injects edges, remove_* filters them. Requires overrides target Requirement nodes by label string.
 
-**Tests: `src/graph/__testdata__/dependency.test.ts`**
-- Test `buildsOn` heuristic: element B with superset mechanics + higher difficulty → `buildsOn` A
-- Test exclusion: same-name cross-source elements don't get `buildsOn`
-- Test `variationOf`: derived elements get edge to parent
-- Test `add_buildsOn` and `remove_buildsOn` overrides
+**Tests:**
+- `src/graph/__testdata__/requirement.test.ts` — mechanic/tag → requirement mapping, overrides
+- `src/graph/__testdata__/dependency.test.ts` — buildsOn heuristic, variationOf wiring, overrides
 
 ### Phase 2: Query Layer + API + UI
 
@@ -656,70 +560,43 @@ Graceful degradation at every layer:
 - `workshop-planner.ts` — `planWorkshop()` pipeline
 - `suitable-for.ts` — `deriveSuitableFor()` heuristic
 
-**New file: `src/workshop.ts`** — CLI entry point
-
 **Modified: `src/serve.ts`**
 - Add startup graph loading (see "Server startup changes" above)
-- Add 6 new API endpoints (see "API Endpoints" table above)
+- Add 5 new API endpoints (see "API Endpoints" table above)
 - Each endpoint: guard with `getGraphIndex()` check, parse params/body, call query function, return JSON
 
 **New files in `public/`:**
-- `index.html` — landing page with graph stats and quick links
-- `workshop.html` — workshop planner form + results
-- `elements.html` — element browser with filters + pagination
-- `elements-detail.html` — single element view
-- `shows.html` — show set builder
+- `workshop.html` — landing page + workshop planner form + results
+- `elements.html` — combined browse + inline detail (filter grid → click card → expand detail)
 
 **Tests:**
 - `src/query/__testdata__/query.test.ts` — unit tests for query functions using a minimal test graph
 - `src/query/__testdata__/api.test.ts` — integration tests: mock graph, start server, call endpoints, verify responses
 
-### Phase 3: Format Templates
-
-**New file: `src/formats/formats.json`** — format definitions (see format above)
-
-**New file: `src/formats/builder.ts`** — `buildShowSet()` function
-
-**Modified: `src/serve.ts`** — add `POST /api/shows/build` endpoint
-
-**Tests: `src/formats/__testdata__/formats.test.ts`**
-- Test that short-form format produces 5 slots when slotCount=5
-- Test that `includeRequirements: ["audience_on_stage"]` forces one slot to contain an audience-participation element
-- Test that invalid format name returns error
-
-### Phase 4: Integration
+### Phase 3: Integration + Verify
 
 - Verify `bun test` passes for all new and existing tests
 - Verify `bun run src/normalize/normalize.ts --graph` produces graph with new edges
 - Verify `bun run src/review.ts --clusters` still works (new edges counted in meta)
+- Open `/workshop.html` in browser → form submits and renders a plan
+- Open `/elements.html` in browser → filters work, click card expands detail
 - Plan 0001 is already updated with phase status and forward references
 
 ## Deliverables per Phase
 
 | Phase | New files | Modified files | Tests |
 |-------|-----------|---------------|-------|
-| 0 | `src/graph/requirement-mapping.ts` | `derive.ts`, `overrides.ts` | `requirement.test.ts` |
-| 1 | — | `derive.ts`, `overrides.ts` | `dependency.test.ts` |
-| 2 | `src/query/graph-query.ts`, `src/query/similarity.ts`, `src/query/theme.ts`, `src/query/workshop-planner.ts`, `src/query/suitable-for.ts`, `src/workshop.ts`, `public/index.html`, `public/workshop.html`, `public/elements.html`, `public/elements-detail.html`, `public/shows.html` | `serve.ts` | `query.test.ts`, `api.test.ts` |
-| 3 | `src/formats/formats.json`, `src/formats/builder.ts` | `serve.ts` | `formats.test.ts` |
-| 4 | — | — (verify only) | `bun test` (existing + new) |
+| 1 | `src/graph/requirement-mapping.ts` | `derive.ts`, `overrides.ts` | `requirement.test.ts`, `dependency.test.ts` |
+| 2 | `src/query/graph-query.ts`, `src/query/similarity.ts`, `src/query/theme.ts`, `src/query/workshop-planner.ts`, `src/query/suitable-for.ts`, `public/workshop.html`, `public/elements.html` | `serve.ts` | `query.test.ts`, `api.test.ts` |
+| 3 | — | — (verify only) | `bun test` (existing + new) |
 
 ## Execution Order
 
 ```
-Phase 0 (requirements) ──► Phase 1 (dependencies)
-                                    │
-                                    ▼
-                              Phase 2 (query layer + API + UI)
-                                    │
-                                    ▼
-                              Phase 3 (format templates)
-                                    │
-                                    ▼
-                              Phase 4 (integration + verify)
+Phase 1 (graph enrichment) ──► Phase 2 (query layer + API + UI) ──► Phase 3 (integration + verify)
 ```
 
-Phases 0 and 1 can partially overlap (different sections of `derive.ts`). Phases 2 and 3 are strictly sequential (3 depends on 2's query functions). Phase 4 is verification only.
+Phase 1 is pure TypeScript + graph derivation — no server, no UI. Phase 2 builds on Phase 1's edges. Phase 3 is verification only.
 
 ## Open Questions (all resolved)
 
