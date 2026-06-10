@@ -195,16 +195,16 @@ The application is a separate concern. It could be a CLI tool, a static site, or
 
 ## Phasing
 
-| Phase | What | Delivers | Depends On |
+| Phase | What | Delivers | Status |
 |---|---|---|---|
-| P1 | Content normalization pipeline | `output/normalized/{source}.json` | Raw scrapers |
-| P2 | Knowledge graph derivation | `output/graph-draft.json` | P1 |
-| P3 | Human QA workflow | `output/graph-overrides.json` → `output/graph.json` | P2 |
-| P4 | Application: element browser | Filterable/searchable UI over the graph | P3 |
-| P5 | Application: workshop planner | Constraint-based sequence generation | P3 |
-| P6 | Application: show set builder | Format-aware set list generation | P3 |
+| P1 | Content normalization pipeline | `output/normalized/{source}.json` | ✅ Done |
+| P2 | Knowledge graph derivation | `output/graph.json` | ✅ Done |
+| P3 | Human QA workflow | `graph-overrides.json` + review CLI | ✅ Done |
+| P4 | Application: element browser | Filterable/searchable UI over the graph | → [0003](./0003-application-layer.md) |
+| P5 | Application: workshop planner | Constraint-based sequence generation | → [0003](./0003-application-layer.md) |
+| P6 | Application: show set builder | Format-aware set list generation | → [0003](./0003-application-layer.md) |
 
-Each phase gets its own detailed plan in `docs/plans/`.
+P1–P3 implemented. P4–P6 detailed in [Plan 0003](./0003-application-layer.md).
 
 ## Data Dependency Graph
 
@@ -219,25 +219,25 @@ output/normalized/learnimprov.json ─┤
 output/normalized/ircwiki.json ────┘
         │
         ▼
-output/graph-draft.json  ──(+ overrides)──▶  output/graph.json
-        │                                            │
-        ▼                                            ▼
-   Human QA                                   Application
+graph-overrides.json ──► output/graph.json
+        ▲                       │
+        │                       ▼
+   Human QA (review CLI)   Application (see 0003)
 ```
 
 ## Open Questions
 
 1. **LLM model**: ~~Local (Ollama) vs API (Claude, GPT)?~~ Resolved: using opencode-go/deepseek-v4-flash via CLI (free on OpenCode Go plan, no additional API keys needed). Pro model kept as benchmark reference.
 
-2. **Derived sub-elements**: Should inline variations be promoted to first-class element nodes (with `derivedFrom` edges), or kept as structured data on the parent? _Promoted, clearly marked in `derivedElements`. Graph layer decides whether to include them._
+2. **Derived sub-elements**: ~~Should inline variations be promoted to first-class element nodes?~~ Resolved: promoted to `derivedElements`, clearly marked. Graph layer wires them as `variationOf` edges.
 
-3. **Language handling**: The graph has DE and EN elements connected by `translationOf`. Should mechanics and skills be language-agnostic concepts, or language-specific? _Current lean: language-agnostic — a mechanic is a concept, not a string._
+3. **Language handling**: ~~Should mechanics and skills be language-agnostic or language-specific?~~ Resolved: language-agnostic concepts. UI uses EN as source of truth, DE accessible via translation links. See [0003](./0003-application-layer.md).
 
 4. **Graph format**: JSON array of nodes + edges. Could consider JSON-LD or RDF for standards compatibility. Tradeoff: simplicity vs. interoperability.
 
 5. **External sequencing data**: Should the graph also ingest existing workshop curricula or show setlists (from books, blogs, YouTube) to mine sequencing edges? _Deferred to a future phase._
 
-6. **Re-scrape behavior**: When sources are re-scraped, how do we handle elements that changed? _New/changed elements get re-normalized and re-extracted. Unchanged elements keep their reviewed graph edges. The change detection uses `contentHash = md5(htmlContent)` from Layer 1.5._
+6. **Re-scrape behavior**: ~~How do we handle elements that changed?~~ Resolved: change detection uses `contentHash = md5(htmlContent)`. Unchanged elements keep reviewed edges. Overrides become stale on content mismatch.
 
 ## Key Design Principles
 
