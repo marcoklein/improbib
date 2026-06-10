@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import type { NormalizedElement } from "../normalize/normalized-schema";
 
 interface GraphEdgeLike {
@@ -17,15 +18,40 @@ interface DedupOverride {
 
 interface EdgeOverride {
   type: "remove_edge" | "add_edge";
-  edgeType: "hasMechanic" | "trainsSkill" | "hasTag";
+  edgeType: "hasMechanic" | "trainsSkill" | "hasTag" | "requires" | "buildsOn" | "variationOf";
   elementId: string;
   targetId: string;
   note?: string;
   contentHash?: string;
 }
 
-type Override = DedupOverride | EdgeOverride;
+interface RequiresOverride {
+  type: "add_requires" | "remove_requires";
+  elementId: string;
+  requirementLabel: string;
+  note?: string;
+}
+
+interface BuildsOnOverride {
+  type: "add_buildsOn" | "remove_buildsOn";
+  fromElementId: string;
+  toElementId: string;
+  note?: string;
+}
+
+interface VariationOfOverride {
+  type: "add_variationOf" | "remove_variationOf";
+  fromElementId: string;
+  toElementId: string;
+  note?: string;
+}
+
+type Override = DedupOverride | EdgeOverride | RequiresOverride | BuildsOnOverride | VariationOfOverride;
 export type { Override };
+
+function requirementNodeId(label: string): string {
+  return createHash("md5").update(`requirement:${label.toLowerCase()}`).digest("hex");
+}
 
 interface OverrideFile {
   version: 1;
@@ -117,15 +143,15 @@ export function applyEdgeOverrides(
   overrides: Override[],
   elements: NormalizedElement[],
 ): { edges: GraphEdgeLike[]; stats: OverrideStats } {
-  const edgeOverrides = overrides.filter(
-    (o): o is EdgeOverride => o.type === "remove_edge" || o.type === "add_edge",
-  );
   const stats: OverrideStats = { applied: 0, stale: 0, staleDetails: [] };
 
   const removeSet = new Set<string>();
-  const addList: EdgeOverride[] = [];
+  const addList: GraphEdgeLike[] = [];
 
-  for (const override of edgeOverrides) {
+  // Existing edge overrides (add_edge / remove_edge)
+  for (const o of overrides) {
+    if (o.type !== "remove_edge" && o.type !== "add_edge") continue;
+    const override = o as EdgeOverride;
     const el = elements.find(e => e.identifier === override.elementId);
     const stale = !checkContentHash(
       override.elementId,
@@ -144,7 +170,64 @@ export function applyEdgeOverrides(
     if (override.type === "remove_edge") {
       removeSet.add(`${override.edgeType}:${override.elementId}→${override.targetId}`);
     } else {
-      addList.push(override);
+      addList.push({
+        type: override.edgeType,
+        from: override.elementId,
+        to: override.targetId,
+        confidence: 1.0,
+      });
+    }
+    stats.applied++;
+  }
+
+  // Requires overrides
+  for (const o of overrides) {
+    if (o.type !== "add_requires" && o.type !== "remove_requires") continue;
+    const override = o as { type: string; elementId: string; requirementLabel: string };
+    const reqId = requirementNodeId(override.requirementLabel);
+    if (override.type === "remove_requires") {
+      removeSet.add(`requires:${override.elementId}→${reqId}`);
+    } else {
+      addList.push({
+        type: "requires",
+        from: override.elementId,
+        to: reqId,
+        confidence: 1.0,
+      });
+    }
+    stats.applied++;
+  }
+
+  // BuildsOn overrides
+  for (const o of overrides) {
+    if (o.type !== "add_buildsOn" && o.type !== "remove_buildsOn") continue;
+    const override = o as { type: string; fromElementId: string; toElementId: string };
+    if (override.type === "remove_buildsOn") {
+      removeSet.add(`buildsOn:${override.fromElementId}→${override.toElementId}`);
+    } else {
+      addList.push({
+        type: "buildsOn",
+        from: override.fromElementId,
+        to: override.toElementId,
+        confidence: 1.0,
+      });
+    }
+    stats.applied++;
+  }
+
+  // VariationOf overrides
+  for (const o of overrides) {
+    if (o.type !== "add_variationOf" && o.type !== "remove_variationOf") continue;
+    const override = o as { type: string; fromElementId: string; toElementId: string };
+    if (override.type === "remove_variationOf") {
+      removeSet.add(`variationOf:${override.fromElementId}→${override.toElementId}`);
+    } else {
+      addList.push({
+        type: "variationOf",
+        from: override.fromElementId,
+        to: override.toElementId,
+        confidence: 1.0,
+      });
     }
     stats.applied++;
   }
@@ -156,15 +239,10 @@ export function applyEdgeOverrides(
 
   for (const add of addList) {
     const alreadyExists = filtered.some(
-      e => e.type === add.edgeType && e.from === add.elementId && e.to === add.targetId,
+      e => e.type === add.type && e.from === add.from && e.to === add.to,
     );
     if (!alreadyExists) {
-      filtered.push({
-        type: add.edgeType,
-        from: add.elementId,
-        to: add.targetId,
-        confidence: 1.0,
-      });
+      filtered.push(add);
     }
   }
 

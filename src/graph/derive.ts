@@ -5,10 +5,11 @@ import type { NormalizedElement } from "../normalize/normalized-schema";
 import type { VocabularyMap } from "../normalize/llm-client";
 import { applyDedupOverrides, applyEdgeOverrides, loadOverrides } from "./overrides";
 import type { Override, OverrideStats } from "./overrides";
+import { deriveRequirements } from "./requirement-mapping";
 
 interface GraphNode {
   id: string;
-  type: "Element" | "Mechanic" | "Skill" | "Tag" | "Source";
+  type: "Element" | "Mechanic" | "Skill" | "Tag" | "Source" | "Requirement";
   label: string;
 }
 
@@ -38,7 +39,7 @@ interface ElementNode extends GraphNode {
 }
 
 export interface GraphEdge {
-  type: "hasMechanic" | "trainsSkill" | "hasTag" | "sourcedFrom" | "translationOf" | "derivedFrom" | "canonicalOf";
+  type: "hasMechanic" | "trainsSkill" | "hasTag" | "sourcedFrom" | "translationOf" | "derivedFrom" | "canonicalOf" | "requires" | "buildsOn" | "variationOf";
   from: string;
   to: string;
   confidence?: number;
@@ -55,6 +56,7 @@ export interface KnowledgeGraph {
     mechanicCount: number;
     skillCount: number;
     tagCount: number;
+    requirementCount: number;
     sourceCount: number;
     overridesApplied?: number;
     overridesStale?: number;
@@ -511,6 +513,27 @@ export function deriveGraph(
     if (el.translationLinkDeIdentifier) {
       addEdge("translationOf", el.identifier, el.translationLinkDeIdentifier, 1.0);
     }
+
+    // variationOf edges from derivedElements
+    for (const derived of el.derivedElements) {
+      const derivedId = createHash("md5")
+        .update(`derived:${el.identifier}:${derived.name}`)
+        .digest("hex");
+      addNode({
+        id: derivedId,
+        type: "Element",
+        canonical: false,
+        label: derived.name,
+        description: derived.description,
+        summary: derived.description.slice(0, 100),
+        howToPlay: null,
+        sourceName: el.sourceName,
+        languageCode: el.languageCode,
+        url: el.url,
+        tags: el.tags,
+      });
+      addEdge("variationOf", derivedId, el.identifier, 1.0);
+    }
   }
 
   // ── Apply dedup overrides before cluster building ──
@@ -662,11 +685,85 @@ export function deriveGraph(
     }
   }
 
+  // ── Phase 3a: Requirement edges (requires) ──
+  for (const el of allElementsWithMechSkills) {
+    const canonicalMechs = el.mechanics.map(m => resolveTerm(m, mechMap));
+    const reqs = deriveRequirements(canonicalMechs, el.tags);
+    for (const req of reqs) {
+      const reqNodeId = nodeId("requirement", req);
+      addNode({ id: reqNodeId, type: "Requirement", label: req });
+      addEdge("requires", el.id, reqNodeId);
+    }
+  }
+
+  // ── Phase 3b: Dependency edges (buildsOn) ──
+  // Build map: element ID → set of mechanic node IDs (already wired as hasMechanic edges)
+  const elementMechMap = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    if (edge.type === "hasMechanic") {
+      const set = elementMechMap.get(edge.from) || new Set();
+      set.add(edge.to);
+      elementMechMap.set(edge.from, set);
+    }
+  }
+
+  const difficultyRank: Record<string, number> = { beginner: 0, intermediate: 1, advanced: 2 };
+  const sourceElementsById = new Map(
+    allElementsWithMechSkills
+      .filter(el => !el.canonical && el.sourceName)
+      .map(el => [el.id, el]),
+  );
+
+  const sourceIds = [...sourceElementsById.keys()];
+  for (let i = 0; i < sourceIds.length; i++) {
+    for (let j = i + 1; j < sourceIds.length; j++) {
+      const a = sourceElementsById.get(sourceIds[i])!;
+      const b = sourceElementsById.get(sourceIds[j])!;
+      if (a.sourceName !== b.sourceName) continue;
+
+      const aMechs = elementMechMap.get(a.id) || new Set();
+      const bMechs = elementMechMap.get(b.id) || new Set();
+      if (aMechs.size === 0 || bMechs.size === 0) continue;
+      if (aMechs.size === bMechs.size) continue;
+
+      // Find the element node for difficulty/duration lookup
+      const aNode = allElementNodes.find(n => n.id === a.id);
+      const bNode = allElementNodes.find(n => n.id === b.id);
+
+      // Check A's mechs ⊂ B's mechs (proper subset) → B buildsOn A
+      const aIsSubsetOfB = [...aMechs].every(m => bMechs.has(m));
+      const bIsSubsetOfA = [...bMechs].every(m => aMechs.has(m));
+
+      for (const [smaller, larger, smallerNode, largerNode] of [
+        [a, b, aNode, bNode] as const,
+        [b, a, bNode, aNode] as const,
+      ]) {
+        const smallerMechs = elementMechMap.get(smaller.id) || new Set();
+        const largerMechs = elementMechMap.get(larger.id) || new Set();
+        const isSubset = [...smallerMechs].every(m => largerMechs.has(m));
+        if (!isSubset) continue;
+
+        const sDiff = difficultyRank[smallerNode?.difficulty ?? ""] ?? 0;
+        const lDiff = difficultyRank[largerNode?.difficulty ?? ""] ?? 0;
+        if (sDiff > lDiff) continue;
+
+        const sDur = smallerNode?.typicalDurationMinutes ?? 0;
+        const lDur = largerNode?.typicalDurationMinutes ?? 0;
+        if (sDur > 0 && lDur > 0 && sDur > lDur) continue;
+
+        if (smallerNode && largerNode && smallerNode.label !== largerNode.label) {
+          addEdge("buildsOn", larger.id, smaller.id);
+        }
+      }
+    }
+  }
+
   const sourceElementCount = allElementNodes.filter(n => !n.canonical).length;
   const canonicalElementCount = allElementNodes.filter(n => n.canonical).length;
   const mechanicCount = nodes.filter(n => n.type === "Mechanic").length;
   const skillCount = nodes.filter(n => n.type === "Skill").length;
   const tagCount = nodes.filter(n => n.type === "Tag").length;
+  const requirementCount = nodes.filter(n => n.type === "Requirement").length;
   const sourceCount = nodes.filter(n => n.type === "Source").length;
 
   // ── Apply edge overrides ──
@@ -691,6 +788,7 @@ export function deriveGraph(
       mechanicCount,
       skillCount,
       tagCount,
+      requirementCount,
       sourceCount,
       ...(overrides && overrides.length > 0 ? {
         overridesApplied: dedupStats.applied + edgeStats.applied,
@@ -745,7 +843,7 @@ export async function writeGraph(outputPath?: string): Promise<KnowledgeGraph> {
   await Bun.write(outPath, JSON.stringify(graph, null, 2));
   console.log(`Graph: ${graph.meta.nodeCount} nodes, ${graph.meta.edgeCount} edges`);
   console.log(`  Elements: ${graph.meta.elementCount} (${graph.meta.sourceElementCount} source + ${graph.meta.canonicalElementCount} canonical)`);
-  console.log(`  Mechanics: ${graph.meta.mechanicCount}, Skills: ${graph.meta.skillCount}, Tags: ${graph.meta.tagCount}, Sources: ${graph.meta.sourceCount}`);
+  console.log(`  Mechanics: ${graph.meta.mechanicCount}, Skills: ${graph.meta.skillCount}, Tags: ${graph.meta.tagCount}, Requirements: ${graph.meta.requirementCount}, Sources: ${graph.meta.sourceCount}`);
   console.log(`Wrote ${outPath}`);
 
   return graph;
