@@ -200,23 +200,26 @@ describe("API endpoint tests", () => {
     }
   });
 
-  it("POST /api/themes/expand returns matching nodes", () => {
-    const { expandTheme } = require("../theme");
-    const nodes = expandTheme("storytelling");
-    expect(Array.isArray(nodes)).toBe(true);
-    if (nodes.length > 0) {
-      expect(["Mechanic", "Skill", "Tag"]).toContain(nodes[0].type);
-      expect(nodes[0].id).toBeDefined();
-      expect(nodes[0].label).toBeDefined();
+  it("POST /api/search returns matching elements", () => {
+    const { searchElements } = require("../search");
+    const result = searchElements("storytelling");
+    expect(Array.isArray(result.results)).toBe(true);
+    expect(result.queryWords).toContain("storytelling");
+    if (result.results.length > 0) {
+      expect(result.results[0].elementId).toBeDefined();
+      expect(result.results[0].label).toBeDefined();
+      expect(result.results[0].score).toBeGreaterThan(0);
     }
+    expect(result.matchedConcepts).toBeDefined();
+    expect(result.suggestions).toBeDefined();
   });
 
-  it("POST /api/themes/expand caches results", () => {
-    const { expandTheme, clearThemeCache } = require("../theme");
-    clearThemeCache();
-    const first = expandTheme("story");
-    const second = expandTheme("story");
-    expect(first).toEqual(second);
+  it("POST /api/search returns suggestions for empty query", () => {
+    const { searchElements } = require("../search");
+    const result = searchElements("");
+    expect(result.results.length).toBe(0);
+    expect(result.suggestions.length).toBeGreaterThan(0);
+    expect(result.queryWords.length).toBe(0);
   });
 
   it("POST /api/workshop/plan returns warmUp/main/closer", () => {

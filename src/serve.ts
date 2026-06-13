@@ -367,21 +367,6 @@ Bun.serve({
       return jsonResponse(detail, req);
     }
 
-    if (url.pathname === "/api/themes/expand" && req.method === "POST") {
-      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req);
-      const { expandTheme } = await import("./query/theme");
-      try {
-        const body = await req.json() as { theme: string };
-        if (!body.theme || typeof body.theme !== "string") {
-          return jsonResponse({ error: "Invalid request", details: "theme string required" }, req);
-        }
-        const nodes = expandTheme(body.theme);
-        return jsonResponse({ nodes, warning: nodes.length === 0 ? `No matching concepts found for theme "${body.theme}"` : undefined }, req);
-      } catch {
-        return jsonResponse({ error: "Invalid request body" }, req);
-      }
-    }
-
     if (url.pathname === "/api/search" && req.method === "POST") {
       if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req, 503);
       const { searchElements } = await import("./query/search");
