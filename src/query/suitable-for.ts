@@ -5,16 +5,17 @@ export function deriveSuitableFor(
   durationMinutes?: number,
   energyLevel?: string,
 ): SuitableFor {
-  if (energyLevel && energyLevel === "high" && durationMinutes !== undefined && durationMinutes <= 5) {
+  const dur = durationMinutes ?? 10;
+  const energy = energyLevel ?? "medium";
+
+  if (energy === "high" && dur <= 5) {
     return "encore";
   }
 
   if (
     difficulty === "beginner" &&
-    durationMinutes !== undefined &&
-    durationMinutes <= 10 &&
-    energyLevel &&
-    (energyLevel === "medium" || energyLevel === "high")
+    dur <= 10 &&
+    (energy === "medium" || energy === "high")
   ) {
     return "warmup";
   }
@@ -22,8 +23,7 @@ export function deriveSuitableFor(
   if (
     difficulty &&
     (difficulty === "intermediate" || difficulty === "advanced") &&
-    durationMinutes !== undefined &&
-    durationMinutes >= 15
+    dur >= 15
   ) {
     return "performance";
   }
