@@ -1,5 +1,10 @@
 # Plan 0003: Application Layer — From User Intentions to Graph Queries
 
+> **Note**: The workshop search / theme expansion components in this plan have been revised
+> by [Plan 0004](./0004-workshop-search.md). `theme.ts` is deleted. `POST /api/themes/expand`
+> is replaced by `POST /api/search`. `suitable-for.ts` applies duration/energy defaults.
+> See 0004 for current design.
+
 ## Goal
 
 Build the application layer (P4–P6 from 0001) by planning backwards from what a workshop facilitator actually needs. The graph is the contract — the application consumes `graph.json` and translates human intent into graph queries.

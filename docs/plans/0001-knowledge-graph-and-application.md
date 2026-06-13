@@ -204,7 +204,7 @@ The application is a separate concern. It could be a CLI tool, a static site, or
 | P5 | Application: workshop planner | Constraint-based sequence generation | → [0003](./0003-application-layer.md) |
 | P6 | Application: show set builder | Format-aware set list generation | → [0003](./0003-application-layer.md) |
 
-P1–P3 implemented. P4–P6 detailed in [Plan 0003](./0003-application-layer.md).
+P1–P3 implemented. P4–P6 detailed in [Plan 0003](./0003-application-layer.md). Workshop search revised by [Plan 0004](./0004-workshop-search.md).
 
 ## Data Dependency Graph
 
