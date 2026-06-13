@@ -41,6 +41,24 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .total-duration { font-size: 0.85rem; color: #6b7280; margin-bottom: 16px; }
 .loading { text-align: center; padding: 40px; color: #6b7280; }
 .error { background: #fee2e2; color: #991b1b; padding: 12px 16px; border-radius: 8px; }
+.search-section { margin-bottom: 16px; }
+.search-section label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem; }
+.search-wrapper { position: relative; display: flex; align-items: center; }
+.search-wrapper input { flex: 1; }
+.search-badge { background: #1a1a2e; color: white; border-radius: 12px; padding: 2px 10px;
+                font-size: 0.75rem; margin-left: 8px; white-space: nowrap; }
+.search-results { margin-top: 8px; }
+.search-result-item { background: white; border-radius: 6px; padding: 10px 14px; margin-bottom: 6px;
+                      cursor: pointer; border: 1px solid #e0e0e0; transition: border-color 0.2s; }
+.search-result-item:hover { border-color: #1a1a2e; }
+.search-result-item .result-label { font-weight: 600; font-size: 0.9rem; }
+.search-result-item .result-summary { font-size: 0.8rem; color: #555; margin-top: 2px; }
+.search-concepts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.concept-chip { background: #e8eaf6; color: #1a1a2e; border-radius: 12px; padding: 2px 10px;
+                font-size: 0.75rem; }
+.search-suggestions { margin-top: 10px; font-size: 0.8rem; color: #666; }
+.suggestion-link { color: #1a1a2e; text-decoration: underline; cursor: pointer; margin: 0 4px; }
+.suggestion-link:hover { color: #2d2d4a; }
 </style>
 </head>
 <body>
@@ -70,9 +88,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         </select>
       </div>
     </div>
-    <div class="form-group">
-      <label for="theme">Theme (e.g. storytelling, status, music)</label>
-      <input type="text" id="theme" name="theme" placeholder="storytelling">
+    <div class="search-section">
+      <label for="theme">What should the workshop focus on?</label>
+      <div class="search-wrapper">
+        <input type="text" id="theme" name="theme" placeholder="e.g., saying yes, storytelling, emotions..."
+               autocomplete="off">
+        <span id="search-count" class="search-badge" hidden></span>
+      </div>
+      <div id="search-results" class="search-results" hidden></div>
+      <div id="search-concepts" class="search-concepts" hidden></div>
+      <div id="search-suggestions" class="search-suggestions"></div>
     </div>
     <div class="form-group">
       <label>Constraints</label>
@@ -99,6 +124,118 @@ async function fetchStats() {
   } catch { document.getElementById("stats").textContent = "Graph not available"; }
 }
 fetchStats();
+
+let searchDebounce = null;
+const themeInput = document.getElementById("theme");
+
+themeInput.addEventListener("input", () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(doSearch, 300);
+});
+
+async function doSearch() {
+  const query = themeInput.value.trim();
+  const resultsDiv = document.getElementById("search-results");
+  const conceptsDiv = document.getElementById("search-concepts");
+  const suggestionsDiv = document.getElementById("search-suggestions");
+  const countBadge = document.getElementById("search-count");
+
+  if (!query) {
+    resultsDiv.hidden = true;
+    resultsDiv.innerHTML = "";
+    conceptsDiv.hidden = true;
+    conceptsDiv.innerHTML = "";
+    countBadge.hidden = true;
+    showDefaultSuggestions(suggestionsDiv);
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    if (!res.ok) {
+      resultsDiv.hidden = true;
+      conceptsDiv.hidden = true;
+      countBadge.hidden = true;
+      return;
+    }
+
+    const data = await res.json();
+    renderSearchResults(data, resultsDiv, conceptsDiv, suggestionsDiv, countBadge);
+  } catch {
+    resultsDiv.hidden = true;
+    conceptsDiv.hidden = true;
+    countBadge.hidden = true;
+  }
+}
+
+function showDefaultSuggestions(suggestionsDiv) {
+  suggestionsDiv.innerHTML = `<span style="color:#888">Try:</span>` +
+    ["storytelling", "status", "characters", "emotions", "active listening"]
+      .map(s => `<span class="suggestion-link" data-suggestion="${esc(s)}">${esc(s)}</span>`)
+      .join("");
+  document.querySelectorAll(".suggestion-link").forEach(link => {
+    link.addEventListener("click", () => {
+      themeInput.value = link.dataset.suggestion;
+      themeInput.dispatchEvent(new Event("input"));
+    });
+  });
+}
+
+function renderSearchResults(data, resultsDiv, conceptsDiv, suggestionsDiv, countBadge) {
+  const { results, matchedConcepts, suggestions } = data;
+
+  countBadge.textContent = `${results.length} exercises found`;
+  countBadge.hidden = results.length === 0 && matchedConcepts.mechanics.length === 0
+    && matchedConcepts.skills.length === 0 && matchedConcepts.tags.length === 0;
+
+  if (results.length > 0) {
+    const top5 = results.slice(0, 5);
+    resultsDiv.innerHTML = top5.map(r =>
+      `<div class="search-result-item">
+        <div class="result-label">${esc(r.label)}</div>
+        <div class="result-summary">${truncate(r.summary, 120)}</div>
+      </div>`
+    ).join("");
+    resultsDiv.hidden = false;
+  } else {
+    resultsDiv.innerHTML = "";
+    resultsDiv.hidden = true;
+  }
+
+  const allConcepts = [
+    ...(matchedConcepts.mechanics || []).map(c => ({ label: c, type: "mechanic" })),
+    ...(matchedConcepts.skills || []).map(c => ({ label: c, type: "skill" })),
+    ...(matchedConcepts.tags || []).map(c => ({ label: c, type: "tag" })),
+  ];
+
+  if (allConcepts.length > 0) {
+    const unique = [...new Map(allConcepts.map(c => [c.label.toLowerCase(), c])).values()];
+    conceptsDiv.innerHTML = `<span style="font-size:0.75rem;color:#888;margin-right:4px">Focus areas:</span>` +
+      unique.map(c => `<span class="concept-chip">${esc(c.label)}</span>`).join("");
+    conceptsDiv.hidden = false;
+  } else {
+    conceptsDiv.innerHTML = "";
+    conceptsDiv.hidden = true;
+  }
+
+  if (suggestions && suggestions.length > 0) {
+    suggestionsDiv.innerHTML = `<span style="color:#888">Try instead:</span>` +
+      suggestions.map(s => `<span class="suggestion-link" data-suggestion="${esc(s)}">${esc(s)}</span>`)
+        .join("");
+    document.querySelectorAll(".suggestion-link").forEach(link => {
+      link.addEventListener("click", () => {
+        themeInput.value = link.dataset.suggestion;
+        themeInput.dispatchEvent(new Event("input"));
+      });
+    });
+  }
+}
+
+showDefaultSuggestions(document.getElementById("search-suggestions"));
 
 document.getElementById("planner-form").addEventListener("submit", async (e) => {
   e.preventDefault();
