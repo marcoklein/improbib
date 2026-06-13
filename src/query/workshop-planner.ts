@@ -248,6 +248,21 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
     }
   }
 
+  // Fill main from all canonicals if themed pool has nothing
+  if (main.length < 3 && thematicElementIds && thematicElementIds.size > 0) {
+    const remaining = allCanonicals
+      .filter((el) => !usedIds.has(el.id))
+      .sort((a, b) => (a.typicalDurationMinutes || 10) - (b.typicalDurationMinutes || 10));
+    for (const el of remaining) {
+      const dur = el.typicalDurationMinutes || 10;
+      if (mainDur + dur <= mainTarget + 15 || main.length < 5) {
+        main.push(el);
+        mainDur += dur;
+        usedIds.add(el.id);
+      }
+    }
+  }
+
   const closer: ElementResult[] = [];
   let closerDur = 0;
   for (const el of performancesAndEncores) {
@@ -277,6 +292,26 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
         usedIds.add(el.id);
       }
       if (closer.length >= 3) break;
+    }
+  }
+
+  // Fill closer from all canonicals if themed pool has nothing — closers are universal
+  if (closer.length < 1 && thematicElementIds && thematicElementIds.size > 0) {
+    const remaining = allCanonicals.filter((el) => !usedIds.has(el.id));
+    remaining.sort((a, b) => {
+      const energyOrder = { high: 0, medium: 1, low: 2 };
+      const aE = energyOrder[a.energyLevel || "medium"] ?? 1;
+      const bE = energyOrder[b.energyLevel || "medium"] ?? 1;
+      return aE - bE;
+    });
+    for (const el of remaining) {
+      const dur = el.typicalDurationMinutes || 10;
+      if (warmUpDur + mainDur + closerDur + dur <= targetDuration + 15) {
+        closer.push(el);
+        closerDur += dur;
+        usedIds.add(el.id);
+      }
+      if (closer.length >= 2) break;
     }
   }
 
