@@ -16,7 +16,7 @@ import type { GraphIndex } from "./query/graph-query";
 
 const PORT = parseInt(process.env.PORT || "5000");
 
-function jsonResponse(data: unknown, req: Request): Response {
+function jsonResponse(data: unknown, req: Request, status: number = 200): Response {
   const body = JSON.stringify(data, null, 2);
   const headers: Record<string, string> = {
     "content-type": "application/json; charset=utf-8",
@@ -26,10 +26,10 @@ function jsonResponse(data: unknown, req: Request): Response {
   if (req.headers.get("accept-encoding")?.includes("gzip")) {
     const compressed = gzipSync(new Uint8Array(Buffer.from(body)));
     headers["content-encoding"] = "gzip";
-    return new Response(compressed, { headers });
+    return new Response(compressed, { headers, status });
   }
 
-  return new Response(body, { headers });
+  return new Response(body, { headers, status });
 }
 
 function serveFile(filePath: string, req: Request, contentType: string = "application/json; charset=utf-8"): Response | null {
@@ -367,18 +367,19 @@ Bun.serve({
       return jsonResponse(detail, req);
     }
 
-    if (url.pathname === "/api/themes/expand" && req.method === "POST") {
-      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req);
-      const { expandTheme } = await import("./query/theme");
+    if (url.pathname === "/api/search" && req.method === "POST") {
+      if (!graphIndex) return jsonResponse({ error: "Graph not available — run graph derivation first" }, req, 503);
+      const { searchElements } = await import("./query/search");
       try {
-        const body = await req.json() as { theme: string };
-        if (!body.theme || typeof body.theme !== "string") {
-          return jsonResponse({ error: "Invalid request", details: "theme string required" }, req);
+        const body = await req.json();
+        const { query } = body || {};
+        if (!query || typeof query !== "string") {
+          return jsonResponse({ error: "Missing or invalid 'query' field" }, req, 400);
         }
-        const nodes = expandTheme(body.theme);
-        return jsonResponse({ nodes, warning: nodes.length === 0 ? `No matching concepts found for theme "${body.theme}"` : undefined }, req);
+        const result = searchElements(query);
+        return jsonResponse(result, req);
       } catch {
-        return jsonResponse({ error: "Invalid request body" }, req);
+        return jsonResponse({ error: "Invalid request body" }, req, 400);
       }
     }
 

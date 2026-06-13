@@ -1,6 +1,6 @@
 import { getGraphIndex, queryElements, getSimilarElements } from "./graph-query";
 import type { ElementResult } from "./graph-query";
-import { expandTheme } from "./theme";
+import { searchElements } from "./search";
 import { deriveSuitableFor } from "./suitable-for";
 
 export interface WorkshopConstraints {
@@ -52,48 +52,17 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
   }
 
   let thematicElementIds: Set<string> | null = null;
+  let searchResult: ReturnType<typeof searchElements> | null = null;
   if (constraints.theme) {
-    const themeNodes = expandTheme(constraints.theme);
-    if (themeNodes.length === 0) {
-      warnings.push(`No matching concepts found for theme "${constraints.theme}"`);
+    searchResult = searchElements(constraints.theme, {
+      canonicalOnly: true,
+      language: "en",
+    });
 
-      const words = constraints.theme.toLowerCase().split(/\s+/);
-      if (words.length > 1) {
-        const shorter = words.slice(0, -1).join(" ");
-        if (shorter.length > 0) {
-          const retryNodes = expandTheme(shorter);
-          if (retryNodes.length > 0) {
-            warnings.push(`Broadened theme to "${shorter}" — found ${retryNodes.length} results`);
-            thematicElementIds = new Set<string>();
-            for (const tn of retryNodes) {
-              const inEdges = idx.edgesByTo.get(tn.id) || [];
-              for (const edge of inEdges) {
-                if (
-                  edge.type === "hasMechanic" ||
-                  edge.type === "trainsSkill" ||
-                  edge.type === "hasTag"
-                ) {
-                  thematicElementIds.add(edge.from);
-                }
-              }
-            }
-          }
-        }
-      }
+    if (searchResult.results.length === 0) {
+      warnings.push(`No matching concepts found for theme "${constraints.theme}"`);
     } else {
-      thematicElementIds = new Set<string>();
-      for (const tn of themeNodes) {
-        const inEdges = idx.edgesByTo.get(tn.id) || [];
-        for (const edge of inEdges) {
-          if (
-            edge.type === "hasMechanic" ||
-            edge.type === "trainsSkill" ||
-            edge.type === "hasTag"
-          ) {
-            thematicElementIds.add(edge.from);
-          }
-        }
-      }
+      thematicElementIds = new Set(searchResult.results.map((r) => r.elementId));
     }
   }
 
@@ -106,11 +75,17 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
 
   let candidates = allCanonicals;
 
-  if (thematicElementIds && thematicElementIds.size > 0) {
-    candidates = candidates.filter((el) => thematicElementIds!.has(el.id));
-    if (candidates.length === 0) {
+  if (thematicElementIds && thematicElementIds.size > 0 && searchResult) {
+    const orderedCandidates: ElementResult[] = [];
+    for (const sr of searchResult.results) {
+      const matching = allCanonicals.find((el) => el.id === sr.elementId);
+      if (matching) orderedCandidates.push(matching);
+    }
+    if (orderedCandidates.length === 0) {
       warnings.push("No elements match the theme after filtering — using all canonical elements");
       candidates = allCanonicals;
+    } else {
+      candidates = orderedCandidates;
     }
   }
 
@@ -130,28 +105,6 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
       warnings.push(`No elements match difficulty "${constraints.difficulty}" — showing all difficulties`);
     }
   }
-
-  // Score thematic elements
-  if (thematicElementIds && thematicElementIds.size > 0) {
-    const themeScoreMap = new Map<string, number>();
-    for (const el of candidates) {
-      const outEdges = idx.edgesByFrom.get(el.id) || [];
-      let score = 0;
-      for (const edge of outEdges) {
-        if (
-          (edge.type === "hasMechanic" || edge.type === "trainsSkill" || edge.type === "hasTag") &&
-          thematicElementIds!.has(edge.from)
-        ) {
-          score++;
-        }
-      }
-      themeScoreMap.set(el.id, score);
-    }
-    candidates.sort((a, b) => (themeScoreMap.get(b.id) || 0) - (themeScoreMap.get(a.id) || 0));
-  }
-
-  // Dedupe: group by canonical cluster - but queryElements already returns canonicals
-  // The dedupe step in the pipeline is already handled because we query canonicalOnly
 
   // Classify suitableFor
   const bySuitability = new Map<string, ElementResult[]>();
