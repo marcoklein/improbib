@@ -58,7 +58,7 @@ For complex multi-file changes, use the QRSPI workflow. Type `/qrspi/` to see al
 3. `/qrspi/3_design` — Align on approach (MUST ask you questions first)
 4. `/qrspi/4_structure` — Vertical slices with test checkpoints
 5. `/qrspi/5_plan` — Tactical implementation details with checkboxes
-6. `/qrspi/6_worktree` — Isolate in git worktree (optional)
+6. `/qrspi/6_worktree` — Isolate in wt worktree (optional)
 7. `/qrspi/7_implement` — Execute plan phase by phase
 8. `/qrspi/8_pr` — Create PR grounded in design document
 
