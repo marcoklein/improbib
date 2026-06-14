@@ -48,3 +48,18 @@ bun test                   # run tests (bun:test)
 - `output/` — all scraper output (gitignored). Includes `elements.json`, `improbib.json`, per-item `.html`/`.md`.
 - `mergeElements()` is called 3 times in the pipeline — reordering breaks deduplication.
 - Each element requires `tagIds` (≥1), markdown (10–10000 chars), and license `CC-BY-SA-3.0-DE`.
+
+## QRSPI Workflow
+
+For complex multi-file changes, use the QRSPI workflow. Type `/qrspi/` to see all phases.
+
+1. `/qrspi/1_question` — Decompose task into neutral research questions
+2. `/qrspi/2_research` — Answer questions with facts only (does NOT see the task)
+3. `/qrspi/3_design` — Align on approach (MUST ask you questions first)
+4. `/qrspi/4_structure` — Vertical slices with test checkpoints
+5. `/qrspi/5_plan` — Tactical implementation details with checkboxes
+6. `/qrspi/6_worktree` — Isolate in git worktree (optional)
+7. `/qrspi/7_implement` — Execute plan phase by phase
+8. `/qrspi/8_pr` — Create PR grounded in design document
+
+Start a fresh session between phases. Artifacts: `thoughts/qrspi/<id>/`.
