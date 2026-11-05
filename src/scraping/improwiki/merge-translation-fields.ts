@@ -34,11 +34,14 @@ export function mergeTranslationFields(output: { elements: ElementType[] }) {
       continue;
     }
 
-    mergedEntities[element.identifier] = mergeEntities(element, otherElement, [
-      "tags",
-      "playerCountMin",
-      "playerCountMax",
-    ]);
+    // Both language pages describe the same element, so unify the tag set.
+    // Player counts are kept per page and only filled in when one side is
+    // missing — the pages sometimes disagree, and taking the twin's value
+    // would silently swap the two.
+    const merged = mergeEntities(element, otherElement, ["tags"]);
+    merged.playerCountMin ??= otherElement.playerCountMin;
+    merged.playerCountMax ??= otherElement.playerCountMax;
+    mergedEntities[element.identifier] = merged;
   }
 
   output.elements = Object.values(mergedEntities);

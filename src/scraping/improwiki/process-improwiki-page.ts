@@ -1,16 +1,33 @@
 import { load } from "cheerio";
 import { appLogger } from "../../logger";
+import type { ElementType } from "../shared/element-type";
 import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 
-export async function processImprowikiPage(
-  baseUrl: string,
-  originalUrl: string
-) {
-  const logger = appLogger.getChild("processImprowikiPage");
-  logger.debug(`Fetching ${originalUrl}`);
-  const page = await fetchAndCacheWebsite(originalUrl);
-  const elementUrl = page.url;
-  const $ = load(page.html);
+/** Sidebar headings that are UI affordances, not element data. */
+const UI_HEADINGS =
+  /badge|karte|^card$|textlink|text link|was möchtest du|verlink uns|gruppe folgen|community/i;
+
+export interface ImprowikiPageInput {
+  baseUrl: string;
+  elementUrl: string;
+  html: string;
+  fetchedAt: string;
+}
+
+/**
+ * Parses a single improwiki element page.
+ *
+ * Kept pure (no fetching) so the page can be re-parsed from the HTTP cache
+ * without touching the network.
+ */
+export function parseImprowikiPage({
+  baseUrl,
+  elementUrl,
+  html,
+  fetchedAt,
+}: ImprowikiPageInput): ElementType | undefined {
+  const logger = appLogger.getChild("parseImprowikiPage");
+  const $ = load(html);
 
   const title = $("h1.font-comic").first().text().trim();
   if (!title) {
@@ -18,7 +35,7 @@ export async function processImprowikiPage(
     return undefined;
   }
 
-  logger.debug(`Processing ${elementUrl}`);
+  const languageCode = elementUrl.includes("/en/") ? "en" : "de";
 
   const htmlContent = $(".article-content").html() ?? "";
   $(".article-content a").each((_, el) => {
@@ -33,80 +50,64 @@ export async function processImprowikiPage(
 
   const elementName = title.replaceAll("#", "").trim();
 
-  const languageCode = elementUrl.includes("/en/") ? "en" : "de";
-
   const tags: string[] = [];
-  const categoriesHeading =
-    languageCode === "en" ? 'h3:contains("Categories")' : 'h3:contains("Kategorien")';
-  const categoriesEl = $(categoriesHeading).first();
+  const categoriesLabel = languageCode === "en" ? "Categories" : "Kategorien";
+  const categoriesEl = $(`h3:contains("${categoriesLabel}")`).first();
   if (categoriesEl.length) {
-    const siblingDiv = categoriesEl.next();
-    siblingDiv.find("a").each((_, el) => {
-      tags.push($(el).text().trim());
+    categoriesEl.next().find("a").each((_, el) => {
+      const label = $(el).text().trim();
+      if (label) tags.push(label);
     });
   }
 
-  const lastUpdateEl = $(
-    languageCode === "en"
-      ? 'p:contains("Last edited")'
-      : 'p:contains("Zuletzt bearbeitet")'
-  ).first();
-  let lastUpdate = "";
-  if (lastUpdateEl.length) {
-    const text = lastUpdateEl.text();
-    const match = text.match(/(\d{2}\.\d{2}\.\d{4})/);
-    if (match) lastUpdate = match[1];
-  }
+  const lastUpdateMatch = $.html().match(
+    /(?:Zuletzt bearbeitet|Last edited)[^0-9]{0,80}(\d{2}\.\d{2}\.\d{4})/
+  );
+  const lastUpdate = lastUpdateMatch?.[1] ?? "";
 
-  const currentUrl = elementUrl;
   const translationLinkEn =
     $('link[rel="alternate"][hreflang="en"]').attr("href") || undefined;
   const translationLinkDe =
     $('link[rel="alternate"][hreflang="de"]').attr("href") || undefined;
 
+  // All sidebar fields live in one <aside>; the heading's direct parent only
+  // wraps the heading itself, which is why the old `.parent()` lookup lost
+  // every value after the redesign.
   const cardFields: Record<string, string> = {};
-  const catHeading =
-    languageCode === "en"
-      ? $('h3:contains("Categories")').first()
-      : $('h3:contains("Kategorien")').first();
-  if (catHeading.length) {
-    const sidebarCard = catHeading.parent();
-    sidebarCard.find("h3").each(function () {
-      let key = $(this).text().trim();
-      if (key === "Kategorien" || key === "Categories") return;
-      const sibling = $(this).next();
-      const value =
-        sibling.is("p") || sibling.is("div")
-          ? sibling.text().trim()
-          : sibling.find("a").first().text().trim() || sibling.text().trim();
-      key = key.replace(" of ", " ");
-      cardFields["card_" + key] = value;
+  const sidebar = categoriesEl.closest("aside");
+  if (sidebar.length) {
+    sidebar.find("h3").each((_, el) => {
+      const key = $(el).text().trim();
+      if (!key || key === categoriesLabel || UI_HEADINGS.test(key)) return;
+
+      const sibling = $(el).next();
+      const value = sibling.is("p") || sibling.is("div")
+        ? sibling.text().trim()
+        : sibling.find("a").first().text().trim() || sibling.text().trim();
+      if (!value) return;
+
+      cardFields[`card_${key.replace(" of ", " ")}`] = value;
     });
   }
 
   const hasher = new Bun.CryptoHasher("md5");
   hasher.update(`element;${elementName};${elementUrl}`);
-  logger.debug(`Hashing ${elementName} ${elementUrl}`);
-  if (!elementUrl) {
-    logger.error(`No elementUrl for ${elementName}`);
-    throw new Error(`No elementUrl for ${elementName}`);
-  }
-
   const identifier = hasher.digest("hex");
 
-  const sourceName = "improwiki";
-  const licenseEn = {
-    licenseName: "CC BY-SA 3.0 DE",
-    licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
-    licenseUrl: "https://improwiki.com/en/lizenz",
-  };
-  const licenseDe = {
-    licenseName: "CC BY-SA 3.0 DE",
-    licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
-    licenseUrl: "https://improwiki.com/de/lizenz",
-  };
+  const license =
+    languageCode === "en"
+      ? {
+          licenseName: "CC BY-SA 3.0 DE",
+          licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
+          licenseUrl: "https://improwiki.com/en/lizenz",
+        }
+      : {
+          licenseName: "CC BY-SA 3.0 DE",
+          licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
+          licenseUrl: "https://improwiki.com/de/lizenz",
+        };
 
-  const element = {
+  return {
     type: "element",
     identifier,
     url: elementUrl,
@@ -114,16 +115,32 @@ export async function processImprowikiPage(
     tags: [...new Set(tags)],
     lastUpdate,
     translationLinkEn:
-      translationLinkEn === currentUrl ? undefined : translationLinkEn,
+      translationLinkEn === elementUrl ? undefined : translationLinkEn,
     translationLinkDe:
-      translationLinkDe === currentUrl ? undefined : translationLinkDe,
+      translationLinkDe === elementUrl ? undefined : translationLinkDe,
     languageCode,
-    sourceName,
+    sourceName: "improwiki",
     linksInHtmlContent,
-    htmlContent: htmlContent,
-    fetchedAt: page.date.toISOString(),
-    ...(languageCode === "en" ? licenseEn : licenseDe),
+    htmlContent,
+    fetchedAt,
+    ...license,
     ...cardFields,
   };
-  return element;
+}
+
+export async function processImprowikiPage(
+  baseUrl: string,
+  originalUrl: string
+) {
+  const logger = appLogger.getChild("processImprowikiPage");
+  logger.debug(`Fetching ${originalUrl}`);
+  const page = await fetchAndCacheWebsite(originalUrl);
+  logger.debug(`Processing ${page.url}`);
+
+  return parseImprowikiPage({
+    baseUrl,
+    elementUrl: page.url,
+    html: page.html,
+    fetchedAt: page.date.toISOString(),
+  });
 }

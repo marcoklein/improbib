@@ -1,13 +1,16 @@
 import { appLogger } from "../../logger";
-import { findTranslationId } from "../improwiki/find-translation-id";
-import { tagTranslations } from "./tag-translations";
 import type { ElementType } from "./element-type";
-import { tagTransformations } from "./tag-transformations";
+import { labelFor, resolveTagIds } from "./tag-vocabulary";
+import { tagTranslations } from "./tag-translations";
 
 /**
- * Creates a new set of translated tags.
+ * Derives the canonical `tagIds` for every element and the localized
+ * `translatedTags` shown to users.
  *
- * @param output
+ * Invariants:
+ * - `tagIds` only contains keys of `tagTranslations`
+ * - `translatedTags[i]` is the label of `tagIds[i]` in the element's language
+ * - unknown source labels are reported in `meta.unmappedTags`, never emitted
  */
 export function transformAndTranslateTags(output: {
   meta: Record<string, any>;
@@ -17,48 +20,34 @@ export function transformAndTranslateTags(output: {
   const logger = appLogger.getChild("translateTags");
 
   logger.info("CALL translateTag");
-  const untranslatedTags = new Set<string>();
+  const unmappedTags = new Map<string, number>();
 
   for (const element of elements) {
-    element.cleanTags = element.tags.flatMap(
-      (tag) =>
-        tagTransformations[tag as keyof typeof tagTransformations] || [tag]
+    const { ids, unmapped } = resolveTagIds(element.tags ?? []);
+
+    for (const label of unmapped) {
+      unmappedTags.set(label, (unmappedTags.get(label) ?? 0) + 1);
+      logger.debug("No canonical concept for raw tag {tag} on element {id}", {
+        tag: label,
+        id: element.identifier,
+      });
+    }
+
+    element.tagIds = ids;
+    element.translatedTags = ids.map((id) =>
+      labelFor(id, element.languageCode)
     );
   }
 
-  // created tagIds
-  for (const element of elements) {
-    element["tagIds"] = [
-      ...new Set(
-        (element.cleanTags as string[]).map((tag) => {
-          const translation = findTranslationId(tag);
-          if (!translation) {
-            logger.warn(
-              "No translation id found for {tag} for element id {elementId}",
-              { tag, elementId: element.identifier }
-            );
-            untranslatedTags.add(tag);
-          }
-          return translation ?? `no_translation_id_${tag}`;
-        })
-      ),
-    ];
-  }
-
-  // add translated tags to element
-  for (const element of elements) {
-    appLogger.debug("element {element}", { element });
-    element["translatedTags"] = (element.tagIds as string[]).map((tagId) => {
-      const translation =
-        tagTranslations[tagId as keyof typeof tagTranslations];
-      if (!translation) {
-        return tagId;
-      }
-      return translation[element.languageCode as "de" | "en"] ?? tagId;
-    });
-    element["translatedTags"] = [...new Set(element["translatedTags"])];
-  }
-
   output.meta.tagTranslations = tagTranslations;
-  output.meta.untranslatedTags = [...untranslatedTags];
+  output.meta.tagVocabulary = Object.fromEntries(
+    Object.entries(tagTranslations).map(([id, { de, en, axis }]) => [
+      id,
+      { de, en, axis },
+    ])
+  );
+  output.meta.untranslatedTags = [...unmappedTags.keys()].sort();
+  output.meta.untranslatedTagCounts = Object.fromEntries(
+    [...unmappedTags.entries()].sort((a, b) => b[1] - a[1])
+  );
 }

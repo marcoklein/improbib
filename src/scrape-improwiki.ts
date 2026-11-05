@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "path";
 import { processImprowikiEntryPage } from "./scraping/improwiki/process-improwiki-entry-page";
 import { followTranslationLinksOfElement } from "./scraping/improwiki/follow-translation-links";
+import { mergeTranslationFields } from "./scraping/improwiki/merge-translation-fields";
+import { processImprowikiCardFields } from "./scraping/improwiki/process-improwiki-card-fields";
 import type { ElementType } from "./scraping/shared/element-type";
 import { fetchAndCacheWebsite } from "./scraping/shared/fetch-and-cache-website";
 import { loadExistingElements } from "./scraping/shared/load-existing-elements";
@@ -137,6 +139,12 @@ export async function scrapeImprowiki(
   mergeElements(output);
   await followTranslationLinksOfElement(baseUrl, output);
   mergeElements(output);
+
+  // Turn the sidebar card fields into player counts and tags. This used to be
+  // part of the per-source pipeline and was dropped in the raw-layer refactor.
+  await processImprowikiCardFields(output);
+  // A translation pair is the same element; give both sides the same tag set.
+  mergeTranslationFields(output);
 
   output.meta.inventory = {
     elementCount: output.elements.length,

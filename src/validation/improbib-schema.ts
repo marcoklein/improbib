@@ -17,9 +17,9 @@ export const improbibSchema = z.object({
         translationLinkDeIdentifier: z.string().length(MD5_LENGTH).optional(),
 
         markdown: z.string().min(10).max(10000),
-        tagIds: z.array(z.string()).min(1),
+        tagIds: z.array(z.string()).default([]),
         licenseUrl: z.string().url(),
-        translatedTags: z.array(z.string().min(2).max(40)).nonempty(),
+        translatedTags: z.array(z.string().min(2).max(40)).default([]),
         licenseSpdxIdentifier: z.enum([
           "CC-BY-SA-3.0-DE",
           "CC-BY-SA-4.0",
@@ -32,7 +32,7 @@ export const improbibSchema = z.object({
       })
     )
     .min(400)
-    .max(1000),
+    .max(3000),
 });
 
 export type ImprobibSchema = TypeOf<typeof improbibSchema>;

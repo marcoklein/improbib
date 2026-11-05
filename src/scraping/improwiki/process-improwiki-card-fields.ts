@@ -38,26 +38,29 @@ export async function processImprowikiCardFields(resultDictionary: {
 
   // parse individual fields
   for (const element of elements) {
-    // number of players
-    const playerCountRegex = /(\d+)\s+(?:bis|to)\s+(\d+)/;
+    // number of players: "2 bis 4", "2 to 4", "2-4" or a single number
+    const playerCountRange = /(\d+)\s*(?:bis|to|[-–])\s*(\d+)/i;
+    const playerCountSingle = /^\s*(\d+)\s*$/;
 
     const inputString =
       element["card_Number Players"] ?? element["card_Anzahl Spieler"];
 
     if (inputString && typeof inputString === "string") {
-      const match = inputString.match(playerCountRegex);
+      const range = inputString.match(playerCountRange);
+      const single = inputString.match(playerCountSingle);
 
-      if (match) {
-        const minimumNumber = parseInt(match[1], 10);
-        const maximumNumber = parseInt(match[2], 10);
-        logger.debug(
-          `First number: ${minimumNumber}, Second number: ${maximumNumber}`
-        );
+      if (range) {
+        const minimumNumber = parseInt(range[1], 10);
+        const maximumNumber = parseInt(range[2], 10);
         element["playerCountMin"] = minimumNumber;
         element["playerCountMax"] = maximumNumber;
+      } else if (single) {
+        const count = parseInt(single[1], 10);
+        element["playerCountMin"] = count;
+        element["playerCountMax"] = count;
       } else {
         logger.warn(
-          `Unable to parse player count for element ${element.name} (${element.identifier})`
+          `Unable to parse player count "${inputString}" for element ${element.name} (${element.identifier})`
         );
       }
     }
@@ -71,15 +74,16 @@ export async function processImprowikiCardFields(resultDictionary: {
   const fieldsForTags = [
     "card_Spieltyp",
     "card_Kompetenzen",
+    "card_Competences",
     "card_Schwerpunkt",
     "card_Focus",
-    "card_Competences",
     "card_Gruppierung",
     "card_grouping",
     "card_Vitality",
     "card_Experience",
     "card_Erfahrung",
     "card_Dynamik",
+    "card_Energy",
   ].map((v) => v.toLowerCase());
 
   logger.info(
@@ -108,12 +112,22 @@ export async function processImprowikiCardFields(resultDictionary: {
   meta["tagTaxonomy"] = {
     experience: [
       "freshman",
+      "beginner",
       "advanced",
+      "intermediate",
       "pro",
+      "professional",
       "Anfänger",
       "Fortgeschritten",
       "Profi",
     ],
-    vitality: ["ruhig", "lebhaft", "wild", "calm", "energetic"],
+    energy: [
+      "ruhig",
+      "lebhaft",
+      "wild",
+      "calm",
+      "lively",
+      "energetic",
+    ],
   };
 }
