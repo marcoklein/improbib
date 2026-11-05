@@ -16,7 +16,7 @@ export class Improbib {
     await scrapeLearnImprov(options);
     await scrapeIrcWiki(options);
     console.log("All sources scraped.");
-    await assemble();
+    return await assemble();
   }
 
   async scrapeImprowiki() {
