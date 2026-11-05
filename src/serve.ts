@@ -148,8 +148,21 @@ async function runNormalizationChain() {
     console.error(`[${new Date().toISOString()}] Graph derivation failed:`, err.message);
   }
 
+  await assembleArtifact();
+
   normalizeRunning = false;
   console.log(`[${new Date().toISOString()}] Normalization chain finished.`);
+}
+
+async function assembleArtifact() {
+  try {
+    const output = await scanner.assemble();
+    console.log(
+      `[${new Date().toISOString()}] Artifact assembled: ${output.elements.length} elements, ${output.works?.length ?? 0} works`
+    );
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] Artifact assembly failed:`, err.message);
+  }
 }
 
 let lastRunDate: string | null = null;
@@ -272,7 +285,7 @@ Bun.serve({
         return jsonResponse({ status: "normalization already running" }, req);
       }
       normalizeRunning = true;
-      scanner.normalizeAll({ maxElements, source, stages }).then(() => {
+      scanner.normalizeAll({ maxElements, source, stages }).then(() => assembleArtifact()).then(() => {
         normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Normalize complete.`);
       }).catch((err: Error) => {
@@ -290,7 +303,7 @@ Bun.serve({
       normalizeRunning = true;
       import("./normalize/normalize").then(({ normalizeVocabularyStage }) => {
         return normalizeVocabularyStage();
-      }).then(() => {
+      }).then(() => assembleArtifact()).then(() => {
         normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Vocabulary normalization complete.`);
       }).catch((err: Error) => {
@@ -308,7 +321,7 @@ Bun.serve({
       normalizeRunning = true;
       import("./normalize/normalize").then(({ dedupElementsStage }) => {
         return dedupElementsStage();
-      }).then(() => {
+      }).then(() => assembleArtifact()).then(() => {
         normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Dedup complete.`);
       }).catch((err: Error) => {
@@ -330,7 +343,7 @@ Bun.serve({
         return jsonResponse({ status: "normalization in progress — try again later" }, req);
       }
       normalizeRunning = true;
-      import("./graph/derive").then(({ writeGraph }) => writeGraph()).then(() => {
+      import("./graph/derive").then(({ writeGraph }) => writeGraph()).then(() => assembleArtifact()).then(() => {
         normalizeRunning = false;
         console.log(`[${new Date().toISOString()}] Graph derivation complete.`);
       }).catch((err: Error) => {

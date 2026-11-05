@@ -1,20 +1,10 @@
 import { load } from "cheerio";
 import { appLogger } from "../../logger";
+import { extractIrcWikiAttribution } from "../shared/attribution";
 import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 import type { ElementType } from "../shared/element-type";
 
 const DELAY_MS = 10000;
-
-function parseLastModified(text: string): string | undefined {
-  const match = text.match(
-    /on (\d{1,2})\s+(\w+)\s+(\d{4}),\s+at\s+(\d{2}):(\d{2})/
-  );
-  if (match) {
-    const [, day, month, year, hour, minute] = match;
-    return new Date(`${month} ${day}, ${year} ${hour}:${minute}:00 UTC`).toISOString();
-  }
-  return undefined;
-}
 
 export async function processIrcWikiPage(
   url: string,
@@ -38,8 +28,7 @@ export async function processIrcWikiPage(
     .toArray()
     .filter((cat) => cat && cat !== "All");
 
-  const lastModifiedText = $("#footer li#lastmod").text().trim();
-  const lastModified = parseLastModified(lastModifiedText);
+  const attribution = extractIrcWikiAttribution(page.html);
 
   const tags = [...addTags, ...categories];
 
@@ -65,7 +54,7 @@ export async function processIrcWikiPage(
     sourceName,
     htmlContent,
     fetchedAt: page.date.toISOString(),
-    lastModified,
+    ...attribution,
     ...license,
   };
 }

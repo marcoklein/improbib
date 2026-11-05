@@ -1,5 +1,6 @@
 import { load } from "cheerio";
 import { appLogger } from "../../logger";
+import { extractImprowikiAttribution } from "../shared/attribution";
 import type { ElementType } from "../shared/element-type";
 import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 
@@ -64,6 +65,7 @@ export function parseImprowikiPage({
     /(?:Zuletzt bearbeitet|Last edited)[^0-9]{0,80}(\d{2}\.\d{2}\.\d{4})/
   );
   const lastUpdate = lastUpdateMatch?.[1] ?? "";
+  const attribution = extractImprowikiAttribution(html);
 
   const translationLinkEn =
     $('link[rel="alternate"][hreflang="en"]').attr("href") || undefined;
@@ -114,6 +116,9 @@ export function parseImprowikiPage({
     name: elementName,
     tags: [...new Set(tags)],
     lastUpdate,
+    lastModified: attribution.lastModified ?? lastUpdate,
+    lastEditedBy: attribution.lastEditedBy,
+    authors: attribution.authors,
     translationLinkEn:
       translationLinkEn === elementUrl ? undefined : translationLinkEn,
     translationLinkDe:

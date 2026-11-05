@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "../normalize/normalized-schema";
 import type { VocabularyMap } from "../normalize/llm-client";
 import { applyDedupOverrides, applyEdgeOverrides, loadOverrides } from "./overrides";
+import { MIN_CLUSTER_CONFIDENCE } from "../normalize/cluster-config";
 import type { Override, OverrideStats } from "./overrides";
 import { deriveRequirements } from "./requirement-mapping";
 
@@ -197,6 +198,7 @@ function buildClusters(
 
   for (const el of elements) {
     for (const ri of el.relatedIdentifiers || []) {
+      if ((ri.confidence ?? 0) < MIN_CLUSTER_CONFIDENCE) continue;
       union(el.identifier, ri.identifier);
     }
     // Also include translation links for clustering

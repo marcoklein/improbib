@@ -24,6 +24,11 @@ export interface FetchAndCacheOptions {
    */
   forceRefresh?: boolean;
   /**
+   * Never touch the network. A cache miss throws instead. Used by offline
+   * re-parses that must not depend on the sources being reachable.
+   */
+  offline?: boolean;
+  /**
    * Cache directory. Defaults to `.cache` in the working directory; tests
    * point this at a temporary directory.
    */
@@ -95,6 +100,10 @@ async function fetchPage(
         maxAgeMs,
       });
     }
+  }
+
+  if (options?.offline) {
+    throw new Error(`Cache miss (offline fetch disabled): ${url}`);
   }
 
   await fs.mkdir(cacheDir, { recursive: true });
