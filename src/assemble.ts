@@ -1,5 +1,11 @@
 import fs from "node:fs/promises";
 import path from "path";
+import { applyDedupOverrides, loadOverrides } from "./graph/overrides";
+import type { Override } from "./graph/overrides";
+import type { NormalizedElement } from "./normalize/normalized-schema";
+import { buildPublishedArtifact } from "./publish/build-artifact";
+import type { ArtifactWork } from "./publish/build-artifact";
+import { buildWorks } from "./publish/build-works";
 import type { ElementType } from "./scraping/shared/element-type";
 import { mergeElements } from "./scraping/shared/merge-elements";
 import { convertHtmlToMarkdown } from "./scraping/shared/process-markdown";
@@ -9,6 +15,24 @@ import {
 import { improbibSchema } from "./validation/improbib-schema";
 
 const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
+
+async function loadNormalized(): Promise<NormalizedElement[]> {
+  const normalizedDir = path.join(process.cwd(), "output", "normalized");
+  const elements: NormalizedElement[] = [];
+
+  for (const sourceName of SOURCES) {
+    try {
+      const data = JSON.parse(
+        await fs.readFile(path.join(normalizedDir, `${sourceName}.json`), "utf-8")
+      );
+      elements.push(...(data.elements ?? []));
+    } catch {
+      console.warn(`Normalized file not found for ${sourceName}, skipping`);
+    }
+  }
+
+  return elements;
+}
 
 async function loadRawJson(
   sourceName: string
@@ -32,6 +56,7 @@ export async function assemble() {
   const allOutputs: {
     meta: Record<string, any>;
     elements: ElementType[];
+    works?: ArtifactWork[];
   } = { meta: {}, elements: [] };
 
   for (const source of SOURCES) {
@@ -103,6 +128,62 @@ export async function assemble() {
     totalElements: allOutputs.elements.length,
   };
 
+  // Layer 2 + 3 of the published model: normalized content and the work
+  // aggregation. Both are optional so a scrape before the first normalization
+  // still produces a valid v1 artifact.
+  const normalized = await loadNormalized();
+  const publishedIds = new Set(allOutputs.elements.map((e) => e.identifier));
+  const usableNormalized = normalized.filter((element) =>
+    publishedIds.has(element.identifier)
+  );
+
+  if (usableNormalized.length > 0) {
+    const overrides = await loadOverrides(
+      path.join(process.cwd(), "graph-overrides.json")
+    );
+    const { elements: overriddenElements } = applyDedupOverrides(
+      usableNormalized,
+      overrides
+    );
+    const parentLinks = overrides
+      .filter(
+        (
+          override
+        ): override is Override & {
+          type: "add_variationOf";
+          fromElementId: string;
+          toElementId: string;
+        } => override.type === "add_variationOf"
+      )
+      .map((override) => ({
+        childElementId: override.fromElementId,
+        parentElementId: override.toElementId,
+      }));
+
+    const works = buildWorks(overriddenElements, { parentLinks });
+    const published = buildPublishedArtifact({
+      elements: allOutputs.elements,
+      normalized: overriddenElements,
+      works,
+    });
+
+    allOutputs.elements = published.elements;
+    allOutputs.works = published.works;
+    allOutputs.meta.schemaVersion = 2;
+    allOutputs.meta.works = {
+      workCount: published.works.length,
+      translationGroupCount: new Set(
+        published.works
+          .map((work) => work.translationId)
+          .filter((id): id is string => Boolean(id))
+      ).size,
+      variantCount: published.works.filter((work) => work.parentWorkId).length,
+      normalizedElementCount: overriddenElements.length,
+    };
+  } else {
+    allOutputs.meta.schemaVersion = 1;
+  }
+
   // Never publish invalid output: an over-cap or broken element used to be
   // logged and written anyway, which is how a 1265-element file ended up in
   // production while the schema only allowed 1000.
@@ -116,5 +197,5 @@ export async function assemble() {
   await fs.writeFile(outputFile, JSON.stringify(allOutputs, null, 2), "utf-8");
   console.log(`Wrote ${outputFile}`);
 
-  return { ...parsed, meta: allOutputs.meta };
+  return { ...parsed, meta: allOutputs.meta, works: allOutputs.works };
 }

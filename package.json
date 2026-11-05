@@ -8,7 +8,9 @@
     "start": "bun src/serve.ts",
     "dev": "bun --watch run src/serve.ts",
     "reparse": "bun src/reparse.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "assemble": "bun src/publish-artifact.ts",
+    "backfill:attribution": "bun src/backfill-attribution.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

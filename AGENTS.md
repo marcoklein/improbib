@@ -10,6 +10,8 @@
 ```sh
 bun run src/analyze.ts    # run scraper
 bun run src/reparse.ts    # re-parse improwiki from .cache (no network), then assemble
+bun run assemble          # rebuild output/improbib.json from raw + normalized (no network)
+bun run backfill:attribution  # fill authors/lastModified from .cache (no network)
 bun run src/normalize/normalize.ts            # run normalization (Stage 1: LLM extraction only)
 bun run src/normalize/normalize.ts --vocabulary  # run vocabulary canonicalization (Stage 3: deterministic clustering)
 bun run src/normalize/normalize.ts --dedup        # run cross-source dedup (Stage 4: deterministic + LLM matching)
@@ -26,6 +28,8 @@ bun test                   # run tests (bun:test)
 - `src/analyze.ts` — CLI entry point for the scraper
 - `src/index.ts` — library entry (exports `Improbib` class, `readImprobibJson`)
 - Scraper pipeline in `src/scrape-improwiki.ts` scrapes improwiki.com, follows translation links, processes HTML→Markdown, and writes output
+- `src/publish/` is the published model: `build-works.ts` aggregates source elements into language-homogeneous works (canonical member, translation group, variant links) and `build-artifact.ts` joins them with normalized content
+- `src/assemble.ts` writes `output/improbib.json` (schemaVersion 2: `elements` + `works`)
 - Normalization layer in `src/normalize/` — 3-stage pipeline (LLM extraction, vocabulary canonicalization, cross-source dedup) per ADR-0008, ADR-0009, ADR-0011.
 - Cross-source dedup in `src/normalize/element-dedup.ts` — deterministic (name + mechanic overlap + curated thesaurus) then LLM matching, runs after vocabulary canonicalization.
 - Graph derivation in `src/graph/` — deterministic graph from normalized + vocabulary + dedup: nodes (Element with canonical: true/false, Mechanic, Skill, Tag, Source) and edges (hasMechanic, trainsSkill, hasTag, sourcedFrom, translationOf, canonicalOf).
@@ -34,6 +38,8 @@ bun test                   # run tests (bun:test)
 - Review workflow via `src/review.ts` — see `.opencode/skills/review-graph/SKILL.md` for the full QA workflow. Always review against the production graph.
 - Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–3000 elements
 - Tag vocabulary: `src/scraping/shared/tag-translations.ts` — canonical concepts with `axis`; unknown labels are reported in `meta.untranslatedTags`, never emitted as tag ids (ADR-0012)
+- Published model: work / translation group / variant links, confidence threshold 0.85 (ADR-0013)
+- Attribution: `authors` only where a source attributes someone; improwiki editor names are personal data and are neither stored nor published
 
 ## Data access
 

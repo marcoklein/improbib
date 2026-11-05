@@ -1,7 +1,10 @@
 import { appLogger } from "../../logger";
 
 export function mergeEntities<
-  T extends Record<string, string | string[] | undefined | number>
+  T extends Record<
+    string,
+    string | string[] | undefined | number | boolean | object
+  >
 >(objectA: T, objectB: T, keysToMerge: string[] = []) {
   const logger = appLogger.getChild("mergeEntities");
   const mergedObject = { ...objectA };

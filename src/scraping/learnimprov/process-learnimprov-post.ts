@@ -1,5 +1,6 @@
 import { load } from "cheerio";
 import { appLogger } from "../../logger";
+import { extractLearnImprovAttribution } from "../shared/attribution";
 import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 import type { ElementType } from "../shared/element-type";
 
@@ -11,6 +12,7 @@ export async function processLearnImprovPost(
   logger.debug(`Fetching ${url}`);
   const page = await fetchAndCacheWebsite(url);
   const $ = load(page.html);
+  const attribution = extractLearnImprovAttribution(page.html);
 
   const title = $("h1.entry-title").first().text().trim();
   if (!title) {
@@ -53,6 +55,7 @@ export async function processLearnImprovPost(
     sourceName,
     htmlContent,
     fetchedAt: page.date.toISOString(),
+    ...attribution,
     ...license,
   };
 }
