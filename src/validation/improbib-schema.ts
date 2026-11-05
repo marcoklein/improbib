@@ -127,11 +127,25 @@ export const improbibSchema = z.object({
         variationOf: z.string().optional(),
         workKind: z.enum(["element", "variation"]).optional(),
         isCanonicalMember: z.boolean().optional(),
+        isCollection: z.boolean().optional(),
+        splitFrom: z.string().length(MD5_LENGTH).optional(),
       })
     )
     .min(400)
     .max(3000),
   works: z.array(artifactWorkSchema).optional(),
+  collections: z
+    .array(
+      z.object({
+        id: z.string().length(MD5_LENGTH),
+        name: z.string(),
+        url: z.string(),
+        sourceName: z.string(),
+        languageCode: z.string(),
+        childIds: z.array(z.string().length(MD5_LENGTH)).min(1),
+      })
+    )
+    .optional(),
 });
 
 export type ImprobibSchema = TypeOf<typeof improbibSchema>;

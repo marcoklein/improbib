@@ -89,6 +89,10 @@ function parseModelList(envVal: string | undefined, defaults: string[]): string[
   return envVal.split(",").map(s => s.trim()).filter(Boolean);
 }
 
+export function getApiKey(): string {
+  return process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
+}
+
 export function createOpencodeGoClient(
   models?: string[],
 ): LlmClient {

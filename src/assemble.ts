@@ -12,6 +12,7 @@ import { convertHtmlToMarkdown } from "./scraping/shared/process-markdown";
 import {
   transformAndTranslateTags,
 } from "./scraping/shared/transform-and-translate-tags";
+import type { SplitFile } from "./split/build";
 import { improbibSchema } from "./validation/improbib-schema";
 
 const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
@@ -31,6 +32,49 @@ async function loadNormalized(): Promise<NormalizedElement[]> {
     }
   }
 
+  return elements;
+}
+
+async function loadSplits(): Promise<
+  Map<string, SplitFile>
+> {
+  const result = new Map<string, SplitFile>();
+  for (const sourceName of SOURCES) {
+    try {
+      const data = JSON.parse(
+        await fs.readFile(
+          path.join(process.cwd(), "output", "splits", `${sourceName}.json`),
+          "utf-8"
+        )
+      );
+      result.set(sourceName, data as SplitFile);
+    } catch {
+      // No split data for this source.
+    }
+  }
+  return result;
+}
+
+async function loadSplitNormalized(): Promise<NormalizedElement[]> {
+  const elements: NormalizedElement[] = [];
+  for (const sourceName of SOURCES) {
+    try {
+      const data = JSON.parse(
+        await fs.readFile(
+          path.join(
+            process.cwd(),
+            "output",
+            "normalized-splits",
+            `${sourceName}.json`
+          ),
+          "utf-8"
+        )
+      );
+      elements.push(...(data.elements ?? []));
+    } catch {
+      // No normalized split data for this source.
+    }
+  }
   return elements;
 }
 
@@ -57,6 +101,14 @@ export async function assemble() {
     meta: Record<string, any>;
     elements: ElementType[];
     works?: ArtifactWork[];
+    collections?: {
+      id: string;
+      name: string;
+      url: string;
+      sourceName: string;
+      languageCode: string;
+      childIds: string[];
+    }[];
   } = { meta: {}, elements: [] };
 
   for (const source of SOURCES) {
@@ -77,6 +129,77 @@ export async function assemble() {
   console.log(
     `Total elements after merge: ${allOutputs.elements.length}`
   );
+
+  // Pages that describe several independent games: the parent stays as a
+  // collection marker, the children become first-class elements. The raw layer
+  // is untouched; this is the only place the two are joined.
+  const splits = await loadSplits();
+  const elementById = new Map(
+    allOutputs.elements.map((element) => [element.identifier, element])
+  );
+  let splitCollections = 0;
+  let splitChildren = 0;
+  const collectionParents = new Set<string>();
+  const collections: NonNullable<typeof allOutputs.collections> = [];
+
+  for (const splitFile of splits.values()) {
+    for (const page of splitFile.pages) {
+      const parent = elementById.get(page.parentIdentifier);
+      if (parent) parent.isCollection = true;
+      splitCollections++;
+      collectionParents.add(page.parentIdentifier);
+      collections.push({
+        id: page.parentIdentifier,
+        name: page.parentName,
+        url: parent?.url ?? "",
+        sourceName: page.sourceName,
+        languageCode: page.languageCode,
+        childIds: page.children.map((child) => child.identifier),
+      });
+
+      for (const child of page.children) {
+        if (elementById.has(child.identifier)) continue;
+        const childElement: ElementType = {
+          type: "element",
+          identifier: child.identifier,
+          url: child.url,
+          name: child.name,
+          sourceName: page.sourceName,
+          languageCode: page.languageCode,
+          tags: parent?.tags ?? [],
+          htmlContent: child.htmlContent,
+          markdown: child.markdown,
+          fetchedAt: parent?.fetchedAt,
+          lastModified: parent?.lastModified,
+          authors: parent?.authors,
+          licenseName: parent?.licenseName,
+          licenseSpdxIdentifier: parent?.licenseSpdxIdentifier,
+          licenseUrl: parent?.licenseUrl,
+          splitFrom: page.parentIdentifier,
+        };
+        allOutputs.elements.push(childElement);
+        elementById.set(child.identifier, childElement);
+        splitChildren++;
+      }
+    }
+  }
+
+  if (splitCollections > 0) {
+    console.log(
+      `Added ${splitChildren} split elements from ${splitCollections} collection pages`
+    );
+  }
+
+  // A collection page is not a playable element: it lives in `collections`
+  // (metadata) and its children carry the content.
+  if (collectionParents.size > 0) {
+    allOutputs.elements = allOutputs.elements.filter(
+      (element) => !collectionParents.has(element.identifier)
+    );
+    allOutputs.collections = collections.sort((a, b) =>
+      a.id.localeCompare(b.id)
+    );
+  }
 
   convertHtmlToMarkdown(allOutputs.elements);
 
@@ -126,12 +249,17 @@ export async function assemble() {
       {} as Record<string, number>
     ),
     totalElements: allOutputs.elements.length,
+    splitCollections,
+    splitChildren,
   };
 
   // Layer 2 + 3 of the published model: normalized content and the work
   // aggregation. Both are optional so a scrape before the first normalization
   // still produces a valid v1 artifact.
-  const normalized = await loadNormalized();
+  const normalized = [
+    ...(await loadNormalized()),
+    ...(await loadSplitNormalized()),
+  ];
   const publishedIds = new Set(allOutputs.elements.map((e) => e.identifier));
   const usableNormalized = normalized.filter((element) =>
     publishedIds.has(element.identifier)
@@ -197,5 +325,10 @@ export async function assemble() {
   await fs.writeFile(outputFile, JSON.stringify(allOutputs, null, 2), "utf-8");
   console.log(`Wrote ${outputFile}`);
 
-  return { ...parsed, meta: allOutputs.meta, works: allOutputs.works };
+  return {
+    ...parsed,
+    meta: allOutputs.meta,
+    works: allOutputs.works,
+    collections: allOutputs.collections,
+  };
 }
