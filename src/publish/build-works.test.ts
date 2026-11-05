@@ -287,3 +287,65 @@ describe("buildWorks", () => {
     expect([beta?.parentWorkId, gamma?.parentWorkId].filter(Boolean)).toHaveLength(1);
   });
 });
+
+describe("buildWorks with variation classifications", () => {
+  test("attaches direction, lever and evidence to the deduplicated variation", () => {
+    const improwiki = makeElement({
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+      variations: ["Blind Freeze"],
+    });
+    const learnimprov = makeElement({
+      name: "Freeze",
+      sourceName: "learnimprov",
+      variations: ["Blind Freeze"],
+      relatedIdentifiers: [relation(improwiki.identifier, 1)],
+    });
+    improwiki.relatedIdentifiers = [relation(learnimprov.identifier, 1)];
+
+    const challenge = new Map([
+      [
+        improwiki.identifier,
+        new Map([
+          [
+            "blind freeze",
+            {
+              name: "Blind Freeze",
+              direction: "harder" as const,
+              lever: "information" as const,
+              evidence: "cannot see the stage",
+            },
+          ],
+        ]),
+      ],
+    ]);
+
+    const works = buildWorks([improwiki, learnimprov], { challenge });
+    const work = works[0];
+    const variation = work.variations.find((item) => item.name === "Blind Freeze");
+
+    expect(variation?.direction).toBe("harder");
+    expect(variation?.lever).toBe("information");
+    expect(variation?.evidence).toBe("cannot see the stage");
+    expect(work.adjustments.harder).toEqual([
+      {
+        text: "Description of Blind Freeze",
+        variationName: "Blind Freeze",
+        lever: "information",
+      },
+    ]);
+  });
+
+  test("leaves variations unclassified without a challenge index", () => {
+    const element = makeElement({
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+      variations: ["Blind Freeze"],
+    });
+
+    const works = buildWorks([element]);
+
+    expect(works[0].variations[0].direction).toBeUndefined();
+    expect(works[0].adjustments).toEqual({ easier: [], harder: [] });
+  });
+});
