@@ -22,10 +22,6 @@ export type ElementType = {
    * does not attribute anyone.
    */
   authors?: string[];
-  /**
-   * Last editor shown by the source's edit footer, when present.
-   */
-  lastEditedBy?: string;
   linksInHtmlContent?: string[];
   /** Normalized content published alongside the source element (v2 artifact). */
   normalized?: object;
@@ -52,4 +48,4 @@ export type ElementType = {
   licenseName?: string;
   licenseSpdxIdentifier?: string;
   licenseUrl?: string;
-} & Record<string, string | string[] | number | undefined>;
+} & Record<string, string | string[] | number | boolean | object | undefined>;

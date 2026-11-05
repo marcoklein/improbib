@@ -10,7 +10,6 @@ import { load } from "cheerio";
  */
 export interface SourceAttribution {
   authors: string[];
-  lastEditedBy?: string;
   /** ISO 8601 date (YYYY-MM-DD or full timestamp), when the page shows one. */
   lastModified?: string;
 }
@@ -36,10 +35,11 @@ export function extractImprowikiAttribution(html: string): SourceAttribution {
     return NO_ATTRIBUTION;
   }
 
-  const [, editor, day, month, year] = match;
+  // The editor name is deliberately dropped: it is a wiki user name and
+  // therefore personal data. Only the date is kept.
+  const [, , day, month, year] = match;
   return {
     authors: [],
-    lastEditedBy: editor.trim(),
     lastModified: isoDay(day, month, year),
   };
 }

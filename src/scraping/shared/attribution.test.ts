@@ -16,7 +16,6 @@ describe("extractImprowikiAttribution", () => {
 
     expect(extractImprowikiAttribution(html)).toEqual({
       authors: [],
-      lastEditedBy: "improwiki",
       lastModified: "2026-05-11",
     });
   });
@@ -34,7 +33,6 @@ describe("extractImprowikiAttribution", () => {
 
     expect(extractImprowikiAttribution(html)).toEqual({
       authors: [],
-      lastEditedBy: "testy99",
       lastModified: "2013-12-01",
     });
   });

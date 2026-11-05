@@ -74,9 +74,9 @@ not only its canonical name. Links are one level deep and cycle-free.
 **Attribution and privacy.** `authors` is filled only when a source explicitly
 attributes someone (learnimprov: the site account `learnimprov`). improwiki's
 edit footer names the last editor (a wiki user name, potentially a natural
-person), so it is recorded internally as `lastEditedBy` but **never published**.
-The legally relevant attribution remains source URL plus license, which the
-consumer already renders.
+person), so the name is parsed only to locate the date and is **never stored or
+published**. The legally relevant attribution remains source URL plus license,
+which the consumer already renders.
 
 **Assembly order.** Scrape → normalize → assemble. `serve.ts` re-assembles the
 artifact after normalization, vocabulary, dedup and graph stages so the

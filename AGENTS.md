@@ -39,7 +39,7 @@ bun test                   # run tests (bun:test)
 - Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–3000 elements
 - Tag vocabulary: `src/scraping/shared/tag-translations.ts` — canonical concepts with `axis`; unknown labels are reported in `meta.untranslatedTags`, never emitted as tag ids (ADR-0012)
 - Published model: work / translation group / variant links, confidence threshold 0.85 (ADR-0013)
-- Attribution: `authors` only where a source attributes someone; improwiki editor names stay internal (`lastEditedBy`) and are never published
+- Attribution: `authors` only where a source attributes someone; improwiki editor names are personal data and are neither stored nor published
 
 ## Data access
 

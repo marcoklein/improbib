@@ -117,7 +117,6 @@ export function parseImprowikiPage({
     tags: [...new Set(tags)],
     lastUpdate,
     lastModified: attribution.lastModified ?? lastUpdate,
-    lastEditedBy: attribution.lastEditedBy,
     authors: attribution.authors,
     translationLinkEn:
       translationLinkEn === elementUrl ? undefined : translationLinkEn,

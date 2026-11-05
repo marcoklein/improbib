@@ -13,8 +13,8 @@ const { extractAttribution } = await import("./scraping/shared/attribution");
 const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
 
 /**
- * Fills `authors`, `lastEditedBy` and `lastModified` on every raw element from
- * the full HTML in `.cache`.
+ * Fills `authors` and `lastModified` on every raw element from the full HTML in
+ * `.cache`.
  *
  * The raw layer only keeps the article fragment (`htmlContent`), so the byline
  * and edit footer are not part of it. This pass reads the cached page instead
@@ -55,7 +55,6 @@ async function main() {
       const attribution = extractAttribution(source, html);
       const changed =
         attribution.authors.length > 0 ||
-        attribution.lastEditedBy !== undefined ||
         attribution.lastModified !== undefined;
 
       if (!changed) {
@@ -65,9 +64,8 @@ async function main() {
       }
 
       element.authors = attribution.authors;
-      if (attribution.lastEditedBy) {
-        element.lastEditedBy = attribution.lastEditedBy;
-      }
+      // Drop the field from older runs: editor names are personal data.
+      delete element.lastEditedBy;
       if (attribution.lastModified) {
         element.lastModified = attribution.lastModified;
       }
