@@ -11,7 +11,7 @@
     "test": "bun test",
     "assemble": "bun src/publish-artifact.ts",
     "backfill:attribution": "bun src/backfill-attribution.ts",
-    "challenge": "bun src/challenge/classify.ts"
+    "splits": "bun src/split/pipeline.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

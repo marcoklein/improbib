@@ -33,6 +33,10 @@ export type ElementType = {
   variationOf?: string;
   workKind?: "element" | "variation";
   isCanonicalMember?: boolean;
+  /** Set on a page that describes several independent games (see `split/`). */
+  isCollection?: boolean;
+  /** Parent page id when this element was extracted from a collection page. */
+  splitFrom?: string;
   /** Source taxonomies that are kept separate in the raw layer (ADR-0004). */
   categories?: string[];
   postTags?: string[];
