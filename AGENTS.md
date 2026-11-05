@@ -46,7 +46,7 @@ bun test                   # run tests (bun:test)
 
 ## Key details
 
-- `.cache/` — file-based HTTP cache (URL-encoded filenames). Delete to force re-fetch from web.
+- `.cache/` — file-based HTTP cache (URL-encoded filenames). Entries older than 6 hours are re-fetched, so the daily scrape sees changed pages; `reparse` still reads any age. Delete the folder to force a full re-fetch.
 - `output/` — all scraper output (gitignored). Includes `elements.json`, `improbib.json`, per-item `.html`/`.md`.
 - `mergeElements()` is called 3 times in the pipeline — reordering breaks deduplication.
 - Each element requires `tagIds` (≥1), markdown (10–10000 chars), and license `CC-BY-SA-3.0-DE`.

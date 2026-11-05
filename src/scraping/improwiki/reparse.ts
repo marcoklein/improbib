@@ -42,7 +42,10 @@ export async function reparseImprowiki(): Promise<ReparseResult> {
   for (const element of elements) {
     let page: Awaited<ReturnType<typeof fetchAndCacheWebsite>>;
     try {
-      page = await fetchAndCacheWebsite(element.url);
+      // Re-parse is offline by design: use the cached HTML regardless of age.
+      page = await fetchAndCacheWebsite(element.url, {
+        maxAgeMs: Number.POSITIVE_INFINITY,
+      });
     } catch {
       result.skipped++;
       updated.push(element);

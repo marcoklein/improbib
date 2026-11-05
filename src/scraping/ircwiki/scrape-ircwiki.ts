@@ -46,7 +46,7 @@ export async function scrapeIrcWiki(options?: { maxPagesPerListing?: number }) {
     },
   ];
 
-  let newElements: ElementType[] = [];
+  let refreshedElements: ElementType[] = [];
 
   for (const listingPage of listingPages) {
     console.log(`Processing listing page: ${listingPage.url}`);
@@ -54,18 +54,19 @@ export async function scrapeIrcWiki(options?: { maxPagesPerListing?: number }) {
     console.log(`Found ${relativeUrls.length} pages`);
 
     const toFetch: string[] = [];
-    let skipped = 0;
+    let alreadyKnown = 0;
     for (const relativeUrl of relativeUrls) {
       const postUrl = resolveUrl(relativeUrl);
       if (urlMap.has(postUrl)) {
-        skipped++;
-      } else {
-        toFetch.push(postUrl);
+        // Still re-process known pages: the HTTP cache decides whether this
+        // costs a request, and a page may have changed since we last saw it.
+        alreadyKnown++;
       }
+      toFetch.push(postUrl);
     }
 
     console.log(
-      `  Fetching ${toFetch.length} new, skipping ${skipped} existing`
+      `  Refreshing ${toFetch.length} pages (${alreadyKnown} already known)`
     );
 
     if (toFetch.length === 0) continue;
@@ -79,7 +80,7 @@ export async function scrapeIrcWiki(options?: { maxPagesPerListing?: number }) {
     for (const postUrl of urls) {
       const element = await processIrcWikiPage(postUrl, listingPage.addTags);
       if (element) {
-        newElements.push(element);
+        refreshedElements.push(element);
       }
       fetched++;
       if (fetched % 5 === 0 || fetched === urls.length) {
@@ -88,10 +89,10 @@ export async function scrapeIrcWiki(options?: { maxPagesPerListing?: number }) {
     }
   }
 
-  console.log(`New elements fetched: ${newElements.length}`);
-  console.log(`Reusing ${existingElements.length} existing elements`);
+  console.log(`Pages processed: ${refreshedElements.length}`);
+  console.log(`Merging with ${existingElements.length} existing elements`);
 
-  const allElements = [...existingElements, ...newElements];
+  const allElements = [...existingElements, ...refreshedElements];
 
   const output: { meta: Record<string, any>; elements: ElementType[] } = {
     meta: {},
@@ -104,7 +105,7 @@ export async function scrapeIrcWiki(options?: { maxPagesPerListing?: number }) {
 
   output.meta.inventory = {
     elementCount: output.elements.length,
-    newFetched: newElements.length,
+    newFetched: refreshedElements.length,
     reused: existingElements.length,
   };
 

@@ -26,4 +26,4 @@ Run in development mode:
 bun run dev
 ```
 
-All website calls are cached in the `.cache` folder.
+All website calls are cached in the `.cache` folder. A scrape re-fetches entries older than six hours, so the daily run picks up changes; re-parsing uses the cache regardless of age.
