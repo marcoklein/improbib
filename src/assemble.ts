@@ -55,15 +55,26 @@ export async function assemble() {
 
   convertHtmlToMarkdown(allOutputs.elements);
 
+  // learnimprov stores WordPress categories and post tags separately (ADR-0004);
+  // this is the processing step that decides to use them as tags.
+  for (const element of allOutputs.elements) {
+    if (element.sourceName !== "learnimprov") continue;
+    const taxonomy = [
+      ...((element.categories as string[] | undefined) ?? []),
+      ...((element.postTags as string[] | undefined) ?? []),
+    ];
+    if (taxonomy.length === 0) continue;
+    element.tags = [...new Set([...(element.tags ?? []), ...taxonomy])];
+  }
+
   transformAndTranslateTags(allOutputs);
 
   let dropped = 0;
   allOutputs.elements = allOutputs.elements.filter((e) => {
     const markdownLen = (e.markdown as string)?.length ?? 0;
-    const tagIdsLen = (e.tagIds as string[])?.length ?? 0;
-    if (markdownLen < 10 || tagIdsLen === 0) {
+    if (markdownLen < 10) {
       console.warn(
-        `Dropping element ${e.name}: markdown=${markdownLen} chars, tagIds=${tagIdsLen}`
+        `Dropping element ${e.name}: markdown=${markdownLen} chars`
       );
       dropped++;
       return false;
@@ -79,16 +90,6 @@ export async function assemble() {
     }
   }
 
-  const result = improbibSchema.safeParse(allOutputs);
-  if (!result.success) {
-    console.error("Schema validation errors:");
-    for (const issue of result.error.issues) {
-      console.error(`  ${issue.path.join(".")}: ${issue.message}`);
-    }
-  } else {
-    console.log("Schema validation passed");
-  }
-
   allOutputs.meta.assembly = {
     sourceCounts: SOURCES.reduce(
       (acc, source) => {
@@ -102,6 +103,12 @@ export async function assemble() {
     totalElements: allOutputs.elements.length,
   };
 
+  // Never publish invalid output: an over-cap or broken element used to be
+  // logged and written anyway, which is how a 1265-element file ended up in
+  // production while the schema only allowed 1000.
+  const parsed = improbibSchema.parse(allOutputs);
+  console.log("Schema validation passed");
+
   const outputDir = path.join(process.cwd(), "output");
   await fs.mkdir(outputDir, { recursive: true });
 
@@ -109,5 +116,5 @@ export async function assemble() {
   await fs.writeFile(outputFile, JSON.stringify(allOutputs, null, 2), "utf-8");
   console.log(`Wrote ${outputFile}`);
 
-  return allOutputs;
+  return { ...parsed, meta: allOutputs.meta };
 }

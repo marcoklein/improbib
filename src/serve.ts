@@ -79,6 +79,7 @@ try {
 
 let scrapeRunning = false;
 let normalizeRunning = false;
+let reparseRunning = false;
 
 async function runScrape(force: boolean = false) {
   if (!force && rawSourcesExist()) {
@@ -201,6 +202,7 @@ Bun.serve({
         normalizeProgress,
         scrapeRunning,
         normalizeRunning,
+        reparseRunning,
       }, req);
     }
 
@@ -216,6 +218,11 @@ Bun.serve({
       if (res) return res;
     }
 
+    if (url.pathname === "/improbib.json") {
+      const res = serveFile(path.join(process.cwd(), "output", "improbib.json"), req);
+      if (res) return res;
+    }
+
     if (url.pathname === "/api/version") {
       return jsonResponse({ version: GIT_REV }, req);
     }
@@ -227,6 +234,32 @@ Bun.serve({
         console.error(`[${new Date().toISOString()}] Manual scrape failed:`, err.message);
       });
       return jsonResponse({ status: "scrape started", force }, req);
+    }
+
+    if (url.pathname === "/api/reparse") {
+      const source = url.searchParams.get("source") ?? "improwiki";
+      if (source !== "improwiki") {
+        return jsonResponse({ error: `Unsupported source: ${source}` }, req, 400);
+      }
+      if (reparseRunning) {
+        return jsonResponse({ status: "reparse already running" }, req, 409);
+      }
+      reparseRunning = true;
+      console.log(`[${new Date().toISOString()}] Manual reparse from cache (${source})...`);
+      (async () => {
+        try {
+          const { reparseImprowiki } = await import("./scraping/improwiki/reparse");
+          const stats = await reparseImprowiki();
+          console.log(`[${new Date().toISOString()}] Reparse done: ${JSON.stringify(stats)}`);
+          await scanner.assemble();
+          console.log(`[${new Date().toISOString()}] Assembly done.`);
+        } catch (err: any) {
+          console.error(`[${new Date().toISOString()}] Reparse failed:`, err.message);
+        } finally {
+          reparseRunning = false;
+        }
+      })();
+      return jsonResponse({ status: "reparse started", source }, req);
     }
 
     if (url.pathname === "/api/normalize") {

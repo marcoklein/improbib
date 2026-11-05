@@ -9,6 +9,7 @@
 
 ```sh
 bun run src/analyze.ts    # run scraper
+bun run src/reparse.ts    # re-parse improwiki from .cache (no network), then assemble
 bun run src/normalize/normalize.ts            # run normalization (Stage 1: LLM extraction only)
 bun run src/normalize/normalize.ts --vocabulary  # run vocabulary canonicalization (Stage 3: deterministic clustering)
 bun run src/normalize/normalize.ts --dedup        # run cross-source dedup (Stage 4: deterministic + LLM matching)
@@ -31,7 +32,8 @@ bun test                   # run tests (bun:test)
 - `canonicalOf` edges include `confidence` (0–1) derived from dedup matching scores. Lower confidence flags weaker matches for human review.
 - Graph overrides in `src/graph/overrides.ts` — human-curated corrections (reject_match, add_match, remove_edge, add_edge) applied during graph derivation. Stored in `graph-overrides.json`.
 - Review workflow via `src/review.ts` — see `.opencode/skills/review-graph/SKILL.md` for the full QA workflow. Always review against the production graph.
-- Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–1000 elements
+- Zod schema: `src/validation/improbib-schema.ts` — output array must be 400–3000 elements
+- Tag vocabulary: `src/scraping/shared/tag-translations.ts` — canonical concepts with `axis`; unknown labels are reported in `meta.untranslatedTags`, never emitted as tag ids (ADR-0012)
 
 ## Data access
 
