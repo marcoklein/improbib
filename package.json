@@ -10,7 +10,8 @@
     "reparse": "bun src/reparse.ts",
     "test": "bun test",
     "assemble": "bun src/publish-artifact.ts",
-    "backfill:attribution": "bun src/backfill-attribution.ts"
+    "backfill:attribution": "bun src/backfill-attribution.ts",
+    "challenge": "bun src/challenge/classify.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
