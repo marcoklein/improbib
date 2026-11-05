@@ -1,5 +1,4 @@
 import type { NormalizedElement } from "../normalize/normalized-schema";
-import type { WorkAdjustments } from "../challenge/adjustments";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { PublishedVariation, PublishedWork } from "./build-works";
 
@@ -46,8 +45,6 @@ export interface ArtifactWork {
   parentConfidence: number | null;
   sources: ArtifactSource[];
   variations: PublishedVariation[];
-  /** Documented variations that explicitly make the work easier or harder. */
-  adjustments: WorkAdjustments;
 }
 
 export interface PublishedArtifact {
@@ -167,7 +164,6 @@ export function buildPublishedArtifact(params: {
         parentConfidence: work.parentConfidence,
         sources: members.map(toArtifactSource),
         variations: work.variations,
-        adjustments: work.adjustments,
       } satisfies ArtifactWork;
     })
     // A work whose members were all merged away has no content to publish.

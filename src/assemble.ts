@@ -1,11 +1,5 @@
 import fs from "node:fs/promises";
 import path from "path";
-import {
-  challengeFileSchema,
-  normalizeForMatch,
-  type ChallengeAnnotation,
-  type ChallengeIndex,
-} from "./challenge/challenge-schema";
 import { applyDedupOverrides, loadOverrides } from "./graph/overrides";
 import type { Override } from "./graph/overrides";
 import type { NormalizedElement } from "./normalize/normalized-schema";
@@ -38,68 +32,6 @@ async function loadNormalized(): Promise<NormalizedElement[]> {
   }
 
   return elements;
-}
-
-interface ChallengeLoadResult {
-  index: ChallengeIndex;
-  stats: {
-    elements: number;
-    variations: number;
-    easier: number;
-    harder: number;
-    lateral: number;
-    unknown: number;
-    model: string;
-  };
-}
-
-/**
- * Loads the variation classification written by
- * `bun run challenge` (`output/challenge/*.json`).
- *
- * Missing files simply mean the artifact stays at v2 without adjustments.
- */
-async function loadChallenge(): Promise<ChallengeLoadResult | undefined> {
-  const challengeDir = path.join(process.cwd(), "output", "challenge");
-  const index: ChallengeIndex = new Map();
-  const stats = {
-    elements: 0,
-    variations: 0,
-    easier: 0,
-    harder: 0,
-    lateral: 0,
-    unknown: 0,
-    model: "",
-  };
-
-  for (const sourceName of SOURCES) {
-    try {
-      const raw = JSON.parse(
-        await fs.readFile(
-          path.join(challengeDir, `${sourceName}.json`),
-          "utf-8"
-        )
-      );
-      const parsed = challengeFileSchema.parse(raw);
-      stats.model = stats.model || parsed.meta.model;
-
-      for (const [identifier, entry] of Object.entries(parsed.elements)) {
-        const annotations = new Map<string, ChallengeAnnotation>();
-        for (const annotation of entry.variations) {
-          annotations.set(normalizeForMatch(annotation.name), annotation);
-          stats.variations++;
-          stats[annotation.direction]++;
-        }
-        index.set(identifier, annotations);
-        stats.elements++;
-      }
-    } catch {
-      // No classification for this source.
-    }
-  }
-
-  if (index.size === 0) return undefined;
-  return { index, stats };
 }
 
 async function loadRawJson(
@@ -228,11 +160,7 @@ export async function assemble() {
         parentElementId: override.toElementId,
       }));
 
-    const challenge = await loadChallenge();
-    const works = buildWorks(overriddenElements, {
-      parentLinks,
-      challenge: challenge?.index,
-    });
+    const works = buildWorks(overriddenElements, { parentLinks });
     const published = buildPublishedArtifact({
       elements: allOutputs.elements,
       normalized: overriddenElements,
@@ -241,10 +169,7 @@ export async function assemble() {
 
     allOutputs.elements = published.elements;
     allOutputs.works = published.works;
-    allOutputs.meta.schemaVersion = challenge ? 3 : 2;
-    if (challenge) {
-      allOutputs.meta.challenge = challenge.stats;
-    }
+    allOutputs.meta.schemaVersion = 2;
     allOutputs.meta.works = {
       workCount: published.works.length,
       translationGroupCount: new Set(

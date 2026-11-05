@@ -1,16 +1,4 @@
 import { createHash } from "crypto";
-import {
-  normalizeForMatch,
-  type ChallengeAnnotation,
-  type ChallengeDirection,
-  type ChallengeIndex,
-  type ChallengeLever,
-} from "../challenge/challenge-schema";
-import {
-  buildAdjustments,
-  mergeAnnotations,
-  type WorkAdjustments,
-} from "../challenge/adjustments";
 import type { NormalizedElement } from "../normalize/normalized-schema";
 
 export { MIN_CLUSTER_CONFIDENCE } from "../normalize/cluster-config";
@@ -24,12 +12,6 @@ export interface PublishedVariation {
   differsBy: string[];
   /** Work id, set for standalone variants that have their own source page. */
   elementId?: string;
-  /** easier / harder / lateral / unknown, relative to the base exercise. */
-  direction?: ChallengeDirection;
-  /** What the variation turns (players, information, rules, …). */
-  lever?: ChallengeLever | null;
-  /** Verbatim quote from the variation text that justifies the direction. */
-  evidence?: string;
 }
 
 export interface PublishedWork {
@@ -41,7 +23,6 @@ export interface PublishedWork {
   parentWorkId: string | null;
   parentConfidence: number | null;
   variations: PublishedVariation[];
-  adjustments: WorkAdjustments;
 }
 
 export function normalizeName(name: string): string {
@@ -106,34 +87,9 @@ function pickCanonicalMember(
   })[0];
 }
 
-function collectAnnotations(
-  members: NormalizedElement[],
-  challenge: ChallengeIndex
-): Map<string, ChallengeAnnotation[]> {
-  const byName = new Map<string, ChallengeAnnotation[]>();
-
-  for (const member of members) {
-    const elementAnnotations = challenge.get(member.identifier);
-    if (!elementAnnotations) continue;
-
-    for (const variation of member.normalized.variations) {
-      const key = normalizeForMatch(variation.name);
-      const annotation = elementAnnotations.get(key);
-      if (!annotation) continue;
-
-      const list = byName.get(key) ?? [];
-      list.push(annotation);
-      byName.set(key, list);
-    }
-  }
-
-  return byName;
-}
-
 function dedupeVariations(
   members: NormalizedElement[],
-  workId: string,
-  challenge?: ChallengeIndex
+  workId: string
 ): PublishedVariation[] {
   const byName = new Map<string, PublishedVariation>();
 
@@ -154,17 +110,6 @@ function dedupeVariations(
         description: variation.description,
         differsBy: variation.differsBy,
       });
-    }
-  }
-
-  if (challenge) {
-    const annotations = collectAnnotations(members, challenge);
-    for (const [key, variation] of byName) {
-      const merged = mergeAnnotations(annotations.get(key) ?? []);
-      if (!merged) continue;
-      variation.direction = merged.direction;
-      variation.lever = merged.lever;
-      variation.evidence = merged.evidence;
     }
   }
 
@@ -452,11 +397,6 @@ export function buildWorks(
      * works after clustering.
      */
     parentLinks?: { childElementId: string; parentElementId: string }[];
-    /**
-     * Variation classification from `output/challenge/*.json`. Optional: without
-     * it the artifact keeps the v2 shape.
-     */
-    challenge?: ChallengeIndex;
   }
 ): PublishedWork[] {
   const minConfidence = options?.minConfidence ?? MIN_CLUSTER_CONFIDENCE;
@@ -485,8 +425,7 @@ export function buildWorks(
       translationId: null,
       parentWorkId: null,
       parentConfidence: null,
-      variations: dedupeVariations(cluster, id, options?.challenge),
-      adjustments: { easier: [], harder: [] },
+      variations: dedupeVariations(cluster, id),
       name: canonical.name,
       memberNames: [...new Set(cluster.map((member) => member.name))],
       description: canonical.normalized.description,
@@ -558,12 +497,6 @@ export function buildWorks(
 
     if (children.length === 0) continue;
     parent.variations = mergeVariations(parent.variations, children);
-  }
-
-  // Adjustments depend on the final variation list (standalone variants replace
-  // inline ones), so derive them last.
-  for (const work of works) {
-    work.adjustments = buildAdjustments(work.variations);
   }
 
   return works

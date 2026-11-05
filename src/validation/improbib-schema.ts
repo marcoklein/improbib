@@ -56,25 +56,6 @@ const artifactVariationSchema = z.object({
   description: z.string(),
   differsBy: z.array(z.string()),
   elementId: z.string().optional(),
-  direction: z.enum(["easier", "harder", "lateral", "unknown"]).optional(),
-  lever: z
-    .enum(["players", "information", "rules", "context", "medium", "audience"])
-    .nullable()
-    .optional(),
-  evidence: z.string().optional(),
-});
-
-const artifactAdjustmentSchema = z.object({
-  text: z.string(),
-  variationName: z.string(),
-  lever: z
-    .enum(["players", "information", "rules", "context", "medium", "audience"])
-    .nullable(),
-});
-
-const artifactAdjustmentsSchema = z.object({
-  easier: z.array(artifactAdjustmentSchema),
-  harder: z.array(artifactAdjustmentSchema),
 });
 
 const artifactSourceSchema = z.object({
@@ -105,7 +86,6 @@ export const artifactWorkSchema = z.object({
   parentConfidence: z.number().nullable(),
   sources: z.array(artifactSourceSchema),
   variations: z.array(artifactVariationSchema),
-  adjustments: artifactAdjustmentsSchema.optional(),
 });
 
 export const improbibSchema = z.object({
