@@ -137,7 +137,11 @@ export async function normalizeSplitChildren(params: {
         if (
           !params.force &&
           sameEnvironment &&
-          cached?.normalized?.contentHash === hash
+          cached?.normalized?.contentHash === hash &&
+          // An extraction that came back empty is a failure, not a result.
+          // Without this check it would be cached forever.
+          cached.normalized.summary.trim() !== "" &&
+          cached.normalized.description.trim() !== ""
         ) {
           elements.set(child.identifier, cached);
           stats.cached++;
@@ -178,6 +182,10 @@ export async function normalizeSplitChildren(params: {
               contentHash: hash,
               extractedAt: new Date().toISOString(),
               normalizedBy: schemaHash,
+              // Provenance: the split pipeline uses its own model, which is
+              // not the same one as the regular extraction.
+              model: normalized.normalized.model ?? model,
+              promptHash: normalized.normalized.promptHash ?? promptHash,
             },
             derivedElements: [],
             relatedIdentifiers: [],
