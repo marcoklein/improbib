@@ -7,6 +7,7 @@ import { applyDedupOverrides, applyEdgeOverrides, loadOverrides } from "./overri
 import { MIN_CLUSTER_CONFIDENCE } from "../normalize/cluster-config";
 import type { Override, OverrideStats } from "./overrides";
 import { deriveRequirements } from "./requirement-mapping";
+import { ACTIVE_SOURCES } from "../sources";
 
 export interface GraphNode {
   id: string;
@@ -805,7 +806,7 @@ export function deriveGraph(
 export async function deriveGraphFromFiles(): Promise<KnowledgeGraph> {
   const outDir = path.join(process.cwd(), "output", "normalized");
   const vocabPath = path.join(process.cwd(), "output", "vocabulary.json");
-  const allSources = ["improwiki", "learnimprov", "ircwiki"];
+  const allSources = [...ACTIVE_SOURCES];
 
   const allElements: NormalizedElement[] = [];
   for (const source of allSources) {

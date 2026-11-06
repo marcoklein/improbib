@@ -13,6 +13,7 @@ import { gzipSync } from "node:zlib";
 import path from "path";
 import { createGraphIndex, getGraphIndex } from "./query/graph-query";
 import type { GraphIndex } from "./query/graph-query";
+import { ACTIVE_SOURCES } from "./sources";
 
 const PORT = parseInt(process.env.PORT || "5000");
 
@@ -52,8 +53,7 @@ function serveDir(dirPath: string): string[] {
 }
 
 function rawSourcesExist(): boolean {
-  const sources = ["improwiki", "learnimprov", "ircwiki"];
-  for (const src of sources) {
+  for (const src of ACTIVE_SOURCES) {
     if (!existsSync(path.join(process.cwd(), "output", "raw", `${src}.json`))) return false;
   }
   return true;

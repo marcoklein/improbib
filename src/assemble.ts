@@ -13,9 +13,10 @@ import {
   transformAndTranslateTags,
 } from "./scraping/shared/transform-and-translate-tags";
 import type { SplitFile } from "./split/build";
+import { ACTIVE_SOURCES } from "./sources";
 import { improbibSchema } from "./validation/improbib-schema";
 
-const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
+const SOURCES = ACTIVE_SOURCES;
 
 async function loadNormalized(): Promise<NormalizedElement[]> {
   const normalizedDir = path.join(process.cwd(), "output", "normalized");

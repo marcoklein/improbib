@@ -4,6 +4,7 @@ import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema } from "./normalized-schema";
 import { jaccardWordSimilarity, seedTranslationPairs } from "./cross-source-matching";
 import { createOpencodeGoClient, callApi, extractJson } from "./llm-client";
+import { ACTIVE_SOURCES } from "../sources";
 
 interface SameAsRecord {
   canonical: string;
@@ -399,7 +400,7 @@ async function findEnhancedLLMMatches(
 
 export async function dedupElements(): Promise<void> {
   const outDir = path.join(process.cwd(), "output", "normalized");
-  const allSources = ["improwiki", "learnimprov", "ircwiki"];
+  const allSources = [...ACTIVE_SOURCES];
   const allElements: NormalizedElement[] = [];
 
   console.log("=== ELEMENT DEDUP ===\n");

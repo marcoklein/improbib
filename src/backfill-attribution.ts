@@ -1,6 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { ACTIVE_SOURCES } from "./sources";
+
 const storagePath = process.env.STORAGE_PATH || process.cwd();
 await mkdir(storagePath, { recursive: true });
 process.chdir(storagePath);
@@ -10,7 +12,7 @@ const { fetchAndCacheWebsite } = await import(
 );
 const { extractAttribution } = await import("./scraping/shared/attribution");
 
-const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
+const SOURCES = ACTIVE_SOURCES;
 
 /**
  * Fills `authors` and `lastModified` on every raw element from the full HTML in

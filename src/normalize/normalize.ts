@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
 import { createOpencodeGoClient, getConfiguredModels, getPromptHash } from "./llm-client";
-
+import { ACTIVE_SOURCES } from "../sources";
 
 interface DroppedElement {
   identifier: string;
@@ -393,7 +393,7 @@ async function normalizeSource(
 export async function normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }): Promise<void> {
   const client = createOpencodeGoClient();
 
-  const allSources = ["improwiki", "learnimprov", "ircwiki"];
+  const allSources = [...ACTIVE_SOURCES];
   const sourceNames = options?.source ? [options.source] : allSources;
 
   console.log("=== STAGE 1: LLM Extraction ===\n");
@@ -478,7 +478,7 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
 export async function normalizeVocabularyStage(): Promise<void> {
   const outDir = path.join(process.cwd(), "output", "normalized");
   const vocabPath = path.join(process.cwd(), "output", "vocabulary.json");
-  const allSources = ["improwiki", "learnimprov", "ircwiki"];
+  const allSources = [...ACTIVE_SOURCES];
   const allElements: NormalizedElement[] = [];
 
   console.log("=== VOCABULARY NORMALIZATION ===\n");

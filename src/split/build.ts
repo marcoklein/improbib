@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import TurndownService from "turndown";
+import { ACTIVE_SOURCES } from "../sources";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { AuditFile, AuditPage } from "./audit";
 import { extractSections, slugify, splitIdentifier } from "./sections";
@@ -69,7 +70,7 @@ export interface SplitFile {
   pages: SplitPage[];
 }
 
-const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
+const SOURCES = ACTIVE_SOURCES;
 
 function toMarkdown(html: string): string {
   const turndown = new TurndownService({ headingStyle: "atx" });

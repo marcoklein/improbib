@@ -1,7 +1,9 @@
 import path from "path";
 
+import { ACTIVE_SOURCES } from "./sources";
+
 const BASE_URL = "https://improbib.host.impromat.app/raw";
-const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
+const SOURCES = ACTIVE_SOURCES;
 
 async function main() {
   const outDir = path.join(process.cwd(), "output", "raw");

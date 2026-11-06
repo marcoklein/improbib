@@ -1,12 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { ACTIVE_SOURCES } from "../sources";
 import type { ElementType } from "../scraping/shared/element-type";
 import { auditSplits, type AuditFile } from "./audit";
 import { buildSplits, type SplitFile } from "./build";
 import { normalizeSplitChildren } from "./normalize";
 import { extractSections } from "./sections";
 
-const SOURCES = ["improwiki", "learnimprov", "ircwiki"] as const;
+const SOURCES = ACTIVE_SOURCES;
 const MIN_PAGE_TEXT = 300;
 
 async function loadRaw(source: string): Promise<ElementType[]> {
