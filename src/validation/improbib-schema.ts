@@ -47,6 +47,10 @@ export const artifactNormalizedSchema = z.object({
   contentHash: z.string(),
   normalizedBy: z.string(),
   extractedAt: z.string(),
+  /** Which model produced the extraction (absent on older entries). */
+  model: z.string().optional(),
+  /** Hash of the extraction prompt (absent on older entries). */
+  promptHash: z.string().optional(),
 });
 
 const artifactVariationSchema = z.object({

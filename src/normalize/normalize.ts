@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
-import { createOpencodeGoClient, getPromptHash } from "./llm-client";
+import { createOpencodeGoClient, getConfiguredModels, getPromptHash } from "./llm-client";
 
 
 interface DroppedElement {
@@ -14,6 +14,45 @@ interface DroppedElement {
 
 function hashContent(html: string): string {
   return createHash("md5").update(html).digest("hex");
+}
+
+/**
+ * Whether a previously stored normalization can be reused.
+ *
+ * The old check only compared the content hash and the schema hash. A failed
+ * extraction stores empty strings, and those hashes still match afterwards —
+ * so the failure was cached forever and the element never got a summary. An
+ * empty summary therefore always counts as a cache miss.
+ *
+ * The model is treated as part of the cache key, but only when it was
+ * recorded. Entries written before provenance existed have no model and stay
+ * valid; an entry that names a model which is no longer configured is
+ * re-extracted instead of being reused silently.
+ */
+export function isReusableNormalization(
+  previous: NormalizedElement | undefined,
+  contentHash: string,
+  contractHash: string,
+  configuredModels: string[] = []
+): boolean {
+  if (!previous) return false;
+  const { normalized } = previous;
+  if (!normalized) return false;
+  // Empty extraction = the model failed or refused. Retry it.
+  if (!normalized.summary?.trim() || !normalized.description?.trim()) {
+    return false;
+  }
+  if (
+    normalized.model &&
+    configuredModels.length > 0 &&
+    !configuredModels.includes(normalized.model)
+  ) {
+    return false;
+  }
+  return (
+    normalized.contentHash === contentHash &&
+    normalized.normalizedBy === contractHash
+  );
 }
 
 export interface FillerWarning {
@@ -159,6 +198,7 @@ async function normalizeSource(
   const { elements: rawElements } = await loadRaw(sourceName);
   const elements = options?.maxElements ? rawElements.slice(0, options.maxElements) : rawElements;
   const schemaHash = getNormalizedBy();
+  const configuredModels = getConfiguredModels();
 
   currentProgress = {
     sourceName,
@@ -231,10 +271,11 @@ async function normalizeSource(
       const el = elements[i];
       const contentHash = hashContent(el.htmlContent || "");
 
-      // Cache hit: same HTML content AND same schema version
+      // Cache hit: same HTML content, same extraction contract, and a
+      // non-empty result.
       const prev = previous.get(el.identifier);
-      if (prev?.normalized?.contentHash === contentHash && prev?.normalized?.normalizedBy === schemaHash) {
-        normalizedMap.set(el.identifier, prev);
+      if (isReusableNormalization(prev, contentHash, schemaHash, configuredModels)) {
+        normalizedMap.set(el.identifier, prev!);
         cached++;
         dispatched++;
         updateProgress();

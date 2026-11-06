@@ -21,6 +21,10 @@ export interface ArtifactNormalized {
   contentHash: string;
   normalizedBy: string;
   extractedAt: string;
+  /** Which model produced the extraction (absent on older entries). */
+  model?: string;
+  /** Hash of the extraction prompt (absent on older entries). */
+  promptHash?: string;
 }
 
 export interface ArtifactSource {
@@ -74,6 +78,8 @@ function toArtifactNormalized(
     contentHash: normalized.contentHash,
     normalizedBy: normalized.normalizedBy,
     extractedAt: normalized.extractedAt,
+    model: normalized.model,
+    promptHash: normalized.promptHash,
   };
 }
 

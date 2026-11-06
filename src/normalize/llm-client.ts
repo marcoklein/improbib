@@ -81,12 +81,20 @@ export function getPromptHash(): string {
   return _promptHash;
 }
 
-const DEFAULT_MODELS = ["deepseek-v4-flash-free", "deepseek-v4-flash"];
+const DEFAULT_MODELS = ["deepseek-v4.1-flash"];
 const API_ENDPOINT = "https://opencode.ai/zen/v1/chat/completions";
 
 function parseModelList(envVal: string | undefined, defaults: string[]): string[] {
   if (!envVal || !envVal.trim()) return defaults;
   return envVal.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+/**
+ * The models the extractor will try, in order. Exposed so callers can tell
+ * whether a cached normalization was produced by the same model.
+ */
+export function getConfiguredModels(): string[] {
+  return parseModelList(process.env.NORMALIZE_MODELS, DEFAULT_MODELS);
 }
 
 export function getApiKey(): string {
@@ -105,8 +113,16 @@ export function createOpencodeGoClient(
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
       const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const text = await callApi(apiKey, modelList, systemPrompt, userPrompt, 32000, 1, true);
-      return parseNormalizeResponse(text);
+      const { text, model } = await callApiDetailed(apiKey, modelList, systemPrompt, userPrompt, 32000, 1, true);
+      const parsed = parseNormalizeResponse(text);
+      const promptHash = getPromptHash();
+      // Record which model and prompt produced this extraction. The values are
+      // written through by the caller, so cached entries stay auditable.
+      const withProvenance = (element: NormalizedElement): NormalizedElement => ({
+        ...element,
+        normalized: { ...element.normalized, model, promptHash },
+      });
+      return Array.isArray(parsed) ? parsed.map(withProvenance) : withProvenance(parsed);
     },
 
     async findCrossSourceMatches(sourceA, sourceB) {
@@ -140,6 +156,26 @@ export async function callApi(
   retryEmpty: boolean = false,
   jsonFormat: boolean = true,
 ): Promise<string> {
+  const { text } = await callApiDetailed(
+    apiKey, models, systemMessage, userMessage, maxTokens, retries, retryEmpty, jsonFormat
+  );
+  return text;
+}
+
+/**
+ * Like `callApi`, but also reports which model produced the answer. Needed for
+ * provenance: a fallback model must not be recorded as the primary one.
+ */
+export async function callApiDetailed(
+  apiKey: string,
+  models: string[],
+  systemMessage: string,
+  userMessage: string,
+  maxTokens: number = 12000,
+  retries: number = 3,
+  retryEmpty: boolean = false,
+  jsonFormat: boolean = true,
+): Promise<{ text: string; model: string }> {
   const promptChars = systemMessage.length + userMessage.length;
   const estTokens = Math.round(promptChars / 4);
   let lastError: Error | null = null;
@@ -205,7 +241,7 @@ export async function callApi(
       if (content) {
         const outTokens = usage?.completion_tokens || 0;
         console.log(`  ${label} HTTP ${resp.status} finish=${finishReason} in=${usage?.prompt_tokens || "?"} out=${outTokens}`);
-        return content;
+        return { text: content, model };
       }
 
       // Empty response — diagnose why

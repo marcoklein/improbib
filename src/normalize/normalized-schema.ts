@@ -68,6 +68,14 @@ const normalizedSchema = z.object({
   contentHash: z.string(),
   extractedAt: z.string(),
   normalizedBy: z.string(),
+
+  /**
+   * Provenance: which model produced this extraction. Optional because
+   * entries written before provenance was recorded have no value.
+   */
+  model: z.string().optional(),
+  /** Hash of the extraction prompt, so prompt changes are traceable. */
+  promptHash: z.string().optional(),
 });
 
 const derivedElementSchema = z.object({
@@ -125,10 +133,22 @@ export const normalizedSourceSchema = z.object({
 
 export type NormalizedSource = z.infer<typeof normalizedSourceSchema>;
 
-let _normalizedBy = "";
+/**
+ * Identifies the extraction *contract*: the prompt and the meaning of the
+ * fields it produces. Cached normalizations are reused only when this value
+ * matches the one stored with them.
+ *
+ * It used to be derived from the Zod schema shape. That made adding a
+ * provenance field (`model`) invalidate every cached result, i.e. a cheap
+ * metadata change would trigger a full, paid re-extraction. The value is now
+ * an explicit constant: bump it when the contract changes, not when the
+ * schema grows a field that does not affect the extraction.
+ *
+ * The current value is the hash the schema-derived function produced, so
+ * existing caches stay valid.
+ */
+const NORMALIZED_CONTRACT_VERSION = "00000000000000006198dc2ee326463a";
+
 export function getNormalizedBy(): string {
-  if (!_normalizedBy) {
-    _normalizedBy = Bun.hash(JSON.stringify(normalizedElementSchema.shape)).toString(16).padStart(32, "0");
-  }
-  return _normalizedBy;
+  return NORMALIZED_CONTRACT_VERSION;
 }
