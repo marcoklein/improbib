@@ -1,5 +1,6 @@
 import type { NormalizedElement } from "./normalized-schema";
 import { createHash } from "crypto";
+import { buildStyleCorrection, collectStyleViolations } from "./style-validator";
 
 // Stage 2 types
 export interface MatchCandidate {
@@ -59,7 +60,26 @@ RULES:
 - For <a href="..."> links to other wiki pages: extract the page name into referencedElements. Do NOT generate identifiers — just the name as it appears.
 - For tips: categorize as pedagogical (teaching advice), staging (performance/show advice), safety (physical/emotional), group-dynamic (team/group interaction), failure-mode (common mistakes), or general.
 - Preserve the source language — German content gets German fields, English gets English. Mechanic and skill names should be in English when possible.
-- TONE: Use imperative mood for all step instructions. English: start each step with a verb. German: use informal "Du/ihr" everywhere — steps ("geht", "stellt euch", "bildet Paare"), constraints ("du darfst nicht sprechen", "ihr müsst euch berühren"), role descriptions ("der Spieler, der führt"). Never use "Sie" or "man". Descriptions: factual third-person, no personal pronouns.
+- VOICE — this rule is strict and applies to every howToPlay step:
+  * Every step begins with an imperative verb. The players are the subject of the instruction, so do not describe what "the players" or "the moderator" do — tell the reader what to do.
+  * German: always informal plural. Use "ihr", "euch", "euer". NEVER "du", "dich", "dir", "dein". NEVER formal "Sie", "Ihnen", "Ihre". NEVER "man" as the actor.
+  * German imperative is the plural form ending in "-t": "Bildet", "Stellt", "Geht", "Ruft", "Friert", "Beginnt", "Nehmt". A step must never start with an infinitive or a third-person plural ("Frieren …", "Spielen …") — those are not instructions.
+  * English: every step is an imperative sentence: "Form a half-circle", "Move through the space", "Freeze in your pose". Never start a step with "The", "A", "Each", "One", "Players".
+  * Do not mix the two modes inside one element. Either all steps address the players or — only when the source describes a performance the reader merely hosts — all steps describe the performers. Addressing is the default and strongly preferred.
+  * Convert descriptive source sentences into instructions instead of copying their grammar:
+      "Beide Bühnenspieler frieren sofort in ihrer exakten Pose ein."
+        → "Friert sofort in eurer exakten Pose ein."
+      "Die Synchronsprecher sprechen den Dialog für die Darsteller."
+        → "Sprecht als Synchronsprecher den Dialog für die Darsteller."
+      "Der Moderator sagt an einer passenden Stelle Stopp."
+        → "Lasst den Moderator an einer passenden Stelle Stopp sagen."
+      "Jeder wartende Spieler kann Freeze rufen."
+        → "Ruft Freeze, wenn ihr wartet."
+      "The other players perform the scene based on the director's setup."
+        → "Perform the scene based on the director's setup."
+      "The leader makes slow, deliberate movements while the mirror follows."
+        → "Make slow, deliberate movements; your mirror follows exactly."
+  * Keep the quoted words of the game (signal words, phrases the players say) even when they contain "du" or "you" — dialogue is not narration.
 - CATEGORY GUIDANCE: Pick the most specific category that fits. Skill examples: social (acceptance, status play, trust), physical (body awareness, mirroring, spatial coordination), cognitive (spontaneity, pattern recognition, quick thinking, active listening), narrative (storytelling, character creation, theme exploration), vocal (singing, projection, vocal expression). Mechanic examples: constraint (touch to speak, alphabet constraint, time limit), signal (freeze, tap out, clap), role (protagonist, moderator, translator), structure (opening scene, callback, scene rotation), interaction (audience voting, physical contact, mirroring).`;
 }
 
@@ -122,7 +142,62 @@ export function createOpencodeGoClient(
         ...element,
         normalized: { ...element.normalized, model, promptHash },
       });
-      return Array.isArray(parsed) ? parsed.map(withProvenance) : withProvenance(parsed);
+
+      // Style is checked after parsing because it is a property of the whole
+      // element (mixed voice) as well as of single steps (invalid imperative).
+      // One correction attempt: repeating the exact failing rules works better
+      // than resending the identical prompt, and two answers are enough to pick
+      // the better one. The retry is skipped when the first answer is already
+      // clean, which is the common case.
+      const firstViolations = collectStyleViolations(parsed, languageCode);
+      if (firstViolations.length === 0) {
+        return Array.isArray(parsed) ? parsed.map(withProvenance) : withProvenance(parsed);
+      }
+
+      console.warn(
+        `  STYLE ${name}: ${firstViolations.length} violation(s) [${[
+          ...new Set(firstViolations.map((v) => v.rule)),
+        ].join(", ")}] — retrying once`
+      );
+
+      let best = parsed;
+      let bestCount = firstViolations.length;
+      let bestModel = model;
+      try {
+        const retry = await callApiDetailed(
+          apiKey,
+          modelList,
+          systemPrompt,
+          userPrompt + buildStyleCorrection(firstViolations),
+          32000,
+          1,
+          true
+        );
+        const retried = parseNormalizeResponse(retry.text);
+        const retryViolations = collectStyleViolations(retried, languageCode);
+        const retryCount = retryViolations.length;
+        if (retryCount < bestCount) {
+          best = retried;
+          bestCount = retryCount;
+          bestModel = retry.model;
+        }
+        if (retryCount > 0) {
+          console.warn(
+            `  STYLE ${name}: retry still has ${retryCount} violation(s) [${[
+              ...new Set(retryViolations.map((v) => v.rule)),
+            ].join(", ")}] — keeping the better answer`
+          );
+        }
+      } catch (err: any) {
+        // A failed retry must not lose the first answer.
+        console.warn(`  STYLE ${name}: retry failed (${err.message.slice(0, 80)}) — keeping the first answer`);
+      }
+
+      const withModel = (element: NormalizedElement): NormalizedElement => ({
+        ...withProvenance(element),
+        normalized: { ...element.normalized, model: bestModel, promptHash },
+      });
+      return Array.isArray(best) ? best.map(withModel) : withModel(best);
     },
 
     async findCrossSourceMatches(sourceA, sourceB) {
