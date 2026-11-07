@@ -144,10 +144,13 @@ export type NormalizedSource = z.infer<typeof normalizedSourceSchema>;
  * an explicit constant: bump it when the contract changes, not when the
  * schema grows a field that does not affect the extraction.
  *
- * The current value is the hash the schema-derived function produced, so
- * existing caches stay valid.
+ * The current value is a fixed constant. It was bumped for the voice contract
+ * change: the prompt now demands a single addressed voice ("ihr", plural
+ * imperative) and the extractor rejects answers that mix voices. Without a
+ * bump the old extractions would stay cached forever, because the cache key is
+ * content hash + contract version, not the prompt hash.
  */
-const NORMALIZED_CONTRACT_VERSION = "00000000000000006198dc2ee326463a";
+const NORMALIZED_CONTRACT_VERSION = "926a28e254f0f045682397cdc2d11d6f";
 
 export function getNormalizedBy(): string {
   return NORMALIZED_CONTRACT_VERSION;
