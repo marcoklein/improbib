@@ -1,5 +1,6 @@
 import type { NormalizedElement } from "../normalize/normalized-schema";
 import { sanitizePractical } from "../normalize/normalized-schema";
+import { dropRedundantTips } from "../normalize/tip-redundancy";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { PublishedVariation, PublishedWork } from "./build-works";
 
@@ -84,7 +85,12 @@ function toArtifactNormalized(
     practical: sanitizePractical(normalized.practical),
     mechanics: normalized.mechanics.map((mechanic) => mechanic.name),
     skills: normalized.skills.map((skill) => skill.name),
-    tips: normalized.tips,
+    // Entries extracted before the tips rule existed can still contain a tip
+    // that repeats a step. Filtering here cleans the old data too.
+    tips: dropRedundantTips(
+      (normalized.howToPlay?.steps ?? []).map((step) => step.action),
+      normalized.tips
+    ),
     referencedElements: normalized.referencedElements,
     contentHash: normalized.contentHash,
     normalizedBy: normalized.normalizedBy,

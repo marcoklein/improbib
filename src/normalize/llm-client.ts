@@ -4,6 +4,7 @@ import {
   normalizeDifficulty,
   normalizeEnergyLevel,
 } from "./normalized-schema";
+import { dropRedundantTips } from "./tip-redundancy";
 import { createHash } from "crypto";
 import { buildStyleCorrection, collectStyleViolations } from "./style-validator";
 
@@ -63,7 +64,11 @@ RULES:
 - Extract mechanics (reusable building blocks like "freeze signal", "tap out", "alphabet constraint", "translation gimmick") and skills (competencies like "active listening", "spontaneity", "group mind").
 - Extract practical metadata when the content suggests it: difficulty, typical duration, energy level, group size, preparation requirements, suitable contexts.
 - For <a href="..."> links to other wiki pages: extract the page name into referencedElements. Do NOT generate identifiers — just the name as it appears.
-- For tips: categorize as pedagogical (teaching advice), staging (performance/show advice), safety (physical/emotional), group-dynamic (team/group interaction), failure-mode (common mistakes), or general.
+- TIPS — tips are optional. Only extract advice the source actually gives: a hints/notes/tips section, common mistakes, teaching guidance, or an explicit insight into why the game is hard and how to make it work.
+  * A tip must add something the steps and the description do not already say. Never paraphrase a step, a rule or the description into a tip.
+  * If the source contains no advice of its own, return "tips": [].
+  * Never manufacture a tip from the instructions, the variations, or the general nature of the game — a page that only explains how to play has no tips.
+  * Categorize as pedagogical (teaching advice), staging (performance/show advice), safety (physical/emotional), group-dynamic (team/group interaction), failure-mode (common mistakes), or general.
 - Preserve the source language — German content gets German fields, English gets English. Mechanic and skill names should be in English when possible.
 - VOICE — this rule is strict and applies to every howToPlay step:
   * Every step begins with an imperative verb. The players are the subject of the instruction, so do not describe what "the players" or "the moderator" do — tell the reader what to do.
@@ -406,6 +411,10 @@ export function parseNormalizeResponse(text: string): NormalizedElement | Normal
 }
 
 function coerceElement(raw: any): NormalizedElement {
+  const howToPlay = coerceHowToPlay(raw.howToPlay);
+  const steps = (howToPlay?.steps ?? []).map(
+    (step: { action: string }) => step.action
+  );
   return {
     identifier: "",
     name: String(raw.name || ""),
@@ -418,16 +427,21 @@ function coerceElement(raw: any): NormalizedElement {
     normalized: {
       summary: String(raw.summary || raw.description || ""),
       description: String(raw.description || ""),
-      howToPlay: coerceHowToPlay(raw.howToPlay),
+      howToPlay,
       variations: (raw.variations || []).map((v: any) => ({
         name: String(v.name || ""),
         description: String(v.description || ""),
         differsBy: Array.isArray(v.differsBy) ? v.differsBy.map(String) : [],
       })),
-      tips: (raw.tips || []).map((t: any) => ({
-        text: typeof t === "string" ? t : String(t.text || ""),
-        category: typeof t === "string" ? "general" : String(t.category || "general"),
-      })),
+      // A tip that repeats a step is not additional advice. Dropped before it
+      // is stored, so the cache never holds a duplicate either.
+      tips: dropRedundantTips(
+        steps,
+        (raw.tips || []).map((t: any) => ({
+          text: typeof t === "string" ? t : String(t.text || ""),
+          category: typeof t === "string" ? "general" : String(t.category || "general"),
+        }))
+      ),
       referencedElements: (raw.referencedElements || []).map((r: any) => ({
         name: typeof r === "string" ? r : String(r.name || ""),
       })),

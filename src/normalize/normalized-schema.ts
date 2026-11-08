@@ -234,12 +234,13 @@ export type NormalizedSource = z.infer<typeof normalizedSourceSchema>;
  * schema grows a field that does not affect the extraction.
  *
  * The current value is a fixed constant. It was bumped for the voice contract
- * change: the prompt now demands a single addressed voice ("ihr", plural
- * imperative) and the extractor rejects answers that mix voices. Without a
+ * change (the prompt now demands a single addressed voice — "ihr", plural
+ * imperative) and again for the tips contract: a tip must be advice the source
+ * actually gives, never a restatement of a step or the description. Without a
  * bump the old extractions would stay cached forever, because the cache key is
  * content hash + contract version, not the prompt hash.
  */
-const NORMALIZED_CONTRACT_VERSION = "926a28e254f0f045682397cdc2d11d6f";
+const NORMALIZED_CONTRACT_VERSION = "b41c7d0e5f8a4962a1d3c6e9f0b27d54";
 
 export function getNormalizedBy(): string {
   return NORMALIZED_CONTRACT_VERSION;
