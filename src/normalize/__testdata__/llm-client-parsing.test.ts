@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { parseNormalizeResponse } from "../llm-client";
 
 // Simple inline test helpers — not exported from llm-client, recreated here
 function extractJson(text: string): any {
@@ -84,5 +85,51 @@ describe("llm client parsing", () => {
   it("handles 'null' string as null", () => {
     const result = coerceHowToPlay("null");
     expect(result).toBeNull();
+  });
+});
+
+describe("parseNormalizeResponse", () => {
+  it("parses a bare split array", () => {
+    const result = parseNormalizeResponse(
+      JSON.stringify([
+        { name: "Games", summary: "An index page.", description: "Two games." },
+        { name: "Tag", summary: "A tag game.", description: "Run and tag." },
+      ])
+    );
+    expect(Array.isArray(result)).toBe(true);
+    expect((result as any[]).map((item) => item.name)).toEqual(["Games", "Tag"]);
+  });
+
+  it("unwraps a split array inside an elements envelope", () => {
+    // Some responses wrap the array: {"elements": [...]}. Reading that as one
+    // element produced an empty parent and silently dropped the children.
+    const result = parseNormalizeResponse(
+      JSON.stringify({
+        elements: [
+          {
+            name: "Games",
+            summary: "An index page.",
+            description: "Two games.",
+          },
+          { name: "Tag", summary: "A tag game.", description: "Run and tag." },
+        ],
+      })
+    );
+    expect(Array.isArray(result)).toBe(true);
+    expect((result as any[]).map((item) => item.name)).toEqual(["Games", "Tag"]);
+    expect((result as any[])[1].normalized.summary).toBe("A tag game.");
+  });
+
+  it("still parses a single element that happens to be an object", () => {
+    const result = parseNormalizeResponse(
+      JSON.stringify({
+        name: "Freeze Tag",
+        summary: "A warm-up.",
+        description: "Players freeze and swap in.",
+        howToPlay: { steps: [{ action: "Freeze in your pose." }] },
+      })
+    );
+    expect(Array.isArray(result)).toBe(false);
+    expect((result as any).normalized.howToPlay.steps).toHaveLength(1);
   });
 });

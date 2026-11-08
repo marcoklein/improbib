@@ -389,12 +389,16 @@ export async function callApiDetailed(
   throw lastError || new Error("Empty response from API");
 }
 
-function parseNormalizeResponse(text: string): NormalizedElement | NormalizedElement[] {
+export function parseNormalizeResponse(text: string): NormalizedElement | NormalizedElement[] {
   const json = extractJson(text);
-  if (Array.isArray(json)) {
-    return json.map((item: any) => coerceElement(item));
+  // Split answers are sometimes wrapped in an envelope (`{"elements": [...]}`)
+  // instead of being a bare array. Treating the envelope as one element
+  // produced an empty parent and threw the children away.
+  const value = Array.isArray(json?.elements) ? json.elements : json;
+  if (Array.isArray(value)) {
+    return value.map((item: any) => coerceElement(item));
   }
-  return coerceElement(json);
+  return coerceElement(value);
 }
 
 function coerceElement(raw: any): NormalizedElement {
