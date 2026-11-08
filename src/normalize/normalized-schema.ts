@@ -120,6 +120,25 @@ export const normalizedElementSchema = z.object({
 
 export type NormalizedElement = z.infer<typeof normalizedElementSchema>;
 
+/**
+ * Whether an extraction satisfies the field contract closely enough to be
+ * stored.
+ *
+ * The values mirror the limits of `normalizedSchema`: a summary below 10
+ * characters or a description below 20 means the model returned an empty or
+ * truncated answer. Such an answer is a failed extraction, not a result — the
+ * pipeline retries it and never caches it, otherwise a single bad response
+ * would stick forever (the cache key is content hash + contract version).
+ */
+export function isUsableNormalization(
+  normalized: NormalizedElement["normalized"]
+): boolean {
+  return (
+    normalized.summary.trim().length >= 10 &&
+    normalized.description.trim().length >= 20
+  );
+}
+
 export const normalizedSourceSchema = z.object({
   meta: z.object({
     sourceName: z.string(),

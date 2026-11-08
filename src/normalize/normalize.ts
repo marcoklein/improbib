@@ -2,7 +2,11 @@ import path from "path";
 import { createHash } from "crypto";
 import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
-import { normalizedSourceSchema, getNormalizedBy } from "./normalized-schema";
+import {
+  normalizedSourceSchema,
+  getNormalizedBy,
+  isUsableNormalization,
+} from "./normalized-schema";
 import { createOpencodeGoClient, getConfiguredModels, getPromptHash } from "./llm-client";
 import { ACTIVE_SOURCES } from "../sources";
 
@@ -38,8 +42,8 @@ export function isReusableNormalization(
   if (!previous) return false;
   const { normalized } = previous;
   if (!normalized) return false;
-  // Empty extraction = the model failed or refused. Retry it.
-  if (!normalized.summary?.trim() || !normalized.description?.trim()) {
+  // Empty or truncated extraction = the model failed or refused. Retry it.
+  if (!isUsableNormalization(normalized)) {
     return false;
   }
   if (
@@ -311,7 +315,9 @@ async function normalizeSource(
         }
       } catch (err: any) {
         console.warn(`  SKIP ${el.name}: ${err.message.slice(0, 150)}`);
-        if (prev) {
+        // Never keep a failed extraction alive: a previous answer that is
+        // empty or truncated is no better than no answer at all.
+        if (prev && isUsableNormalization(prev.normalized)) {
           normalizedMap.set(el.identifier, prev);
         } else {
           dropped.push({ identifier: el.identifier, name: el.name, reason: err.message.slice(0, 200) });

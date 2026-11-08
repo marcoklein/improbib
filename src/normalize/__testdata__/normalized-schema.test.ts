@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { normalizedElementSchema, normalizedSourceSchema } from "../normalized-schema";
+import {
+  isUsableNormalization,
+  normalizedElementSchema,
+  normalizedSourceSchema,
+} from "../normalized-schema";
 
 const ID = "012345678901234567890123456789ab";
 const ID2 = "112345678901234567890123456789ab";
@@ -111,5 +115,33 @@ describe("normalized schema", () => {
       derivedElements: [], relatedIdentifiers: [],
     };
     expect(normalizedElementSchema.safeParse(el).success).toBe(false);
+  });
+});
+
+describe("isUsableNormalization", () => {
+  it("accepts a complete extraction", () => {
+    expect(isUsableNormalization(makeNorm())).toBe(true);
+  });
+
+  it("rejects an empty summary", () => {
+    expect(isUsableNormalization(makeNorm({ summary: "" }))).toBe(false);
+  });
+
+  it("rejects a blank summary", () => {
+    expect(isUsableNormalization(makeNorm({ summary: "   " }))).toBe(false);
+  });
+
+  it("rejects an empty description", () => {
+    expect(isUsableNormalization(makeNorm({ description: "" }))).toBe(false);
+  });
+
+  it("rejects a truncated description", () => {
+    expect(isUsableNormalization(makeNorm({ description: "Too short" }))).toBe(
+      false
+    );
+  });
+
+  it("accepts a concept with no walkthrough", () => {
+    expect(isUsableNormalization(makeNorm({ howToPlay: null }))).toBe(true);
   });
 });

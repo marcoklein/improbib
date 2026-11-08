@@ -1,4 +1,5 @@
 import type { NormalizedElement } from "./normalized-schema";
+import { isUsableNormalization } from "./normalized-schema";
 import { createHash } from "crypto";
 import { buildStyleCorrection, collectStyleViolations } from "./style-validator";
 
@@ -101,6 +102,25 @@ export function getPromptHash(): string {
   return _promptHash;
 }
 
+const COMPLETENESS_CORRECTION = `
+
+CORRECTION: The previous answer was incomplete and has been rejected. Return the full JSON object again, with:
+- "summary": one non-empty sentence naming the element.
+- "description": 1-3 non-empty sentences explaining what it is.
+- "howToPlay": the structured steps, unless this is a theoretical concept article, an index page listing other games, or a bare audience ask-for.
+Empty strings for summary or description are never acceptable.`;
+
+/**
+ * A split answer is usable when at least one item carries a real extraction;
+ * the parent index of a split may legitimately be sparse.
+ */
+function hasUsableExtraction(
+  value: NormalizedElement | NormalizedElement[]
+): boolean {
+  const items = Array.isArray(value) ? value : [value];
+  return items.some((item) => isUsableNormalization(item.normalized));
+}
+
 const DEFAULT_MODELS = ["deepseek-v4.1-flash"];
 const API_ENDPOINT = "https://opencode.ai/zen/v1/chat/completions";
 
@@ -133,8 +153,36 @@ export function createOpencodeGoClient(
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
       const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const { text, model } = await callApiDetailed(apiKey, modelList, systemPrompt, userPrompt, 32000, 1, true);
-      const parsed = parseNormalizeResponse(text);
+      const first = await callApiDetailed(apiKey, modelList, systemPrompt, userPrompt, 32000, 1, true);
+      let parsed = parseNormalizeResponse(first.text);
+      let model = first.model;
+
+      // A response that parses but carries no summary/description is a failed
+      // extraction (a glitch, a truncation, a refusal). Retry it once with an
+      // explicit correction; if it is still empty, throw so the caller keeps
+      // the previous answer instead of caching the failure.
+      if (!hasUsableExtraction(parsed)) {
+        console.warn(
+          `  INCOMPLETE ${name}: empty summary/description — retrying with a completeness correction`
+        );
+        const retry = await callApiDetailed(
+          apiKey,
+          modelList,
+          systemPrompt,
+          userPrompt + COMPLETENESS_CORRECTION,
+          32000,
+          1,
+          true
+        );
+        parsed = parseNormalizeResponse(retry.text);
+        model = retry.model;
+        if (!hasUsableExtraction(parsed)) {
+          throw new Error(
+            "Incomplete extraction: the model returned no usable summary/description"
+          );
+        }
+      }
+
       const promptHash = getPromptHash();
       // Record which model and prompt produced this extraction. The values are
       // written through by the caller, so cached entries stay auditable.

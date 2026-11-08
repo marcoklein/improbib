@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { NormalizedElement } from "../normalize/normalized-schema";
 import type { ElementType } from "../scraping/shared/element-type";
 import { buildPublishedArtifact } from "./build-artifact";
+import type { ArtifactNormalized } from "./build-artifact";
 import { buildWorks } from "./build-works";
 
 function makeRaw(input: {
@@ -34,6 +35,7 @@ function makeNormalized(input: {
   languageCode?: "de" | "en";
   relatedIdentifiers?: { identifier: string; confidence: number }[];
   summary?: string;
+  description?: string;
 }): NormalizedElement {
   return {
     identifier: input.identifier,
@@ -45,7 +47,8 @@ function makeNormalized(input: {
     htmlContent: "<p>content</p>",
     normalized: {
       summary: input.summary ?? `Summary of ${input.name}`,
-      description: `Description of ${input.name} with enough text.`,
+      description:
+        input.description ?? `Description of ${input.name} with enough text.`,
       howToPlay: { steps: [{ action: "Do the thing" }] },
       variations: [],
       tips: [],
@@ -219,6 +222,7 @@ describe("buildPublishedArtifact", () => {
       summary: "",
     });
     norm.normalized.description = "";
+    norm.normalized.howToPlay = null;
 
     const works = buildWorks([norm]);
     const artifact = buildPublishedArtifact({
@@ -229,5 +233,72 @@ describe("buildPublishedArtifact", () => {
 
     expect(artifact.elements[0].normalized).toBeUndefined();
     expect(artifact.elements[0].canonicalId).toBeDefined();
+  });
+
+  test("keeps a walkthrough whose description came back empty", () => {
+    // The extraction yields summary and steps but no description for some
+    // elements. The steps are valid content and must be published.
+    const id = "2".repeat(32);
+    const raw = makeRaw({
+      identifier: id,
+      name: "Fischer",
+      sourceName: "improwiki",
+      languageCode: "de",
+    });
+    const norm = makeNormalized({
+      identifier: id,
+      name: "Fischer",
+      sourceName: "improwiki",
+      languageCode: "de",
+      summary: "Ein Fangspiel für die ganze Gruppe.",
+      description: "",
+    });
+    norm.normalized.description = "";
+    norm.normalized.howToPlay = {
+      steps: [
+        { action: "Stellt euch an eine Seite des Spielfelds." },
+        { action: "Fragt den Fischer nach der Wassertiefe." },
+      ],
+    };
+
+    const works = buildWorks([norm]);
+    const artifact = buildPublishedArtifact({
+      elements: [raw],
+      normalized: [norm],
+      works,
+    });
+
+    const published = artifact.elements[0].normalized as
+      | ArtifactNormalized
+      | undefined;
+    expect(published?.howToPlay?.steps).toHaveLength(2);
+    expect(published?.description).toBe("");
+  });
+
+  test("omits a normalization that has a summary but no content", () => {
+    const id = "3".repeat(32);
+    const raw = makeRaw({
+      identifier: id,
+      name: "Stub",
+      sourceName: "improwiki",
+    });
+    const norm = makeNormalized({
+      identifier: id,
+      name: "Stub",
+      sourceName: "improwiki",
+      summary: "A page that was only half extracted.",
+      description: "",
+    });
+    norm.normalized.description = "";
+    norm.normalized.howToPlay = null;
+
+    const works = buildWorks([norm]);
+    const artifact = buildPublishedArtifact({
+      elements: [raw],
+      normalized: [norm],
+      works,
+    });
+
+    expect(artifact.elements[0].normalized).toBeUndefined();
   });
 });

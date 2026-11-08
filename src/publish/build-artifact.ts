@@ -59,10 +59,20 @@ export interface PublishedArtifact {
 function toArtifactNormalized(
   normalized: NormalizedElement["normalized"]
 ): ArtifactNormalized | undefined {
-  // A handful of elements were stored with an empty normalization (the
-  // extraction failed and the write-back kept the raw data). Publishing an
-  // empty summary is worse than publishing nothing.
-  if (!normalized.summary.trim() || !normalized.description.trim()) {
+  // A block without a summary is a failed extraction: consumers use the
+  // summary as the element's one-line description. The other fields are
+  // independent — an element can have a complete walkthrough while the model
+  // returned no description (Fischer, Fischer, wie tief ist das Wasser?), and
+  // dropping the whole block would throw away its 8 valid steps.
+  if (!normalized.summary.trim()) {
+    return undefined;
+  }
+  const hasContent =
+    normalized.description.trim() !== "" ||
+    (normalized.howToPlay?.steps.length ?? 0) > 0 ||
+    normalized.tips.length > 0 ||
+    normalized.variations.length > 0;
+  if (!hasContent) {
     return undefined;
   }
 
