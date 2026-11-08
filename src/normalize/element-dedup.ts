@@ -323,7 +323,14 @@ async function findEnhancedLLMMatches(
 
   const sourceNames = [...bySource.keys()];
   const apiKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
-  const models = (process.env.NORMALIZE_MODELS || "deepseek-v4-flash-free,deepseek-v4-flash").split(",").map(s => s.trim());
+  // Same default as the extractor: the previous default named models that the
+  // gateway no longer serves, so every batch failed with "Model is
+  // unavailable" and cross-source matching silently degraded to the
+  // deterministic pass.
+  const models = (process.env.DEDUP_MODELS || "deepseek-v4.1-flash,deepseek-v4-flash-free,deepseek-v4-flash")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   let totalBatches = 0;
   let totalSucceeded = 0;
   let totalPairs = 0;
