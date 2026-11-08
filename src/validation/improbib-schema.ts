@@ -1,4 +1,5 @@
 import { z, type TypeOf } from "zod";
+import { MARKDOWN_MAX_CHARS } from "../scraping/shared/markdown-limit";
 
 const MD5_LENGTH = 32;
 
@@ -106,7 +107,7 @@ export const improbibSchema = z.object({
         translationLinkEnIdentifier: z.string().length(MD5_LENGTH).optional(),
         translationLinkDeIdentifier: z.string().length(MD5_LENGTH).optional(),
 
-        markdown: z.string().min(10).max(10000),
+        markdown: z.string().min(10).max(MARKDOWN_MAX_CHARS),
         tagIds: z.array(z.string()).default([]),
         licenseUrl: z.string().url(),
         translatedTags: z.array(z.string().min(2).max(40)).default([]),

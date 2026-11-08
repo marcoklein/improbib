@@ -96,17 +96,20 @@ export function parseImprowikiPage({
   hasher.update(`element;${elementName};${elementUrl}`);
   const identifier = hasher.digest("hex");
 
+  // The license name is a link target for readers, so it has to point at the
+  // license itself. improwiki's own `/de|lizenz` pages are gone (404); the
+  // canonical deed is stable and states the same CC BY-SA 3.0 DE terms.
   const license =
     languageCode === "en"
       ? {
           licenseName: "CC BY-SA 3.0 DE",
           licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
-          licenseUrl: "https://improwiki.com/en/lizenz",
+          licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en",
         }
       : {
           licenseName: "CC BY-SA 3.0 DE",
           licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
-          licenseUrl: "https://improwiki.com/de/lizenz",
+          licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/de/",
         };
 
   return {

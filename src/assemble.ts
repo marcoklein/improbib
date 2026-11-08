@@ -8,6 +8,7 @@ import type { ArtifactWork } from "./publish/build-artifact";
 import { buildWorks } from "./publish/build-works";
 import type { ElementType } from "./scraping/shared/element-type";
 import { mergeElements } from "./scraping/shared/merge-elements";
+import { truncateMarkdown } from "./scraping/shared/markdown-limit";
 import { convertHtmlToMarkdown } from "./scraping/shared/process-markdown";
 import {
   transformAndTranslateTags,
@@ -234,9 +235,7 @@ export async function assemble() {
 
   for (const e of allOutputs.elements) {
     const md = e.markdown as string;
-    if (md.length > 10000) {
-      e.markdown = md.slice(0, 10000);
-    }
+    e.markdown = truncateMarkdown(md);
   }
 
   allOutputs.meta.assembly = {

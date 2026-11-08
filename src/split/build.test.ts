@@ -14,7 +14,7 @@ function page(html: string): ElementType {
     tags: ["warmup", "körperkontakt"],
     htmlContent: html,
     licenseName: "CC BY-SA 3.0 DE",
-    licenseUrl: "https://improwiki.com/de/lizenz",
+    licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/de/",
     licenseSpdxIdentifier: "CC-BY-SA-3.0-DE",
     lastModified: "2026-05-11",
     fetchedAt: "2026-11-05T00:00:00.000Z",

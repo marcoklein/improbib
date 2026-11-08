@@ -95,6 +95,22 @@ describe("parseImprowikiPage", () => {
     expect(parsed?.card_Energy).toBe("calm, lively");
   });
 
+  test("links the license to the deed, not to a dead improwiki page", () => {
+    for (const language of ["de", "en"] as const) {
+      const parsed = parseImprowikiPage({
+        baseUrl: "https://improwiki.com",
+        elementUrl: `https://improwiki.com/${language}/wiki/example`,
+        fetchedAt: "2026-06-02T07:00:00.000Z",
+        html: page({ title: "Example", language }),
+      });
+
+      expect(parsed?.licenseName).toBe("CC BY-SA 3.0 DE");
+      expect(parsed?.licenseUrl).toStartWith(
+        "https://creativecommons.org/licenses/by-sa/3.0/de/"
+      );
+    }
+  });
+
   test("returns undefined when there is no element title", () => {
     const parsed = parseImprowikiPage({
       baseUrl: "https://improwiki.com",
