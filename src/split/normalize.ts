@@ -139,6 +139,10 @@ export async function normalizeSplitChildren(params: {
           !params.force &&
           sameEnvironment &&
           cached?.normalized?.contentHash === hash &&
+          // The meta block is written by the run that touched the file last.
+          // An entry from an older contract that failed to re-extract keeps
+          // its own `normalizedBy`, so the meta alone is not enough.
+          cached.normalized.normalizedBy === schemaHash &&
           // An extraction that came back empty is a failure, not a result.
           // Without this check it would be cached forever.
           cached.normalized.summary.trim() !== "" &&
