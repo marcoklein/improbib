@@ -8,6 +8,7 @@ import {
 } from "../normalize/llm-client";
 import {
   getNormalizedBy,
+  isUsableNormalization,
   type NormalizedElement,
 } from "../normalize/normalized-schema";
 import type { ElementType } from "../scraping/shared/element-type";
@@ -196,7 +197,11 @@ export async function normalizeSplitChildren(params: {
           console.warn(
             `[split] normalize ${source}/${child.name}: ${(error as Error).message.slice(0, 160)}`
           );
-          if (cached) elements.set(child.identifier, cached);
+          // Keep a previous answer only when it is usable; re-storing a
+          // failed extraction would make it look like a result.
+          if (cached && isUsableNormalization(cached.normalized)) {
+            elements.set(child.identifier, cached);
+          }
         }
 
         processed++;
