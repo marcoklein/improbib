@@ -557,6 +557,14 @@ export async function deriveGraphStage(): Promise<void> {
 
 // Allow running directly: bun run src/normalize/normalize.ts
 if (import.meta.main) {
+  // Every other entry point (serve, assemble, splits) moves into the storage
+  // directory first. Without this, the CLI read and wrote `./output` inside the
+  // container's working directory instead of `$STORAGE_PATH/output`, and
+  // `--vocabulary`/`--dedup` reported "no normalized output found".
+  const storagePath = process.env.STORAGE_PATH || process.cwd();
+  await mkdir(storagePath, { recursive: true });
+  process.chdir(storagePath);
+
   const args = process.argv.slice(2);
   const maxElements = process.env.NORMALIZE_MAX ? parseInt(process.env.NORMALIZE_MAX) : undefined;
 
