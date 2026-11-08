@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
   isUsableNormalization,
+  normalizeDifficulty,
+  normalizeEnergyLevel,
   normalizedElementSchema,
   normalizedSourceSchema,
+  sanitizePractical,
 } from "../normalized-schema";
 
 const ID = "012345678901234567890123456789ab";
@@ -143,5 +146,52 @@ describe("isUsableNormalization", () => {
 
   it("accepts a concept with no walkthrough", () => {
     expect(isUsableNormalization(makeNorm({ howToPlay: null }))).toBe(true);
+  });
+});
+
+describe("practical enum normalization", () => {
+  it("keeps an English difficulty", () => {
+    expect(normalizeDifficulty("beginner")).toBe("beginner");
+    expect(normalizeDifficulty("Advanced")).toBe("advanced");
+  });
+
+  it("translates a German difficulty", () => {
+    expect(normalizeDifficulty("fortgeschritten")).toBe("intermediate");
+    expect(normalizeDifficulty("Anfänger")).toBe("beginner");
+    expect(normalizeDifficulty("Profi")).toBe("advanced");
+  });
+
+  it("drops an unknown difficulty", () => {
+    expect(normalizeDifficulty("sehr schwer")).toBeUndefined();
+    expect(normalizeDifficulty(undefined)).toBeUndefined();
+  });
+
+  it("translates a German energy level", () => {
+    expect(normalizeEnergyLevel("lebhaft")).toBe("high");
+    expect(normalizeEnergyLevel("ruhig")).toBe("low");
+    expect(normalizeEnergyLevel("wild")).toBe("high");
+  });
+
+  it("sanitizes a stored practical block", () => {
+    // A localized value used to fail the schema of the whole artifact.
+    const practical = sanitizePractical({
+      difficulty: "fortgeschritten" as never,
+      energyLevel: "lebhaft" as never,
+      typicalDurationMinutes: 10,
+    });
+    expect(practical).toEqual({
+      difficulty: "intermediate",
+      energyLevel: "high",
+      typicalDurationMinutes: 10,
+    });
+  });
+
+  it("drops a value that has no enum equivalent", () => {
+    const practical = sanitizePractical({
+      difficulty: "mega-hard" as never,
+      energyLevel: undefined,
+    });
+    expect(practical.difficulty).toBeUndefined();
+    expect(practical.energyLevel).toBeUndefined();
   });
 });

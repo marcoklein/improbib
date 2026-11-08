@@ -6,7 +6,6 @@ const SkillCategory = z.string();
 const Difficulty = z.enum(["beginner", "intermediate", "advanced"]);
 const EnergyLevel = z.enum(["low", "medium", "high"]);
 const SuitableFor = z.string();
-
 const howToPlayStepSchema = z.object({
   action: z.string(),
   role: z.string().optional(),
@@ -119,6 +118,77 @@ export const normalizedElementSchema = z.object({
 });
 
 export type NormalizedElement = z.infer<typeof normalizedElementSchema>;
+
+/**
+ * `practical.difficulty` and `practical.energyLevel` are closed enums, but the
+ * model occasionally answers with the source language ("fortgeschritten",
+ * "lebhaft"). Left as-is, one such value fails validation of the whole
+ * assembled artifact, so nothing is published until it is corrected by hand.
+ */
+const DIFFICULTY_ALIASES: Record<string, z.infer<typeof Difficulty>> = {
+  beginner: "beginner",
+  anfänger: "beginner",
+  anfaenger: "beginner",
+  leicht: "beginner",
+  intermediate: "intermediate",
+  fortgeschritten: "intermediate",
+  mittel: "intermediate",
+  advanced: "advanced",
+  profi: "advanced",
+  professional: "advanced",
+  experte: "advanced",
+};
+
+const ENERGY_ALIASES: Record<string, z.infer<typeof EnergyLevel>> = {
+  low: "low",
+  ruhig: "low",
+  calm: "low",
+  medium: "medium",
+  mittel: "medium",
+  high: "high",
+  hoch: "high",
+  lebhaft: "high",
+  energetic: "high",
+  lively: "high",
+  wild: "high",
+};
+
+function normalizeAlias<T extends string>(
+  value: unknown,
+  aliases: Record<string, T>
+): T | undefined {
+  if (typeof value !== "string") return undefined;
+  return aliases[value.trim().toLowerCase()];
+}
+
+export function normalizeDifficulty(
+  value: unknown
+): z.infer<typeof Difficulty> | undefined {
+  return normalizeAlias(value, DIFFICULTY_ALIASES);
+}
+
+export function normalizeEnergyLevel(
+  value: unknown
+): z.infer<typeof EnergyLevel> | undefined {
+  return normalizeAlias(value, ENERGY_ALIASES);
+}
+
+/**
+ * Drops enum values the schema cannot represent. Applied when publishing, so
+ * an entry that was stored before the enum normalization existed cannot block
+ * the publication of all other elements.
+ */
+export function sanitizePractical(
+  practical: NormalizedElement["normalized"]["practical"]
+): NormalizedElement["normalized"]["practical"] {
+  return {
+    ...practical,
+    difficulty:
+      normalizeDifficulty(practical.difficulty) ?? undefined,
+    energyLevel:
+      normalizeEnergyLevel(practical.energyLevel) ?? undefined,
+  };
+}
 
 /**
  * Whether an extraction satisfies the field contract closely enough to be

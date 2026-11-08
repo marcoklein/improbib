@@ -1,4 +1,5 @@
 import type { NormalizedElement } from "../normalize/normalized-schema";
+import { sanitizePractical } from "../normalize/normalized-schema";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { PublishedVariation, PublishedWork } from "./build-works";
 
@@ -80,7 +81,7 @@ function toArtifactNormalized(
     summary: normalized.summary,
     description: normalized.description,
     howToPlay: normalized.howToPlay,
-    practical: normalized.practical,
+    practical: sanitizePractical(normalized.practical),
     mechanics: normalized.mechanics.map((mechanic) => mechanic.name),
     skills: normalized.skills.map((skill) => skill.name),
     tips: normalized.tips,

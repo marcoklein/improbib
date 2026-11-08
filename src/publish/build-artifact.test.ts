@@ -275,6 +275,35 @@ describe("buildPublishedArtifact", () => {
     expect(published?.description).toBe("");
   });
 
+  test("normalizes a localized practical value instead of failing validation", () => {
+    // "fortgeschritten"/"lebhaft" leaked from the model and made the schema of
+    // the whole artifact fail, so nothing was published.
+    const id = "4".repeat(32);
+    const raw = makeRaw({ identifier: id, name: "Localized", sourceName: "improwiki" });
+    const norm = makeNormalized({
+      identifier: id,
+      name: "Localized",
+      sourceName: "improwiki",
+    });
+    (norm.normalized.practical as any) = {
+      difficulty: "fortgeschritten",
+      energyLevel: "lebhaft",
+    };
+
+    const works = buildWorks([norm]);
+    const artifact = buildPublishedArtifact({
+      elements: [raw],
+      normalized: [norm],
+      works,
+    });
+
+    const published = artifact.elements[0].normalized as ArtifactNormalized;
+    expect(published.practical).toEqual({
+      difficulty: "intermediate",
+      energyLevel: "high",
+    });
+  });
+
   test("omits a normalization that has a summary but no content", () => {
     const id = "3".repeat(32);
     const raw = makeRaw({

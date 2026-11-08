@@ -1,5 +1,9 @@
 import type { NormalizedElement } from "./normalized-schema";
-import { isUsableNormalization } from "./normalized-schema";
+import {
+  isUsableNormalization,
+  normalizeDifficulty,
+  normalizeEnergyLevel,
+} from "./normalized-schema";
 import { createHash } from "crypto";
 import { buildStyleCorrection, collectStyleViolations } from "./style-validator";
 
@@ -466,9 +470,11 @@ function coerceHowToPlay(value: any): any {
 function coercePractical(raw: any): any {
   if (!raw || typeof raw !== "object") return {};
   return {
-    difficulty: raw.difficulty || undefined,
+    // The model sometimes answers in the source language. Normalize here, so
+    // an unexpected label cannot fail the schema of the whole artifact.
+    difficulty: normalizeDifficulty(raw.difficulty),
     typicalDurationMinutes: typeof raw.typicalDurationMinutes === "number" ? raw.typicalDurationMinutes : undefined,
-    energyLevel: raw.energyLevel || undefined,
+    energyLevel: normalizeEnergyLevel(raw.energyLevel),
     groupSize: raw.groupSize && typeof raw.groupSize === "object"
       ? { min: typeof raw.groupSize.min === "number" ? raw.groupSize.min : undefined, max: typeof raw.groupSize.max === "number" ? raw.groupSize.max : undefined }
       : undefined,
