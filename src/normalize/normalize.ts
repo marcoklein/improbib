@@ -304,8 +304,16 @@ async function normalizeSource(
           normalizedMap.set(el.identifier, parentEl);
 
           for (const child of children) {
-            const childId = generateSplitIdentifier(el.identifier, child.name);
-            const childEl = buildNormalizedElement(child, { ...el, identifier: childId }, contentHash, schemaHash);
+            const childName = child.name.trim() || el.name;
+            const childId = generateSplitIdentifier(el.identifier, childName);
+            const childEl = buildNormalizedElement(
+              child,
+              // A split child is named after its section heading, not after
+              // the page that contains it.
+              { ...el, identifier: childId, name: childName },
+              contentHash,
+              schemaHash
+            );
             childEl.splitFrom = el.identifier;
             normalizedMap.set(childId, childEl);
             splitCount++;
