@@ -36,6 +36,7 @@ bun test                   # run tests (bun:test)
 - Collection pages are removed from `elements`; the top-level `collections[]` keeps `id`, `name`, `url` and `childIds`
 - Normalization layer in `src/normalize/` — 3-stage pipeline (LLM extraction, vocabulary canonicalization, cross-source dedup) per ADR-0008, ADR-0009, ADR-0011.
 - Cross-source dedup in `src/normalize/element-dedup.ts` — deterministic (name + mechanic overlap + curated thesaurus) then LLM matching, runs after vocabulary canonicalization.
+- Work matching before extraction in `src/normalize/work-matching.ts` (deterministic title groups, 0.6–0.85 goes to review) and `src/works-review.ts` (LLM decision per review group). The reviewed result is committed in `work-merges.json`; the merged extraction prompt lives in `src/normalize/llm-client.ts` (`normalizeWork`).
 - Graph derivation in `src/graph/` — deterministic graph from normalized + vocabulary + dedup: nodes (Element with canonical: true/false, Mechanic, Skill, Tag, Source) and edges (hasMechanic, trainsSkill, hasTag, sourcedFrom, translationOf, canonicalOf).
 - `canonicalOf` edges include `confidence` (0–1) derived from dedup matching scores. Lower confidence flags weaker matches for human review.
 - Graph overrides in `src/graph/overrides.ts` — human-curated corrections (reject_match, add_match, remove_edge, add_edge) applied during graph derivation. Stored in `graph-overrides.json`.

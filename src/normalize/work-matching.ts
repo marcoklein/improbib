@@ -109,9 +109,11 @@ export function titleSimilarity(a: string, b: string): number {
   if (singularized(left) === singularized(right)) return 0.95;
 
   const jaccard = tokenSimilarity(left, right);
-  // One title containing the other is a strong signal ("Freeze" / "Freeze Tag").
+  // One title containing the other ("Freeze" / "Freeze Tag") is a candidate,
+  // not a decision: the contained title may well be a variant page
+  // ("Freeze" / "Freeze-Endowment"). It therefore lands in the review band.
   const containment =
-    left.startsWith(`${right} `) || right.startsWith(`${left} `) ? 0.9 : 0;
+    left.startsWith(`${right} `) || right.startsWith(`${left} `) ? 0.8 : 0;
   return Math.max(jaccard, containment);
 }
 

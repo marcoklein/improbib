@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   AUTO_THRESHOLD,
+  REVIEW_THRESHOLD,
   findReviewGroups,
   findWorkGroups,
   leadAgrees,
@@ -42,10 +43,10 @@ describe("titleSimilarity", () => {
     expect(titleSimilarity("Actor's Nightmare", "Actors Nightmare")).toBe(1);
   });
 
-  it("treats a longer title with the same start as strong", () => {
-    expect(titleSimilarity("Freeze", "Freeze Tag")).toBeGreaterThanOrEqual(
-      AUTO_THRESHOLD
-    );
+  it("puts a longer title with the same start in the review band", () => {
+    const score = titleSimilarity("Freeze", "Freeze Tag");
+    expect(score).toBeGreaterThanOrEqual(REVIEW_THRESHOLD);
+    expect(score).toBeLessThan(AUTO_THRESHOLD);
   });
 
   it("keeps unrelated titles apart", () => {
@@ -117,15 +118,14 @@ describe("findWorkGroups", () => {
     expect(findReviewGroups(groups)).toHaveLength(1);
   });
 
-  it("merges an extended title automatically", () => {
+  it("punts an extended title to review instead of merging it", () => {
     const groups = findWorkGroups([
       source("a", "Leading"),
       source("b", "Leading Exercises", { sourceName: "learnimprov" }),
     ]);
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].confidence).toBeGreaterThanOrEqual(AUTO_THRESHOLD);
-    expect(findReviewGroups(groups)).toHaveLength(0);
+    expect(findReviewGroups(groups)).toHaveLength(1);
   });
 
   it("is independent of the input order", () => {
