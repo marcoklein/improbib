@@ -372,7 +372,14 @@ async function normalizeSource(
         console.warn(`  SKIP ${el.name}: ${err.message.slice(0, 150)}`);
         // Never keep a failed extraction alive: a previous answer that is
         // empty or truncated is no better than no answer at all.
-        if (prev && isUsableNormalization(prev.normalized)) {
+        // Only a previous answer from the same contract may stand in for the
+        // failure. An older one carries free-text skills and the old step
+        // contract, so it is dropped instead of being published as current.
+        if (
+          prev &&
+          prev.normalized?.normalizedBy === schemaHash &&
+          isUsableNormalization(prev.normalized)
+        ) {
           normalizedMap.set(el.identifier, prev);
         } else {
           dropped.push({ identifier: el.identifier, name: el.name, reason: err.message.slice(0, 200) });

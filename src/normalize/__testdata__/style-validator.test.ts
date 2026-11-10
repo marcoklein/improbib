@@ -234,6 +234,121 @@ describe("findStyleViolations", () => {
   });
 });
 
+describe("wrong-language", () => {
+  /** A complete element shape, so summary, description, steps and tips count. */
+  function fullElement(fields: {
+    summary: string;
+    description: string;
+    steps?: string[];
+    tips?: string[];
+  }) {
+    return {
+      normalized: {
+        summary: fields.summary,
+        description: fields.description,
+        howToPlay:
+          fields.steps && fields.steps.length > 0
+            ? { steps: fields.steps.map((action) => ({ action })) }
+            : null,
+        tips: (fields.tips ?? []).map((text) => ({ text })),
+      },
+    };
+  }
+
+  test("flags an English element whose answer is German", () => {
+    const violations = findStyleViolations(
+      fullElement({
+        summary:
+          "Die Spieler stehen im Kreis und geben eine Bewegung weiter, die von allen aufgenommen wird.",
+        description:
+          "Ein Warm-up, bei dem die Gruppe eine Bewegung im Kreis weitergibt und alle sie aufnehmen.",
+        steps: [
+          "Stellt euch in einen Kreis und atmet einmal gemeinsam durch.",
+          "Gebt eine Bewegung an eure Nachbarin weiter, die sie aufnimmt.",
+        ],
+        tips: ["Achtet darauf, dass die Bewegung nicht zu schnell wird."],
+      }),
+      "en"
+    );
+    expect(violations.filter((v) => v.rule === "wrong-language")).toHaveLength(1);
+  });
+
+  test("accepts a genuine German element", () => {
+    expect(
+      findStyleViolations(
+        fullElement({
+          summary:
+            "Die Gruppe steht im Kreis und gibt eine Bewegung weiter, die alle aufnehmen.",
+          description:
+            "Ein Warm-up, bei dem die Spieler eine Bewegung im Kreis weitergeben und alle sie aufnehmen und verstärken.",
+          steps: [
+            "Stellt euch in einen Kreis und atmet einmal gemeinsam durch.",
+            "Gebt eine Bewegung an eure Nachbarin weiter, die sie aufnimmt und verstärkt.",
+            "Nehmt die Bewegung auf und gebt sie weiter, wenn ihr sie spürt.",
+          ],
+          tips: [
+            "Achtet darauf, dass die Bewegung nicht zu schnell wird und alle sie sehen können.",
+          ],
+        }),
+        "de"
+      )
+    ).toEqual([]);
+  });
+
+  test("accepts a short English element with one quoted German word", () => {
+    expect(
+      findStyleViolations(
+        fullElement({
+          summary:
+            'Players pass a movement around the circle on the call "und weiter".',
+          description: "A short warm-up.",
+          steps: ["Form a circle and pass the movement on."],
+        }),
+        "en"
+      )
+    ).toEqual([]);
+  });
+
+  test("fires at the 0.8 ratio boundary and not below it", () => {
+    // 12 German / 3 English = exactly 0.8.
+    expect(
+      findStyleViolations(
+        fullElement({ summary: "der ".repeat(12), description: "the and your" }),
+        "en"
+      ).map((v) => v.rule)
+    ).toContain("wrong-language");
+
+    // 11 German / 4 English = 0.73.
+    expect(
+      findStyleViolations(
+        fullElement({
+          summary: "der ".repeat(11),
+          description: "the and your you",
+        }),
+        "en"
+      ).map((v) => v.rule)
+    ).not.toContain("wrong-language");
+  });
+
+  test("needs at least ten foreign stop words", () => {
+    // 9 German hits score 0.9 but are below the absolute threshold.
+    expect(
+      findStyleViolations(
+        fullElement({ summary: "der ".repeat(9), description: "the" }),
+        "en"
+      ).map((v) => v.rule)
+    ).not.toContain("wrong-language");
+  });
+
+  test("names the target language in the correction", () => {
+    const correction = buildStyleCorrection([
+      { rule: "wrong-language", detail: "", language: "English" },
+    ]);
+    expect(correction).toContain("English");
+    expect(correction).toContain("every step");
+  });
+});
+
 describe("countStyleViolations", () => {
   test("counts across a split response", () => {
     const parent = element(["Suche dir eine Handlung aus."]);

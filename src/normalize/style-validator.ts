@@ -24,13 +24,16 @@ export type StyleRule =
   | "de-imperative-opener"
   | "de-man-address"
   | "de-mixed-voice"
-  | "en-mixed-voice";
+  | "en-mixed-voice"
+  | "wrong-language";
 
 export interface StyleViolation {
   rule: StyleRule;
   /** Index of the offending step, or undefined for element-level findings. */
   stepIndex?: number;
   detail: string;
+  /** For "wrong-language": the language the work is written in. */
+  language?: string;
 }
 
 /**
@@ -268,6 +271,84 @@ function stepActions(element: unknown): string[] {
   );
 }
 
+// Function words used to guess which language a whole answer is written in
+// (word-boundary matches, case-insensitive). Precision is not the goal: the
+// check only fires when one language clearly dominates.
+const DE_STOP_WORDS = [
+  "der", "die", "das", "und", "ihr", "eure", "euer", "euch", "nicht", "mit",
+  "für", "wird", "sind", "einen", "eine", "einem", "einer", "dem", "den",
+  "auf", "aus", "bei", "nach", "über", "wenn", "dann", "dass",
+];
+
+const EN_STOP_WORDS = [
+  "the", "and", "your", "you", "with", "from", "that", "this", "are", "is",
+  "to", "of", "in", "for", "on", "when", "then", "they", "their", "it",
+];
+
+function countStopWords(text: string, words: readonly string[]): number {
+  let count = 0;
+  for (const word of words) {
+    const matches = text.match(new RegExp(`\\b${word}\\b`, "gi"));
+    if (matches) count += matches.length;
+  }
+  return count;
+}
+
+/** Everything that must be written in the work language, joined. */
+function languageSample(element: unknown): string {
+  const normalized = (
+    element as {
+      normalized?: {
+        summary?: unknown;
+        description?: unknown;
+        howToPlay?: { steps?: Array<{ action?: unknown }> } | null;
+        tips?: Array<{ text?: unknown }>;
+      };
+    }
+  )?.normalized;
+  if (!normalized) return "";
+  const parts = [
+    String(normalized.summary ?? ""),
+    String(normalized.description ?? ""),
+  ];
+  for (const step of normalized.howToPlay?.steps ?? []) {
+    parts.push(String(step?.action ?? ""));
+  }
+  for (const tip of normalized.tips ?? []) {
+    parts.push(String(tip?.text ?? ""));
+  }
+  return parts.join("\n");
+}
+
+/**
+ * A whole answer written in the wrong language.
+ *
+ * The prompt names the output language, but the merged stage once returned
+ * German for an English work. Stop-word counts make that visible without a
+ * second model call: an element whose function words are 80 % the other
+ * language is not a stray game term, it is the wrong language. The check stays
+ * conservative (at least ten foreign hits) so one quoted word cannot trigger a
+ * pointless retry.
+ */
+function findWrongLanguageViolation(
+  element: unknown,
+  languageCode: string
+): StyleViolation | undefined {
+  if (languageCode !== "de" && languageCode !== "en") return undefined;
+  const text = languageSample(element);
+  const de = countStopWords(text, DE_STOP_WORDS);
+  const en = countStopWords(text, EN_STOP_WORDS);
+  const target = languageCode === "de" ? en : de;
+  const total = de + en;
+  if (target < 10 || total === 0) return undefined;
+  if (target / total < 0.8) return undefined;
+  return {
+    rule: "wrong-language",
+    language: languageCode === "de" ? "German" : "English",
+    detail: `${target} of ${total} stop words are not ${languageCode}`,
+  };
+}
+
 /**
  * All style violations for one extracted element, in the language it was
  * written in. An empty array means the element satisfies the contract.
@@ -278,6 +359,10 @@ export function findStyleViolations(
 ): StyleViolation[] {
   const actions = stepActions(element);
   const violations: StyleViolation[] = [];
+
+  const languageViolation = findWrongLanguageViolation(element, languageCode);
+  if (languageViolation) violations.push(languageViolation);
+
   if (actions.length === 0) return violations;
 
   if (languageCode === "de") {
@@ -380,12 +465,18 @@ export function buildStyleCorrection(violations: StyleViolation[]): string {
   for (const violation of violations) {
     if (seen.has(violation.rule)) continue;
     seen.add(violation.rule);
-    lines.push(`- ${CORRECTIONS[violation.rule]}`);
+    const correction = CORRECTIONS[violation.rule];
+    lines.push(
+      `- ${typeof correction === "string" ? correction : correction(violation)}`
+    );
   }
   return `\n\nYour previous answer broke these style rules. Rewrite the whole JSON and fix them:\n${lines.join("\n")}`;
 }
 
-const CORRECTIONS: Record<StyleRule, string> = {
+const CORRECTIONS: Record<
+  StyleRule,
+  string | ((violation: StyleViolation) => string)
+> = {
   "de-du-form":
     'Use only "ihr" for the players. Never "du", "dich", "dir", "dein" — rewrite such a step in the plural ("Suche dir …" becomes "Sucht euch …", "Beginne" becomes "Beginnt").',
   "de-formal-address":
@@ -398,4 +489,6 @@ const CORRECTIONS: Record<StyleRule, string> = {
     'Do not mix voices inside one element. If a step addresses the players, every step addresses them: "Die Spieler bilden einen Kreis" becomes "Bildet einen Kreis", "Der Moderator ruft Stopp" becomes "Lasst den Moderator Stopp rufen".',
   "en-mixed-voice":
     'Do not mix voices inside one element. Every step starts with a verb: "The other players perform the scene" becomes "Perform the scene with the other players". Do not mix imperative steps with steps that begin with "The", "A", "Each" or "One".',
+  "wrong-language": (violation) =>
+    `Write the whole answer in ${violation.language ?? "the work language"}. Every field must be in that language, including the summary, the description, every step and every tip. Do not answer in German for an English work or in English for a German work.`,
 };

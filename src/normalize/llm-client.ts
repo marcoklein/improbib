@@ -79,6 +79,9 @@ ${skillPromptList()}
 RULES:
 - howToPlay is null ONLY for: theoretical concepts ("Game", "Status" as improv theory), parent index pages listing multiple games, or bare audience ask-for prompts. Everything else (games, exercises, warm-ups, show formats, handles) MUST have structured steps.
 - A show format (Harold, Deconstruction) is ONE atomic element. Its howToPlay describes multiple phases — that is correct. NEVER split a show format.
+- STEPS — a walkthrough is a playable sequence, not a transcript of the source:
+  * Target four to six steps, never more than eight. Group related actions; a step is a phase of the game, not a single source sentence.
+  * A long form (a show format, a game with rounds) groups its rounds into phases instead of listing every beat.
 - When a page describes MULTIPLE independent games under separate headings, split them: return an array with the parent index element first (howToPlay: null, referencedElements populated with children), then each child element (splitFrom set to parent's identifier, full fields extracted). Parent gets description summarizing the category. Children get names from their section headings.
 - Extract mechanics (reusable building blocks like "freeze signal", "tap out", "alphabet constraint", "translation gimmick").
 - SKILLS — pick only what the work actually trains, at most four, using the ids above:

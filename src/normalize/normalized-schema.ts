@@ -359,8 +359,9 @@ export type NormalizedSource = z.infer<typeof normalizedSourceSchema>;
  * Bumped again for the vocabulary contract: skills are ids from
  * `normalize/skills.ts`, and `practical.usage` / `practical.requires` replace
  * the free-text `suitableFor` and the separate preparation flag.
+ * Bumped for the step cap: four to six steps, never more than eight.
  */
-const NORMALIZED_CONTRACT_VERSION = "7e2f4a9c1b6d8053c4e7a2f9b1d63058";
+const NORMALIZED_CONTRACT_VERSION = "3b8d5f1a9c4e7206d8b3f5a1c9e70462";
 
 export function getNormalizedBy(): string {
   return NORMALIZED_CONTRACT_VERSION;
