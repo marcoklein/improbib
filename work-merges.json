@@ -517,6 +517,21 @@
       "method": "similar-title",
       "reason": "Die Harold-Show-Seite beschreibt lediglich die Aufführung eines Harold durch ein oder mehrere Teams und damit dieselbe Langform, nicht ein anderes Spiel.",
       "decidedBy": "review"
+    },
+    {
+      "ids": [
+        "0589b3fef65aa6a38f1246372ab17b27",
+        "2c30c4a99121f6bf2b122d9f9cc73f19"
+      ],
+      "names": [
+        "Leading",
+        "Leading"
+      ],
+      "languageCode": "en",
+      "confidence": 1,
+      "method": "identical-content",
+      "reason": "learnimprov serves the same page under /leading-exercise/ and /leading-warm/ (identical HTML, md5 8592ad51)",
+      "decidedBy": "review"
     }
   ],
   "variants": [
