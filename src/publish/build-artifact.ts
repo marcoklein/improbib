@@ -1,5 +1,6 @@
 import type { NormalizedElement } from "../normalize/normalized-schema";
-import { sanitizePractical } from "../normalize/normalized-schema";
+import { sanitizePractical, sanitizeSkills } from "../normalize/normalized-schema";
+import { deriveCategories } from "./categories";
 import { dropRedundantTips } from "../normalize/tip-redundancy";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { PublishedVariation, PublishedWork } from "./build-works";
@@ -18,6 +19,8 @@ export interface ArtifactNormalized {
   practical: NormalizedElement["normalized"]["practical"];
   mechanics: string[];
   skills: string[];
+  /** Derived from the tags and the practical data, see `categories.ts`. */
+  categories: string[];
   tips: NormalizedElement["normalized"]["tips"];
   referencedElements: NormalizedElement["normalized"]["referencedElements"];
   contentHash: string;
@@ -59,7 +62,8 @@ export interface PublishedArtifact {
 }
 
 function toArtifactNormalized(
-  normalized: NormalizedElement["normalized"]
+  normalized: NormalizedElement["normalized"],
+  tagIds: string[]
 ): ArtifactNormalized | undefined {
   // A block without a summary is a failed extraction: consumers use the
   // summary as the element's one-line description. The other fields are
@@ -84,7 +88,8 @@ function toArtifactNormalized(
     howToPlay: normalized.howToPlay,
     practical: sanitizePractical(normalized.practical),
     mechanics: normalized.mechanics.map((mechanic) => mechanic.name),
-    skills: normalized.skills.map((skill) => skill.name),
+    skills: sanitizeSkills(normalized.skills),
+    categories: deriveCategories(tagIds, normalized.practical),
     // Entries extracted before the tips rule existed can still contain a tip
     // that repeats a step. Filtering here cleans the old data too.
     tips: dropRedundantTips(
@@ -156,7 +161,7 @@ export function buildPublishedArtifact(params: {
     if (!work) continue;
 
     if (normalized) {
-      const published = toArtifactNormalized(normalized.normalized);
+      const published = toArtifactNormalized(normalized.normalized, element.tagIds ?? []);
       if (published) {
         element.normalized = published;
       }

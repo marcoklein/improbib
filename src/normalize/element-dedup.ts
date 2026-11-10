@@ -131,8 +131,8 @@ function computeMatchScore(
   if (nameLevRatio >= 0.8) return 0.65;
 
   // Combined weighted score
-  const skillNamesA = a.normalized.skills.map(s => s.name);
-  const skillNamesB = b.normalized.skills.map(s => s.name);
+  const skillNamesA = [...a.normalized.skills];
+  const skillNamesB = [...b.normalized.skills];
   const skillScore = mechJaccard(skillNamesA, skillNamesB);
   const combined = 0.4 * mechScore + 0.3 * Math.min(1, levenshteinRatio(na, nb) * 1.5) + 0.3 * skillScore;
   if (combined >= 0.6) return Math.min(0.85, combined);
@@ -316,7 +316,7 @@ async function findEnhancedLLMMatches(
       description: el.normalized.description,
       sourceName: el.sourceName,
       mechanics: el.normalized.mechanics.map(m => m.name),
-      skills: el.normalized.skills.map(s => s.name),
+      skills: [...el.normalized.skills],
     });
     bySource.set(el.sourceName, list);
   }

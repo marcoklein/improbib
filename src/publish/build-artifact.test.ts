@@ -54,7 +54,7 @@ function makeNormalized(input: {
       tips: [],
       referencedElements: [],
       mechanics: [{ name: "freeze signal" }],
-      skills: [{ name: "spontaneity" }],
+      skills: ["impulse"],
       practical: { difficulty: "beginner", energyLevel: "high" },
       contentHash: `hash-${input.identifier}`,
       extractedAt: "2026-01-01T00:00:00.000Z",
@@ -104,7 +104,7 @@ describe("buildPublishedArtifact", () => {
       expect(element.normalized).toMatchObject({
         summary: expect.stringContaining("Freeze"),
         mechanics: ["freeze signal"],
-        skills: ["spontaneity"],
+        skills: ["impulse"],
       });
     }
     expect(

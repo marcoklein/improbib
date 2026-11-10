@@ -302,7 +302,7 @@ function createCanonicalElement(
   const skillSet = new Set<string>();
   for (const el of langMembers) {
     for (const s of el.normalized.skills) {
-      skillSet.add(s.name);
+      skillSet.add(s);
     }
   }
   const skills = [...skillSet];
@@ -612,7 +612,7 @@ export function deriveGraph(
     allElementsWithMechSkills.push({
       id: el.identifier,
       mechanics: el.normalized.mechanics.map(m => m.name),
-      skills: el.normalized.skills.map(s => s.name),
+      skills: [...el.normalized.skills],
       tags: el.tags,
       canonical: false,
       sourceName: el.sourceName,
@@ -656,11 +656,11 @@ export function deriveGraph(
       addEdge("hasMechanic", el.id, mechId);
     }
 
-    // Skill edges
+    // Skill edges — the vocabulary id is canonical and doubles as label, so
+    // search and the graph agree on one string for one skill.
     for (const s of el.skills) {
-      const canonical = resolveTerm(s, skillMap);
-      const skillId = nodeId("skill", canonical);
-      addNode({ id: skillId, type: "Skill", label: canonical });
+      const skillId = nodeId("skill", s);
+      addNode({ id: skillId, type: "Skill", label: s });
       addEdge("trainsSkill", el.id, skillId);
     }
 

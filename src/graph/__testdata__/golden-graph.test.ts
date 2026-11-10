@@ -19,7 +19,7 @@ function makeMockElement(overrides: Partial<NormalizedElement> = {}): Normalized
       tips: [],
       referencedElements: [],
       mechanics: [{ name: "circle formation", category: "setup" }, { name: "turn order", category: "structure" }],
-      skills: [{ name: "focus", category: "cognitive" }, { name: "spontaneity", category: "performance" }],
+      skills: ["attention", "impulse"],
       practical: { difficulty: "beginner", typicalDurationMinutes: 5, groupSize: { min: 4, max: 12 } },
       contentHash: "hash123",
       extractedAt: "2026-01-01T00:00:00.000Z",
@@ -136,7 +136,7 @@ describe("deriveGraph — clustering and canonicalOf", () => {
       normalized: {
         ...makeMockElement().normalized,
         mechanics: [{ name: "circle formation", category: "setup" }],
-        skills: [{ name: "focus", category: "cognitive" }],
+        skills: ["attention"],
       },
       relatedIdentifiers: [{ identifier: "ddddccccbbbbaaaa4444333322221111", confidence: 1.0 }],
     });
@@ -147,7 +147,7 @@ describe("deriveGraph — clustering and canonicalOf", () => {
       normalized: {
         ...makeMockElement().normalized,
         mechanics: [{ name: "turn order", category: "structure" }],
-        skills: [{ name: "spontaneity", category: "performance" }],
+        skills: ["impulse"],
       },
       relatedIdentifiers: [{ identifier: "aaaaabbbccccdddd1111222233334444", confidence: 1.0 }],
     });

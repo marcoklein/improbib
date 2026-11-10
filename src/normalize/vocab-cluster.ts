@@ -66,15 +66,8 @@ function buildTranslationSeeds(
       }
     }
 
-    const deSkills = el.normalized.skills;
-    const enSkills = en.normalized.skills;
-    if (deSkills.length === 1 && enSkills.length === 1) {
-      const deName = deSkills[0].name.toLowerCase();
-      const enName = enSkills[0].name;
-      if (deName !== enName.toLowerCase() && deSkills[0].category === enSkills[0].category) {
-        skillMap.set(deName, enName);
-      }
-    }
+    // Skills are language-neutral ids, so a translation pair says nothing
+    // about them.
   }
 
   return { mechMap, skillMap };
@@ -233,16 +226,8 @@ function collectTermMeta(elements: NormalizedElement[]): {
         mechMeta.set(key, { count: 1, categories: m.category ? [m.category] : [] });
       }
     }
-    for (const s of el.normalized.skills) {
-      const key = s.name.toLowerCase();
-      const existing = skillMeta.get(key);
-      if (existing) {
-        existing.count++;
-        if (s.category) existing.categories.push(s.category);
-      } else {
-        skillMeta.set(key, { count: 1, categories: s.category ? [s.category] : [] });
-      }
-    }
+    // Skills are ids from the fixed vocabulary (`normalize/skills.ts`); they
+    // are already canonical, so there is no meta to collect for clustering.
   }
 
   return { mechMeta, skillMeta };
@@ -304,9 +289,7 @@ export function canonicalizeVocabulary(
     el.normalized.mechanics.map(m => m.name),
   ))].filter(t => t.length > 0);
 
-  const allUniqueSkills = [...new Set(elements.flatMap(el =>
-    el.normalized.skills.map(s => s.name),
-  ))].filter(t => t.length > 0);
+  const allUniqueSkills: string[] = [];
 
   const thesaurusCoveredMechs = new Set(allUniqueMechs.filter(t => thesaurusMap.has(t.toLowerCase())));
   const thesaurusCoveredSkills = new Set(allUniqueSkills.filter(t => thesaurusMap.has(t.toLowerCase())));

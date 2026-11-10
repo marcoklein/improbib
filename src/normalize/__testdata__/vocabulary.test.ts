@@ -6,14 +6,11 @@ import type { VocabularyMap } from "../llm-client";
 
 function makeElement(
   mechanics: string[] | { name: string; category?: string }[],
-  skills: string[] | { name: string; category?: string }[],
+  skills: NormalizedElement["normalized"]["skills"],
   overrides: Partial<NormalizedElement> = {},
 ): NormalizedElement {
   const mechArr = Array.isArray(mechanics)
     ? mechanics.map(m => typeof m === "string" ? { name: m } : m)
-    : [];
-  const skillArr = Array.isArray(skills)
-    ? skills.map(s => typeof s === "string" ? { name: s } : s)
     : [];
 
   return {
@@ -32,7 +29,7 @@ function makeElement(
       tips: [],
       referencedElements: [],
       mechanics: mechArr.map(m => ({ name: m.name, category: m.category as any })),
-      skills: skillArr.map(s => ({ name: s.name, category: s.category as any })),
+      skills,
       practical: {},
       contentHash: "",
       extractedAt: "",
@@ -47,13 +44,14 @@ function makeElement(
 describe("vocabulary", () => {
   it("collects unique terms", () => {
     const elements = [
-      makeElement(["freeze", "tap out"], ["listening", "spontaneity"]),
-      makeElement(["freeze", "stop signal"], ["active listening", "listening"]),
+      makeElement(["freeze", "tap out"], ["attention", "impulse"]),
+      makeElement(["freeze", "stop signal"], ["attention", "impulse"]),
     ];
 
     const terms = collectTerms(elements);
     expect(terms.mechanics.sort()).toEqual(["freeze", "stop signal", "tap out"]);
-    expect(terms.skills.sort()).toEqual(["active listening", "listening", "spontaneity"]);
+    // Skills are ids from the fixed vocabulary — nothing left to cluster.
+    expect(terms.skills).toEqual([]);
   });
 
   it("collects empty when no terms present", () => {
@@ -65,8 +63,8 @@ describe("vocabulary", () => {
 
   it("applies canonical terms", () => {
     const elements = [
-      makeElement(["freeze", "stop signal"], ["listening"]),
-      makeElement(["tap out"], ["active listening"]),
+      makeElement(["freeze", "stop signal"], ["attention"]),
+      makeElement(["tap out"], ["impulse"]),
     ];
 
     const vocab: VocabularyMap = {
@@ -88,10 +86,9 @@ describe("vocabulary", () => {
     expect(result[1].normalized.mechanics[0].name).toBe("tap out");
     expect(result[1].normalized.mechanics[0].originalName).toBeUndefined();
 
-    expect(result[0].normalized.skills[0].name).toBe("active listening");
-    expect(result[0].normalized.skills[0].originalName).toBe("listening");
-    expect(result[1].normalized.skills[0].name).toBe("active listening");
-    expect(result[1].normalized.skills[0].originalName).toBeUndefined();
+    // Ids are the canonical form; the vocabulary map never rewrites them.
+    expect(result[0].normalized.skills).toEqual(["attention"]);
+    expect(result[1].normalized.skills).toEqual(["impulse"]);
   });
 
   it("does not modify already-canonical terms", () => {
@@ -107,13 +104,13 @@ describe("vocabulary", () => {
   });
 
   it("handles empty vocabulary", () => {
-    const elements = [makeElement(["freeze"], ["listening"])];
+    const elements = [makeElement(["freeze"], ["attention"])];
     const vocab: VocabularyMap = { mechanics: [], skills: [] };
 
     const result = applyCanonicalTerms(elements, vocab);
     expect(result[0].normalized.mechanics[0].name).toBe("freeze");
     expect(result[0].normalized.mechanics[0].originalName).toBeUndefined();
-    expect(result[0].normalized.skills[0].name).toBe("listening");
+    expect(result[0].normalized.skills).toEqual(["attention"]);
   });
 });
 
@@ -182,15 +179,15 @@ describe("canonicalizeVocabulary", () => {
     expect(result.skills).toEqual([]);
   });
 
-  it("splits mechanics and skills into separate clusters", () => {
+  it("does not cluster skill ids", () => {
     const elements = [
-      makeElement(["freeze"], ["listening"]),
-      makeElement(["tap out"], ["spontaneity"]),
+      makeElement(["freeze"], ["attention"]),
+      makeElement(["tap out"], ["impulse"]),
     ];
 
     const result = canonicalizeVocabulary(elements);
     expect(result.mechanics.length).toBe(2);
-    expect(result.skills.length).toBe(2);
+    expect(result.skills).toEqual([]);
   });
 
   it("seeds translation-linked German→English mechanics", () => {

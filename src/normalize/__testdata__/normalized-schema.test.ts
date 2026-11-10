@@ -52,7 +52,7 @@ describe("normalized schema", () => {
       identifier: ID, name: "Concept", url: "https://example.com/c",
       sourceName: "ircwiki", languageCode: "en" as const, tags: ["concept"],
       htmlContent: "<p>concept</p>",
-      normalized: makeNorm({ howToPlay: null, tips: [{ text: "Tip", category: "general" as const }], skills: [{ name: "skill", category: "social" as const }] }),
+      normalized: makeNorm({ howToPlay: null, tips: [{ text: "Tip", category: "general" as const }], skills: ["attention"] }),
       derivedElements: [], relatedIdentifiers: [],
     };
     expect(normalizedElementSchema.safeParse(el).success).toBe(true);
@@ -89,7 +89,7 @@ describe("normalized schema", () => {
         tips: [{ text: "Tip", category: "pedagogical" as const }],
         referencedElements: [{ name: "Other", identifier: ID5, confidence: 0.9 }],
         mechanics: [{ name: "mech", originalName: "orig", category: "signal" as const }],
-        skills: [{ name: "skill", originalName: "orig", category: "social" as const }],
+        skills: ["attention"],
         practical: { difficulty: "beginner" as const, typicalDurationMinutes: 10, energyLevel: "high" as const, groupSize: { min: 2, max: 10 }, requiresPreparation: false, suitableFor: ["warmup", "performance"] as ("warmup" | "performance")[] },
       }),
       derivedElements: [{ name: "Derived", description: "A variant", parentIdentifier: ID }],

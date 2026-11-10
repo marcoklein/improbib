@@ -87,7 +87,7 @@ export function detectFillers(
       if (name) mechCounts.set(name, (mechCounts.get(name) || 0) + 1);
     }
     for (const s of el.normalized.skills) {
-      const name = s.name.toLowerCase().trim();
+      const name = s.toLowerCase().trim();
       if (name) skillCounts.set(name, (skillCounts.get(name) || 0) + 1);
     }
   }
@@ -534,8 +534,7 @@ export async function normalizeVocabularyStage(): Promise<void> {
     await Bun.write(srcPath, JSON.stringify(parsed.success ? parsed.data : data, null, 2));
 
     const changedCount = updated.filter((e: NormalizedElement) =>
-      e.normalized.mechanics.some(m => m.originalName) ||
-      e.normalized.skills.some(s => s.originalName),
+      e.normalized.mechanics.some(m => m.originalName),
     ).length;
     console.log(`  Updated ${source}: ${changedCount}/${updated.length} elements canonicalized`);
   }

@@ -5,7 +5,7 @@ import type { NormalizedElement } from "../normalized-schema";
 function makeElement(
   id: string,
   mechanics: { name: string; category?: string }[],
-  skills: { name: string; category?: string }[],
+  skills: NormalizedElement["normalized"]["skills"],
 ): NormalizedElement {
   return {
     identifier: id,
@@ -43,9 +43,9 @@ describe("detectFillers", () => {
 
   it("returns no warnings when no mechanic/skill appears above threshold", () => {
     const elements = [
-      makeElement("a1", [{ name: "freeze signal", category: "signal" }], [{ name: "acceptance", category: "social" }]),
-      makeElement("a2", [{ name: "alphabet constraint", category: "constraint" }], [{ name: "spontaneity", category: "cognitive" }]),
-      makeElement("a3", [{ name: "mirroring", category: "interaction" }], [{ name: "physicality", category: "physical" }]),
+      makeElement("a1", [{ name: "freeze signal", category: "signal" }], ["accepting"]),
+      makeElement("a2", [{ name: "alphabet constraint", category: "constraint" }], ["impulse"]),
+      makeElement("a3", [{ name: "mirroring", category: "interaction" }], ["physicality"]),
     ];
 
     const report = detectFillers(elements, 0.05);
@@ -68,14 +68,14 @@ describe("detectFillers", () => {
 
   it("detects a skill appearing above threshold", () => {
     const elements = [
-      makeElement("a1", [], [{ name: "HAROLD" }]),
-      makeElement("a2", [], [{ name: "harold" }]),
-      makeElement("a3", [], [{ name: "spontaneity" }]),
+      makeElement("a1", [], ["storytelling"]),
+      makeElement("a2", [], ["storytelling"]),
+      makeElement("a3", [], ["impulse"]),
     ];
 
     const report = detectFillers(elements, 0.05);
     expect(report.warnings.length).toBe(1);
-    expect(report.warnings[0].name).toBe("harold");
+    expect(report.warnings[0].name).toBe("storytelling");
     expect(report.warnings[0].field).toBe("skills");
     expect(report.warnings[0].count).toBe(2);
   });
@@ -125,7 +125,7 @@ describe("detectFillers", () => {
 
   it("ignores empty mechanic/skill names", () => {
     const elements = [
-      makeElement("a1", [{ name: "" }], [{ name: " " }]),
+      makeElement("a1", [{ name: "" }], []),
       makeElement("a2", [{ name: "  " }], []),
     ];
 

@@ -1,11 +1,23 @@
 import { z } from "zod";
+import { SKILL_IDS, toSkillId, type SkillId } from "./skills";
 
 const TipCategory = z.string();
 const MechanicCategory = z.string();
-const SkillCategory = z.string();
 const Difficulty = z.enum(["beginner", "intermediate", "advanced"]);
 const EnergyLevel = z.enum(["low", "medium", "high"]);
+/**
+ * Legacy free-text field from before the fixed skill vocabulary and the
+ * usage split. Kept optional so entries extracted earlier still parse; it is
+ * no longer asked for and no longer published.
+ */
 const SuitableFor = z.string();
+const SkillId = z.enum(SKILL_IDS);
+/**
+ * Where a work is used. "rehearsal" is the German "Probe" — the vocabulary
+ * avoids "workshop" on purpose, because the rehearsal is what a group
+ * actually plans.
+ */
+const Usage = z.enum(["rehearsal", "show"]);
 const howToPlayStepSchema = z.object({
   action: z.string(),
   role: z.string().optional(),
@@ -39,19 +51,48 @@ const mechanicSchema = z.object({
   category: MechanicCategory.optional(),
 });
 
-const skillSchema = z.object({
+/**
+ * A skill is an id from the fixed vocabulary (`./skills.ts`). Older
+ * extractions stored free-text objects (`{name, category}`); accepting them
+ * and mapping them to ids keeps a stored file readable after the vocabulary
+ * change instead of failing the schema of the whole element.
+ */
+const legacySkillSchema = z.object({
   name: z.string(),
   originalName: z.string().optional(),
-  category: SkillCategory.optional(),
+  category: z.string().optional(),
 });
+
+const skillsSchema = z
+  .array(z.union([SkillId, legacySkillSchema]))
+  .transform((items): SkillId[] => {
+    const ids = new Set<SkillId>();
+    for (const item of items) {
+      const id =
+        typeof item === "string" ? toSkillId(item) : toSkillId(item.name);
+      if (id) ids.add(id);
+    }
+    return [...ids];
+  });
 
 const practicalSchema = z.object({
   difficulty: Difficulty.optional(),
   typicalDurationMinutes: z.number().positive().optional(),
   energyLevel: EnergyLevel.optional(),
   groupSize: z.object({ min: z.number().optional(), max: z.number().optional() }).optional(),
+  /** @deprecated replaced by `usage`; only present on older extractions. */
   requiresPreparation: z.boolean().optional(),
+  /** @deprecated replaced by `usage`; only present on older extractions. */
   suitableFor: z.array(SuitableFor).optional(),
+  /** Where the work is used: rehearsal ("Probe"), show, or both. */
+  usage: z.array(Usage).optional(),
+  /**
+   * What must be in place before the work can start — material and
+   * prerequisites in one line, at most twelve words. Empty when nothing is
+   * needed. Deliberately a single field: "Material" and "Voraussetzung" were
+   * two labels for the same information.
+   */
+  requires: z.string().optional(),
 });
 
 const normalizedSchema = z.object({
@@ -62,7 +103,7 @@ const normalizedSchema = z.object({
   tips: z.array(tipSchema),
   referencedElements: z.array(referencedElementSchema),
   mechanics: z.array(mechanicSchema),
-  skills: z.array(skillSchema),
+  skills: skillsSchema,
   practical: practicalSchema,
   contentHash: z.string(),
   extractedAt: z.string(),
@@ -187,7 +228,82 @@ export function sanitizePractical(
       normalizeDifficulty(practical.difficulty) ?? undefined,
     energyLevel:
       normalizeEnergyLevel(practical.energyLevel) ?? undefined,
+    usage: sanitizeUsage(practical.usage) ?? usageFromLegacy(practical.suitableFor),
+    requires: sanitizeRequires(practical.requires),
   };
+}
+
+/** Only the three words the UI understands, de-duplicated, in a stable order. */
+export function sanitizeUsage(value: unknown): ("rehearsal" | "show")[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<"rehearsal" | "show">();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const normalized = item.trim().toLowerCase();
+    if (normalized === "rehearsal" || normalized === "probe") seen.add("rehearsal");
+    if (
+      normalized === "show" ||
+      normalized === "performance" ||
+      normalized === "stage"
+    ) {
+      seen.add("show");
+    }
+  }
+  if (seen.size === 0) return undefined;
+  return (["rehearsal", "show"] as const).filter((usage) => seen.has(usage));
+}
+
+/**
+ * Maps the old free-text `suitableFor` onto the two usages. The old values
+ * mixed the setting with the purpose (`warmup`, `exercise`, `workshop`); all
+ * of them are rehearsal contexts, `performance` and `encore` are the show.
+ */
+function usageFromLegacy(
+  suitableFor: unknown
+): ("rehearsal" | "show")[] | undefined {
+  if (!Array.isArray(suitableFor)) return undefined;
+  const usages = new Set<"rehearsal" | "show">();
+  for (const item of suitableFor) {
+    if (typeof item !== "string") continue;
+    const value = item.trim().toLowerCase();
+    if (["performance", "encore", "show", "stage"].includes(value)) {
+      usages.add("show");
+    }
+    if (["warmup", "exercise", "workshop", "rehearsal", "probe"].includes(value)) {
+      usages.add("rehearsal");
+    }
+  }
+  if (usages.size === 0) return undefined;
+  return (["rehearsal", "show"] as const).filter((usage) => usages.has(usage));
+}
+
+const EMPTY_REQUIRES = new Set(["", "nichts", "keine", "kein", "none", "nothing", "no"]);
+
+/**
+ * The single prerequisite line. Empty answers mean "nothing needed" and are
+ * dropped, so the UI does not show a line that says nothing.
+ */
+export function sanitizeRequires(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim().replace(/[.\s]+$/, "");
+  if (EMPTY_REQUIRES.has(trimmed.toLowerCase())) return undefined;
+  return trimmed || undefined;
+}
+
+/** Skill ids only, de-duplicated, unknown phrases dropped. */
+export function sanitizeSkills(value: unknown): SkillId[] {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set<SkillId>();
+  for (const item of value) {
+    const id =
+      typeof item === "string"
+        ? toSkillId(item)
+        : item && typeof item === "object" && "name" in item
+          ? toSkillId((item as { name: unknown }).name)
+          : undefined;
+    if (id) ids.add(id);
+  }
+  return [...ids];
 }
 
 /**
@@ -239,8 +355,12 @@ export type NormalizedSource = z.infer<typeof normalizedSourceSchema>;
  * actually gives, never a restatement of a step or the description. Without a
  * bump the old extractions would stay cached forever, because the cache key is
  * content hash + contract version, not the prompt hash.
+ *
+ * Bumped again for the vocabulary contract: skills are ids from
+ * `normalize/skills.ts`, and `practical.usage` / `practical.requires` replace
+ * the free-text `suitableFor` and the separate preparation flag.
  */
-const NORMALIZED_CONTRACT_VERSION = "b41c7d0e5f8a4962a1d3c6e9f0b27d54";
+const NORMALIZED_CONTRACT_VERSION = "7e2f4a9c1b6d8053c4e7a2f9b1d63058";
 
 export function getNormalizedBy(): string {
   return NORMALIZED_CONTRACT_VERSION;

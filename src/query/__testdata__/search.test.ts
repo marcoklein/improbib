@@ -35,9 +35,7 @@ function makeMockElement(
       mechanics: overrides.normalized?.mechanics || [
         { name: "circle formation", category: "setup" },
       ],
-      skills: overrides.normalized?.skills || [
-        { name: "focus", category: "cognitive" },
-      ],
+      skills: overrides.normalized?.skills || ["attention"],
       practical: overrides.normalized?.practical || {
         difficulty: "beginner",
         typicalDurationMinutes: 5,
@@ -108,7 +106,7 @@ beforeAll(() => {
           { name: "Yes, and", category: "interaction" },
           { name: "acceptance", category: "philosophy" },
         ],
-        skills: [{ name: "active listening", category: "interaction" }],
+        skills: ["attention"],
         practical: {
           difficulty: "beginner",
           typicalDurationMinutes: 10,
@@ -142,7 +140,7 @@ beforeAll(() => {
         tips: [],
         referencedElements: [],
         mechanics: [{ name: "eyes closed", category: "constraint" }],
-        skills: [{ name: "active listening", category: "interaction" }],
+        skills: ["attention"],
         practical: {
           difficulty: "beginner",
           typicalDurationMinutes: 10,
@@ -179,10 +177,7 @@ beforeAll(() => {
           { name: "word-at-a-time", category: "interaction" },
           { name: "circle formation", category: "setup" },
         ],
-        skills: [
-          { name: "storytelling", category: "narrative" },
-          { name: "active listening", category: "interaction" },
-        ],
+        skills: ["storytelling", "attention"],
         practical: {
           difficulty: "intermediate",
           typicalDurationMinutes: 15,
@@ -216,7 +211,7 @@ beforeAll(() => {
         tips: [],
         referencedElements: [],
         mechanics: [{ name: "status play", category: "character" }],
-        skills: [{ name: "character work", category: "performance" }],
+        skills: ["status"],
         practical: {
           difficulty: "intermediate",
           typicalDurationMinutes: 20,
@@ -254,7 +249,7 @@ beforeAll(() => {
           { name: "acceptance", category: "philosophy" },
           { name: "yes-and", category: "interaction" },
         ],
-        skills: [{ name: "spontaneity", category: "performance" }],
+        skills: ["impulse"],
         practical: {
           difficulty: "beginner",
           typicalDurationMinutes: 5,
@@ -323,7 +318,7 @@ beforeAll(() => {
         tips: [],
         referencedElements: [],
         mechanics: [{ name: "Ja, und", category: "interaction" }],
-        skills: [{ name: "aktives Zuhören", category: "interaction" }],
+        skills: ["attention"],
         practical: {
           difficulty: "beginner",
           typicalDurationMinutes: 10,

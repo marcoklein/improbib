@@ -3,7 +3,11 @@ import {
   isUsableNormalization,
   normalizeDifficulty,
   normalizeEnergyLevel,
+  sanitizeRequires,
+  sanitizeSkills,
+  sanitizeUsage,
 } from "./normalized-schema";
+import { skillPromptList } from "./skills";
 import { dropRedundantTips } from "./tip-redundancy";
 import { createHash } from "crypto";
 import { buildStyleCorrection, collectStyleViolations } from "./style-validator";
@@ -53,16 +57,28 @@ Return ONLY valid JSON matching this structure:
   "tips": [{"text": "tip", "category": "pedagogical|staging|safety|group-dynamic|failure-mode|general"}],
   "referencedElements": [{"name": "as it appears in text"}],
   "mechanics": [{"name": "canonical name", "category": "constraint|signal|role|structure|interaction (optional)"}],
-  "skills": [{"name": "canonical name", "category": "social|physical|cognitive|narrative|vocal (optional)"}],
-  "practical": {"difficulty": "beginner|intermediate|advanced (optional)", "typicalDurationMinutes": number (optional), "energyLevel": "low|medium|high (optional)", "groupSize": {"min": number (optional), "max": number (optional)} (optional), "requiresPreparation": boolean (optional), "suitableFor": ["warmup|exercise|performance|encore|workshop"] (optional)}
+  "skills": ["impulse", "status"],
+  "practical": {"difficulty": "beginner|intermediate|advanced (optional)", "typicalDurationMinutes": number (optional), "energyLevel": "low|medium|high (optional)", "groupSize": {"min": number (optional), "max": number (optional)} (optional), "usage": ["rehearsal", "show"], "requires": "one line, at most 12 words (optional)"}
 }
+
+SKILL VOCABULARY — skills are ids from this fixed list, nothing else:
+${skillPromptList()}
 
 RULES:
 - howToPlay is null ONLY for: theoretical concepts ("Game", "Status" as improv theory), parent index pages listing multiple games, or bare audience ask-for prompts. Everything else (games, exercises, warm-ups, show formats, handles) MUST have structured steps.
 - A show format (Harold, Deconstruction) is ONE atomic element. Its howToPlay describes multiple phases — that is correct. NEVER split a show format.
 - When a page describes MULTIPLE independent games under separate headings, split them: return an array with the parent index element first (howToPlay: null, referencedElements populated with children), then each child element (splitFrom set to parent's identifier, full fields extracted). Parent gets description summarizing the category. Children get names from their section headings.
-- Extract mechanics (reusable building blocks like "freeze signal", "tap out", "alphabet constraint", "translation gimmick") and skills (competencies like "active listening", "spontaneity", "group mind").
-- Extract practical metadata when the content suggests it: difficulty, typical duration, energy level, group size, preparation requirements, suitable contexts.
+- Extract mechanics (reusable building blocks like "freeze signal", "tap out", "alphabet constraint", "translation gimmick").
+- SKILLS — pick only what the work actually trains, at most four, using the ids above:
+  * A skill describes what a player does on stage, not what the scene is about. A crime story trains "storytelling", not "crime".
+  * Use the definition to choose between similar ids, and never invent an id or a phrase.
+  * Leave the skill out when the work only mentions it in passing. Two certain skills beat five guessed ones.
+- USAGE — where the work belongs:
+  * "rehearsal" (German "Probe"): the group trains with it. This is the default for exercises and warm-ups.
+  * "show": it can be performed in front of an audience. Add it when the source mentions a performance, a show, an audience, or when the work is a show format.
+  * A work that is performed but also drilled in rehearsal gets both. Always give at least one.
+- REQUIRES — what must be in place before the work can start: material, space, an established skill. One line, at most twelve words, imperative-free ("Zettel mit Nummern 1–4", "eingespieltes Ensemble, drei Stühle"). Do not repeat group size, duration or difficulty — those are separate fields. Omit the field when nothing is needed.
+- Extract practical metadata when the content suggests it: difficulty, typical duration, energy level, group size.
 - For <a href="..."> links to other wiki pages: extract the page name into referencedElements. Do NOT generate identifiers — just the name as it appears.
 - TIPS — tips are optional. Only extract advice the source actually gives: a hints/notes/tips section, common mistakes, teaching guidance, or an explicit insight into why the game is hard and how to make it work.
   * A tip must add something the steps and the description do not already say. Never paraphrase a step, a rule or the description into a tip.
@@ -449,10 +465,7 @@ function coerceElement(raw: any): NormalizedElement {
         name: typeof m === "string" ? m : String(m.name || ""),
         category: typeof m === "object" && m.category ? String(m.category) : undefined,
       })),
-      skills: (raw.skills || []).map((s: any) => ({
-        name: typeof s === "string" ? s : String(s.name || ""),
-        category: typeof s === "object" && s.category ? String(s.category) : undefined,
-      })),
+      skills: sanitizeSkills(raw.skills),
       practical: coercePractical(raw.practical),
       contentHash: "",
       normalizedBy: "",
@@ -493,7 +506,8 @@ function coercePractical(raw: any): any {
       ? { min: typeof raw.groupSize.min === "number" ? raw.groupSize.min : undefined, max: typeof raw.groupSize.max === "number" ? raw.groupSize.max : undefined }
       : undefined,
     requiresPreparation: typeof raw.requiresPreparation === "boolean" ? raw.requiresPreparation : undefined,
-    suitableFor: Array.isArray(raw.suitableFor) ? raw.suitableFor : undefined,
+    usage: sanitizeUsage(raw.usage),
+    requires: sanitizeRequires(raw.requires),
   };
 }
 

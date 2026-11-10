@@ -1,5 +1,6 @@
 import { z, type TypeOf } from "zod";
 import { MARKDOWN_MAX_CHARS } from "../scraping/shared/markdown-limit";
+import { SKILL_IDS } from "../normalize/skills";
 
 const MD5_LENGTH = 32;
 
@@ -15,6 +16,8 @@ const artifactPracticalSchema = z.object({
     .optional(),
   requiresPreparation: z.boolean().optional(),
   suitableFor: z.array(z.string()).optional(),
+  usage: z.array(z.enum(["rehearsal", "show"])).optional(),
+  requires: z.string().optional(),
 });
 
 const artifactStepSchema = z.object({
@@ -36,7 +39,10 @@ export const artifactNormalizedSchema = z.object({
     .nullable(),
   practical: artifactPracticalSchema,
   mechanics: z.array(z.string()),
-  skills: z.array(z.string()),
+  skills: z.array(z.enum(SKILL_IDS)),
+  categories: z.array(
+    z.enum(["warmup", "exercise", "game", "format", "concept", "audienceQuestion"])
+  ),
   tips: z.array(z.object({ text: z.string(), category: z.string() })),
   referencedElements: z.array(
     z.object({

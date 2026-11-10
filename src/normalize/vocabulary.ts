@@ -5,20 +5,18 @@ import { canonicalizeVocabulary } from "./vocab-cluster";
 
 export function collectTerms(elements: NormalizedElement[]): { mechanics: string[]; skills: string[] } {
   const mechanics = new Set<string>();
-  const skills = new Set<string>();
 
   for (const el of elements) {
     for (const m of el.normalized.mechanics) {
       if (m.name) mechanics.add(m.name);
     }
-    for (const s of el.normalized.skills) {
-      if (s.name) skills.add(s.name);
-    }
   }
 
+  // Skills are ids from the fixed vocabulary (`normalize/skills.ts`). There
+  // is nothing to cluster, so they are not part of the canonicalization step.
   return {
     mechanics: [...mechanics].sort(),
-    skills: [...skills].sort(),
+    skills: [],
   };
 }
 
@@ -37,7 +35,6 @@ function buildTermMap(clusters: { canonical: string; variants: string[] }[]): Ma
 
 export function applyCanonicalTerms(elements: NormalizedElement[], vocab: VocabularyMap): NormalizedElement[] {
   const mechMap = buildTermMap(vocab.mechanics);
-  const skillMap = buildTermMap(vocab.skills);
 
   return elements.map(el => ({
     ...el,
@@ -54,17 +51,8 @@ export function applyCanonicalTerms(elements: NormalizedElement[], vocab: Vocabu
         }
         return m;
       }),
-      skills: el.normalized.skills.map(s => {
-        const canonical = skillMap.get(s.name.toLowerCase());
-        if (canonical && canonical !== s.name) {
-          return { ...s, originalName: s.name, name: canonical };
-        }
-        if (s.originalName) {
-          const { originalName: _, ...rest } = s;
-          return rest;
-        }
-        return s;
-      }),
+      // Skill ids are already canonical — leave them untouched.
+      skills: el.normalized.skills,
     },
   }));
 }

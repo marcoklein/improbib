@@ -20,7 +20,7 @@ function makeMockElement(overrides: Partial<NormalizedElement> = {}): Normalized
       tips: [],
       referencedElements: [],
       mechanics: [{ name: "circle formation", category: "setup" }],
-      skills: [{ name: "focus", category: "cognitive" }],
+      skills: ["attention"],
       practical: { difficulty: "beginner", typicalDurationMinutes: 5, groupSize: { min: 4, max: 12 } },
       contentHash: "hash123",
       extractedAt: "2026-01-01T00:00:00.000Z",
