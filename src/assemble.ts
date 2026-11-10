@@ -4,7 +4,7 @@ import { applyDedupOverrides, loadOverrides } from "./graph/overrides";
 import type { Override } from "./graph/overrides";
 import type { NormalizedElement } from "./normalize/normalized-schema";
 import { buildPublishedArtifact } from "./publish/build-artifact";
-import type { ArtifactWork } from "./publish/build-artifact";
+import type { ArtifactSkill, ArtifactWork } from "./publish/build-artifact";
 import {
   applyWorkNormalizations,
   type WorkNormalization,
@@ -129,6 +129,7 @@ export async function assemble() {
     meta: Record<string, any>;
     elements: ElementType[];
     works?: ArtifactWork[];
+    skills?: ArtifactSkill[];
     collections?: {
       id: string;
       name: string;
@@ -334,6 +335,7 @@ export async function assemble() {
 
     allOutputs.elements = published.elements;
     allOutputs.works = published.works;
+    allOutputs.skills = published.skills;
     allOutputs.meta.schemaVersion = 2;
     allOutputs.meta.works = {
       workCount: published.works.length,
@@ -366,6 +368,7 @@ export async function assemble() {
     ...parsed,
     meta: allOutputs.meta,
     works: allOutputs.works,
+    skills: allOutputs.skills,
     collections: allOutputs.collections,
   };
 }

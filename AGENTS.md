@@ -33,6 +33,7 @@ bun test                   # run tests (bun:test)
 - Scraper pipeline in `src/scrape-improwiki.ts` scrapes improwiki.com, follows translation links, processes HTML→Markdown, and writes output
 - `src/publish/` is the published model: `build-works.ts` aggregates source elements into language-homogeneous works (canonical member, translation group, variant links) and `build-artifact.ts` joins them with normalized content
 - `src/assemble.ts` writes `output/improbib.json` (schemaVersion 2: `elements` + `works` + `collections`)
+- The artifact ships the skill vocabulary as top-level `skills[]` (`id`, `de`, `en`, `definitionDe`, `definitionEn`), sourced from `src/normalize/skills.ts`
 - `src/split/` detects pages that describe several independent games: LLM audit, deterministic guards for version/category headings, children in `output/splits/*.json`, normalized children in `output/normalized-splits/*.json` (ADR-0015)
 - Collection pages are removed from `elements`; the top-level `collections[]` keeps `id`, `name`, `url` and `childIds`
 - Normalization layer in `src/normalize/` — 3-stage pipeline (LLM extraction, vocabulary canonicalization, cross-source dedup) per ADR-0008, ADR-0009, ADR-0011.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { NormalizedElement } from "../normalize/normalized-schema";
+import { SKILL_IDS } from "../normalize/skills";
 import type { ElementType } from "../scraping/shared/element-type";
 import { buildPublishedArtifact } from "./build-artifact";
 import type { ArtifactNormalized } from "./build-artifact";
@@ -210,6 +211,38 @@ describe("buildPublishedArtifact", () => {
       false
     );
     expect(artifact.elements[0].canonicalId).toBeDefined();
+  });
+
+  test("ships the skill vocabulary with labels and definitions", () => {
+    // Consumers render `normalized.skills` ids; the labels and definitions
+    // must travel with the artifact instead of being duplicated there.
+    const id = "5".repeat(32);
+    const raw = makeRaw({
+      identifier: id,
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+    });
+    const norm = makeNormalized({
+      identifier: id,
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+    });
+
+    const artifact = buildPublishedArtifact({
+      elements: [raw],
+      normalized: [norm],
+      works: buildWorks([norm]),
+    });
+
+    expect(artifact.skills).toHaveLength(10);
+    expect(artifact.skills.map((skill) => skill.id)).toEqual([...SKILL_IDS]);
+    expect(new Set(artifact.skills.map((skill) => skill.id)).size).toBe(10);
+    for (const skill of artifact.skills) {
+      expect(skill.de.trim()).not.toBe("");
+      expect(skill.en.trim()).not.toBe("");
+      expect(skill.definitionDe.trim()).not.toBe("");
+      expect(skill.definitionEn.trim()).not.toBe("");
+    }
   });
 
   test("omits an empty normalization instead of publishing a blank summary", () => {

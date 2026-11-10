@@ -99,6 +99,18 @@ export const artifactWorkSchema = z.object({
   variations: z.array(artifactVariationSchema),
 });
 
+/**
+ * One entry of the published skill vocabulary. Future vocabulary additions are
+ * additive, so consumers should tolerate ids they do not know yet.
+ */
+export const artifactSkillSchema = z.object({
+  id: z.enum(SKILL_IDS),
+  de: z.string().min(1),
+  en: z.string().min(1),
+  definitionDe: z.string().min(1),
+  definitionEn: z.string().min(1),
+});
+
 export const improbibSchema = z.object({
   elements: z
     .array(
@@ -145,6 +157,11 @@ export const improbibSchema = z.object({
     .min(400)
     .max(3000),
   works: z.array(artifactWorkSchema).optional(),
+  /**
+   * The fixed skill vocabulary, shipped so `normalized.skills` ids can be
+   * rendered. Absent on artifacts assembled before the vocabulary existed.
+   */
+  skills: z.array(artifactSkillSchema).optional(),
   collections: z
     .array(
       z.object({

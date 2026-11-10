@@ -1,5 +1,7 @@
 import type { NormalizedElement } from "../normalize/normalized-schema";
 import { sanitizePractical, sanitizeSkills } from "../normalize/normalized-schema";
+import { SKILLS } from "../normalize/skills";
+import type { SkillId } from "../normalize/skills";
 import { deriveCategories } from "./categories";
 import { dropRedundantTips } from "../normalize/tip-redundancy";
 import type { ElementType } from "../scraping/shared/element-type";
@@ -56,9 +58,23 @@ export interface ArtifactWork {
   variations: PublishedVariation[];
 }
 
+/**
+ * One entry of the fixed skill vocabulary. Published alongside the elements so
+ * a consumer can render the label and definition of every `normalized.skills`
+ * id without hard-coding the list.
+ */
+export interface ArtifactSkill {
+  id: SkillId;
+  de: string;
+  en: string;
+  definitionDe: string;
+  definitionEn: string;
+}
+
 export interface PublishedArtifact {
   elements: ElementType[];
   works: ArtifactWork[];
+  skills: ArtifactSkill[];
 }
 
 function toArtifactNormalized(
@@ -125,6 +141,20 @@ function toArtifactSource(element: {
     authors: element.authors ?? [],
     lastModified: element.lastModified,
   };
+}
+
+/**
+ * The skill vocabulary exactly as `src/normalize/skills.ts` defines it. Copy,
+ * not reference: the artifact is serialized, and consumers get a plain array.
+ */
+function toArtifactSkills(): ArtifactSkill[] {
+  return SKILLS.map((skill) => ({
+    id: skill.id,
+    de: skill.de,
+    en: skill.en,
+    definitionDe: skill.definitionDe,
+    definitionEn: skill.definitionEn,
+  }));
 }
 
 /**
@@ -230,5 +260,5 @@ export function buildPublishedArtifact(params: {
     }
   }
 
-  return { elements: params.elements, works };
+  return { elements: params.elements, works, skills: toArtifactSkills() };
 }
