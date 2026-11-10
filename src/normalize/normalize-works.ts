@@ -11,13 +11,23 @@ import { ACTIVE_SOURCES } from "../sources";
  * `work-merges.json`, so the extraction sees every source of a work at once
  * instead of merging finished (and diverging) per-page extractions later.
  */
-interface RawSourceElement {
+export interface RawSourceElement {
   identifier: string;
   name: string;
   sourceName: string;
   url: string;
   languageCode: "de" | "en";
+  tags?: string[];
   htmlContent?: string;
+  translationLinkEn?: string;
+  translationLinkDe?: string;
+  translationLinkEnIdentifier?: string;
+  translationLinkDeIdentifier?: string;
+  playerCountMin?: number;
+  playerCountMax?: number;
+  categories?: string[];
+  postTags?: string[];
+  lastModified?: string;
 }
 
 interface WorkMergeEntry {
@@ -169,25 +179,90 @@ export function isReusableWorkNormalization(
   );
 }
 
-async function loadPreviousWorkNormalizations(): Promise<
-  Map<string, WorkNormalizationRecord>
+async function readWorkNormalizationsFile(): Promise<
+  WorkNormalizationsFile | undefined
 > {
-  const result = new Map<string, WorkNormalizationRecord>();
   const prevPath = path.join(
     process.cwd(),
     "output",
     "normalized-works.json"
   );
   const file = Bun.file(prevPath);
-  if (!(await file.exists())) return result;
+  if (!(await file.exists())) return undefined;
 
   try {
-    const data = (await file.json()) as WorkNormalizationsFile;
-    for (const work of data.works ?? []) result.set(work.id, work);
+    return (await file.json()) as WorkNormalizationsFile;
   } catch {
     // A corrupt file is no cache — start over.
+    return undefined;
+  }
+}
+
+async function loadPreviousWorkNormalizations(): Promise<
+  Map<string, WorkNormalizationRecord>
+> {
+  const result = new Map<string, WorkNormalizationRecord>();
+  const data = await readWorkNormalizationsFile();
+  for (const work of data?.works ?? []) result.set(work.id, work);
+  return result;
+}
+
+/**
+ * The merged block of every work member, keyed by member id. Empty when the
+ * works stage has not run yet; the per-source stage then has nothing to add.
+ */
+export async function loadWorkNormalizations(): Promise<
+  Map<string, NormalizedElement["normalized"]>
+> {
+  const result = new Map<string, NormalizedElement["normalized"]>();
+  const data = await readWorkNormalizationsFile();
+  for (const work of data?.works ?? []) {
+    for (const memberId of work.memberIds) {
+      result.set(memberId, work.normalized);
+    }
   }
   return result;
+}
+
+/**
+ * A complete per-source element whose content is the one merged work
+ * extraction.
+ *
+ * The per-source stage skips merged members, so without this they would vanish
+ * from `output/normalized/<source>.json` once that file is rewritten — and the
+ * assembly step would have no element left to attach the work to. Returning
+ * `undefined` for a missing block keeps the old skip behavior when the works
+ * stage has not run yet.
+ */
+export function buildWorkMember(
+  element: RawSourceElement,
+  normalized: NormalizedElement["normalized"] | undefined
+): NormalizedElement | undefined {
+  if (!normalized) return undefined;
+
+  return {
+    identifier: element.identifier,
+    name: element.name,
+    url: element.url,
+    sourceName: element.sourceName,
+    languageCode: element.languageCode,
+    tags: element.tags ?? [],
+    htmlContent: element.htmlContent ?? "",
+    translationLinkEn: element.translationLinkEn,
+    translationLinkDe: element.translationLinkDe,
+    translationLinkEnIdentifier: element.translationLinkEnIdentifier,
+    translationLinkDeIdentifier: element.translationLinkDeIdentifier,
+    playerCountMin: element.playerCountMin,
+    playerCountMax: element.playerCountMax,
+    categories: element.categories,
+    postTags: element.postTags,
+    lastModified: element.lastModified,
+    // Keep the work's contentHash/extractedAt/normalizedBy untouched: the
+    // cache key belongs to the unit, not to the member page.
+    normalized,
+    derivedElements: [],
+    relatedIdentifiers: [],
+  };
 }
 
 function buildOutput(

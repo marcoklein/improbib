@@ -8,7 +8,12 @@ import {
   isUsableNormalization,
 } from "./normalized-schema";
 import { createOpencodeGoClient, getConfiguredModels, getPromptHash } from "./llm-client";
-import { loadWorkMergeGroups, normalizeWorksStage } from "./normalize-works";
+import {
+  buildWorkMember,
+  loadWorkMergeGroups,
+  loadWorkNormalizations,
+  normalizeWorksStage,
+} from "./normalize-works";
 import { ACTIVE_SOURCES } from "../sources";
 
 interface DroppedElement {
@@ -203,12 +208,27 @@ async function normalizeSource(
   options?: { maxElements?: number },
 ): Promise<{ elements: NormalizedElement[]; anyElementChanged: boolean; droppedCount: number }> {
   const { elements: rawElements } = await loadRaw(sourceName);
-  const elements = options?.maxElements ? rawElements.slice(0, options.maxElements) : rawElements;
+
+  // Deliberate test hook: restrict a source to a few identifiers so a single
+  // member can be exercised without a full extraction. Debugging only.
+  const onlyIds = (process.env.NORMALIZE_ONLY_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const restricted =
+    onlyIds.length > 0
+      ? rawElements.filter((element) => onlyIds.includes(element.identifier))
+      : rawElements;
+  const elements = options?.maxElements
+    ? restricted.slice(0, options.maxElements)
+    : restricted;
+
   const schemaHash = getNormalizedBy();
   const configuredModels = getConfiguredModels();
   // These pages are extracted once per work by `normalizeWorksStage`. Doing it
   // here as well would only create a second walkthrough to override.
   const mergedMemberIds = new Set((await loadWorkMergeGroups()).flat());
+  const mergedWorkBlocks = await loadWorkNormalizations();
 
   currentProgress = {
     sourceName,
@@ -285,9 +305,16 @@ async function normalizeSource(
       const contentHash = hashContent(el.htmlContent || "");
 
       // Member of a reviewed work merge: the merged stage owns its content.
-      // Not added to this output, but existing entries stay untouched so an
-      // earlier per-source run remains readable until the works stage runs.
+      // Carry the merged block into this file, otherwise rewriting the file
+      // below would delete the member and the work would lose its element.
+      // Without a block (works stage not run yet) the page is skipped as
+      // before.
       if (mergedMemberIds.has(el.identifier)) {
+        const merged = buildWorkMember(
+          el,
+          mergedWorkBlocks.get(el.identifier)
+        );
+        if (merged) normalizedMap.set(el.identifier, merged);
         skipped++;
         dispatched++;
         updateProgress();
@@ -587,6 +614,8 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const maxElements = process.env.NORMALIZE_MAX ? parseInt(process.env.NORMALIZE_MAX) : undefined;
   const maxWorks = process.env.NORMALIZE_MAX_WORKS ? parseInt(process.env.NORMALIZE_MAX_WORKS) : undefined;
+  const sourceIndex = args.indexOf("--source");
+  const source = sourceIndex >= 0 ? args[sourceIndex + 1] : undefined;
 
   if (args.includes("--works")) {
     normalizeWorksStage({ maxWorks, dryRun: args.includes("--dry-run") }).catch((err) => {
@@ -609,7 +638,7 @@ if (import.meta.main) {
       process.exit(1);
     });
   } else {
-    normalizeAll({ maxElements }).catch((err) => {
+    normalizeAll({ maxElements, source }).catch((err) => {
       console.error("Normalization failed:", err);
       process.exit(1);
     });
