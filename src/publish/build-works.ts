@@ -159,10 +159,26 @@ function createUnionFind(ids: Iterable<string>): UnionFind {
 
 function buildSameLanguageClusters(
   elements: NormalizedElement[],
-  minConfidence: number
+  minConfidence: number,
+  mergeGroups: string[][] = []
 ): NormalizedElement[][] {
   const byId = new Map(elements.map((element) => [element.identifier, element]));
   const unionFind = createUnionFind(byId.keys());
+
+  // Curated merge decisions seed the clustering: the reviewed pages are one
+  // work even when their dedup confidence would keep them apart. The language
+  // guard is still applied, so a bad entry cannot collapse a DE/EN pair.
+  for (const group of mergeGroups) {
+    const members = group
+      .map((id) => byId.get(id))
+      .filter((element): element is NormalizedElement => Boolean(element));
+    const first = members[0];
+    if (!first) continue;
+    for (const member of members) {
+      if (member.languageCode !== first.languageCode) continue;
+      unionFind.union(first.identifier, member.identifier);
+    }
+  }
 
   for (const element of elements) {
     for (const relation of element.relatedIdentifiers) {
@@ -397,10 +413,19 @@ export function buildWorks(
      * works after clustering.
      */
     parentLinks?: { childElementId: string; parentElementId: string }[];
+    /**
+     * Reviewed work merges from `work-merges.json`. Every group becomes one
+     * work, independent of the `relatedIdentifiers` confidence.
+     */
+    mergeGroups?: string[][];
   }
 ): PublishedWork[] {
   const minConfidence = options?.minConfidence ?? MIN_CLUSTER_CONFIDENCE;
-  const clusters = buildSameLanguageClusters(elements, minConfidence);
+  const clusters = buildSameLanguageClusters(
+    elements,
+    minConfidence,
+    options?.mergeGroups
+  );
 
   const elementToWork = new Map<string, string>();
   const works: (PublishedWork & {

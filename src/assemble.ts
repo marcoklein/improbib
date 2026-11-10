@@ -5,7 +5,12 @@ import type { Override } from "./graph/overrides";
 import type { NormalizedElement } from "./normalize/normalized-schema";
 import { buildPublishedArtifact } from "./publish/build-artifact";
 import type { ArtifactWork } from "./publish/build-artifact";
+import {
+  applyWorkNormalizations,
+  type WorkNormalization,
+} from "./publish/apply-work-normalizations";
 import { buildWorks } from "./publish/build-works";
+import { loadWorkMergeGroups } from "./normalize/normalize-works";
 import type { ElementType } from "./scraping/shared/element-type";
 import { mergeElements } from "./scraping/shared/merge-elements";
 import { truncateMarkdown } from "./scraping/shared/markdown-limit";
@@ -35,6 +40,27 @@ async function loadNormalized(): Promise<NormalizedElement[]> {
   }
 
   return elements;
+}
+
+/**
+ * The merged per-work extractions. Optional: a run before the works stage
+ * still publishes, it just keeps the per-source content.
+ */
+async function loadWorkNormalizations(): Promise<WorkNormalization[]> {
+  try {
+    const data = JSON.parse(
+      await fs.readFile(
+        path.join(process.cwd(), "output", "normalized-works.json"),
+        "utf-8"
+      )
+    );
+    return (data.works ?? []) as WorkNormalization[];
+  } catch {
+    console.warn(
+      "normalized-works.json not found, works keep their per-source content"
+    );
+    return [];
+  }
 }
 
 async function loadSplits(): Promise<
@@ -265,12 +291,20 @@ export async function assemble() {
     publishedIds.has(element.identifier)
   );
 
-  if (usableNormalized.length > 0) {
+  // One merged extraction per work, copied onto every member so an element
+  // consumer sees the same walkthrough as the work.
+  const workNormalizations = await loadWorkNormalizations();
+  const withWorkNormalizations = applyWorkNormalizations(
+    usableNormalized,
+    workNormalizations
+  );
+
+  if (withWorkNormalizations.length > 0) {
     const overrides = await loadOverrides(
       path.join(process.cwd(), "graph-overrides.json")
     );
     const { elements: overriddenElements } = applyDedupOverrides(
-      usableNormalized,
+      withWorkNormalizations,
       overrides
     );
     const parentLinks = overrides
@@ -288,7 +322,10 @@ export async function assemble() {
         parentElementId: override.toElementId,
       }));
 
-    const works = buildWorks(overriddenElements, { parentLinks });
+    const works = buildWorks(overriddenElements, {
+      parentLinks,
+      mergeGroups: await loadWorkMergeGroups(),
+    });
     const published = buildPublishedArtifact({
       elements: allOutputs.elements,
       normalized: overriddenElements,

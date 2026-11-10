@@ -286,4 +286,46 @@ describe("buildWorks", () => {
     // Exactly one of the two links is kept, never a chain.
     expect([beta?.parentWorkId, gamma?.parentWorkId].filter(Boolean)).toHaveLength(1);
   });
+
+  test("merges a reviewed work group regardless of relation confidence", () => {
+    const improwiki = makeElement({ name: "Machine", sourceName: "improwiki" });
+    const learnimprov = makeElement({ name: "Machine", sourceName: "learnimprov" });
+    const another = makeElement({ name: "Machines", sourceName: "learnimprov" });
+
+    const works = buildWorks([improwiki, learnimprov, another], {
+      mergeGroups: [[improwiki.identifier, learnimprov.identifier, another.identifier]],
+    });
+
+    expect(works).toHaveLength(1);
+    expect(works[0].memberIds).toEqual(
+      [improwiki.identifier, learnimprov.identifier, another.identifier].sort()
+    );
+    // The existing canonical scoring still picks the member.
+    expect(works[0].canonicalElementId).toBe(improwiki.identifier);
+  });
+
+  test("a merged work never spans languages", () => {
+    const en = makeElement({
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+      languageCode: "en",
+    });
+    const de = makeElement({
+      name: "Freeze Tag",
+      sourceName: "learnimprov",
+      languageCode: "de",
+    });
+    en.translationLinkDeIdentifier = de.identifier;
+    de.translationLinkEnIdentifier = en.identifier;
+
+    const works = buildWorks([en, de], {
+      mergeGroups: [[en.identifier, de.identifier]],
+    });
+
+    expect(works).toHaveLength(2);
+    expect(works.every((work) => work.memberIds.length === 1)).toBe(true);
+    // Translation linking still connects the two language works.
+    expect(works[0].translationId).toBeDefined();
+    expect(works[0].translationId).toBe(works[1].translationId);
+  });
 });

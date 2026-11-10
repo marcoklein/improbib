@@ -8,6 +8,7 @@ import {
   isUsableNormalization,
 } from "./normalized-schema";
 import { createOpencodeGoClient, getConfiguredModels, getPromptHash } from "./llm-client";
+import { loadWorkMergeGroups, normalizeWorksStage } from "./normalize-works";
 import { ACTIVE_SOURCES } from "../sources";
 
 interface DroppedElement {
@@ -122,6 +123,8 @@ export interface NormalizeProgress {
   split: number;
   errors: number;
   dropped: number;
+  /** Pages whose extraction belongs to the merged-work stage. */
+  skipped: number;
   startedAt: string;
   error?: string;
 }
@@ -203,6 +206,9 @@ async function normalizeSource(
   const elements = options?.maxElements ? rawElements.slice(0, options.maxElements) : rawElements;
   const schemaHash = getNormalizedBy();
   const configuredModels = getConfiguredModels();
+  // These pages are extracted once per work by `normalizeWorksStage`. Doing it
+  // here as well would only create a second walkthrough to override.
+  const mergedMemberIds = new Set((await loadWorkMergeGroups()).flat());
 
   currentProgress = {
     sourceName,
@@ -213,6 +219,7 @@ async function normalizeSource(
     split: 0,
     errors: 0,
     dropped: 0,
+    skipped: 0,
     startedAt: new Date().toISOString(),
   };
 
@@ -232,6 +239,7 @@ async function normalizeSource(
   let cached = 0;
   let splitCount = 0;
   let errors = 0;
+  let skipped = 0;
   let writeLock = false;
   let lastWriteAt = 0;
   let anyElementChanged = false;
@@ -266,6 +274,7 @@ async function normalizeSource(
       split: splitCount,
       errors,
       dropped: dropped.length,
+      skipped,
     };
   }
 
@@ -274,6 +283,17 @@ async function normalizeSource(
       const i = index++;
       const el = elements[i];
       const contentHash = hashContent(el.htmlContent || "");
+
+      // Member of a reviewed work merge: the merged stage owns its content.
+      // Not added to this output, but existing entries stay untouched so an
+      // earlier per-source run remains readable until the works stage runs.
+      if (mergedMemberIds.has(el.identifier)) {
+        skipped++;
+        dispatched++;
+        updateProgress();
+        if (dispatched % 10 === 0) logProgress();
+        continue;
+      }
 
       // Cache hit: same HTML content, same extraction contract, and a
       // non-empty result.
@@ -343,7 +363,7 @@ async function normalizeSource(
   function logProgress() {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const rate = (dispatched / parseFloat(elapsed)).toFixed(1);
-    console.log(`  [${dispatched}/${elements.length}] ${sourceName}: ${dispatched - cached} new, ${cached} cached, ${splitCount} split (${rate}/s, ${elapsed}s)`);
+    console.log(`  [${dispatched}/${elements.length}] ${sourceName}: ${dispatched - cached - skipped} new, ${cached} cached, ${splitCount} split, ${skipped} merged (${rate}/s, ${elapsed}s)`);
   }
 
   const workers = Array.from({ length: Math.min(concurrency, elements.length) }, () => processNext());
@@ -391,7 +411,7 @@ async function normalizeSource(
   }
 
   const droppedCount = dropped.length;
-  console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors (${droppedCount} dropped), ${totalTime}s`);
+  console.log(`Finished ${sourceName}: ${normalized.length} elements, ${derivedCount} derived, ${splitCount} split, ${cached} cached, ${errors} errors (${droppedCount} dropped, ${skipped} merged), ${totalTime}s`);
 
   const fillerReport = detectFillers(finalOutput.elements);
   if (fillerReport.warnings.length > 0) {
@@ -566,8 +586,14 @@ if (import.meta.main) {
 
   const args = process.argv.slice(2);
   const maxElements = process.env.NORMALIZE_MAX ? parseInt(process.env.NORMALIZE_MAX) : undefined;
+  const maxWorks = process.env.NORMALIZE_MAX_WORKS ? parseInt(process.env.NORMALIZE_MAX_WORKS) : undefined;
 
-  if (args.includes("--vocabulary")) {
+  if (args.includes("--works")) {
+    normalizeWorksStage({ maxWorks, dryRun: args.includes("--dry-run") }).catch((err) => {
+      console.error("Works normalization failed:", err);
+      process.exit(1);
+    });
+  } else if (args.includes("--vocabulary")) {
     normalizeVocabularyStage().catch((err) => {
       console.error("Vocabulary normalization failed:", err);
       process.exit(1);

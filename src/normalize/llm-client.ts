@@ -383,13 +383,22 @@ export function createOpencodeGoClient(
     },
 
     async normalizeWork(sources) {
-      return runExtraction(
+      const result = await runExtraction(
         workSystemPrompt,
         buildWorkUserPrompt(sources),
         sources[0].languageCode,
         sources[0].name,
         getWorkPromptHash()
-      ) as Promise<NormalizedElement>;
+      );
+      // The merged prompt asks for exactly one extraction. An array means the
+      // model fell back to splitting the page, which cannot be shared by the
+      // work's members — fail loudly instead of picking an arbitrary item.
+      if (Array.isArray(result)) {
+        throw new Error(
+          `Merged-work extraction returned ${result.length} elements instead of one — the model split the page`
+        );
+      }
+      return result;
     },
 
     async findCrossSourceMatches(sourceA, sourceB) {
