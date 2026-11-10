@@ -231,7 +231,17 @@ function hasUsableExtraction(
 }
 
 const DEFAULT_MODELS = ["deepseek-v4.1-flash"];
-const API_ENDPOINT = "https://opencode.ai/zen/v1/chat/completions";
+/**
+ * The gateway that serves the extraction model. OpenAI-compatible, because the
+ * caller sends `response_format: json_object`.
+ *
+ * Overridable so a run can continue on another provider (same model name,
+ * different account) without a code change — a full re-extraction is long
+ * enough that a depleted balance should not mean editing source.
+ */
+const API_ENDPOINT =
+  process.env.NORMALIZE_API_ENDPOINT ||
+  "https://opencode.ai/zen/v1/chat/completions";
 
 function parseModelList(envVal: string | undefined, defaults: string[]): string[] {
   if (!envVal || !envVal.trim()) return defaults;
