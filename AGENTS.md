@@ -17,6 +17,7 @@ bun run src/normalize/normalize.ts            # run normalization (Stage 1: LLM 
 bun run src/normalize/normalize.ts --vocabulary  # run vocabulary canonicalization (Stage 3: deterministic clustering)
 bun run src/normalize/normalize.ts --dedup        # run cross-source dedup (Stage 4: deterministic + LLM matching)
 bun run src/normalize/normalize.ts --graph        # derive knowledge graph from normalized + vocabulary + dedup
+bun run src/works-test.ts "<name>"           # one extraction from all sources of a work (LLM)
 bun run src/review.ts --clusters               # review dedup clusters (sorted by weakest confidence)
 bun run src/review.ts --hubs                   # show top skill/mechanic/tag hubs by degree
 bun run src/review.ts --element <name-or-id>   # show full element details

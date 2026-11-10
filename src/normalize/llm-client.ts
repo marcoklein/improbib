@@ -39,8 +39,20 @@ export interface VocabularyMap {
   skills: VocabularyCluster[];
 }
 
+export interface WorkSourceInput {
+  identifier: string;
+  name: string;
+  sourceName: string;
+  url: string;
+  languageCode: string;
+  /** Raw HTML or markdown of the source page. */
+  content: string;
+}
+
 export interface LlmClient {
   normalizeElement(name: string, htmlContent: string, languageCode: string, tags: string[]): Promise<NormalizedElement | NormalizedElement[]>;
+  /** One extraction from every source that describes the same work. */
+  normalizeWork(sources: WorkSourceInput[]): Promise<NormalizedElement>;
   findCrossSourceMatches(sourceA: MatchCandidate[], sourceB: MatchCandidate[]): Promise<ConfirmedMatch[]>;
   normalizeVocabulary(terms: { mechanics: string[]; skills: string[] }): Promise<VocabularyMap>;
 }
@@ -119,12 +131,81 @@ function buildUserPrompt(name: string, languageCode: string, tags: string[], htm
  ${htmlContent}`;
 }
 
+/**
+ * The rules that only apply when one extraction covers several sources.
+ *
+ * The whole point of the work pipeline: the old one merged finished
+ * extractions, so the same game could end up with two walkthroughs next to
+ * each other. Here the model sees all source texts and has to produce one
+ * answer — which also means it has to decide what to do with a contradiction,
+ * and that decision is written down as a variation instead of being lost.
+ */
+const WORK_MERGE_RULES = `
+
+WORK MERGE — the content is several source pages about the SAME work:
+- OUTPUT LANGUAGE — write every field in the work language named below, even
+  when a source, the skill list or a game term is in another language. A German
+  work gets German, an English work gets English. Never mix the two.
+- SKILLS — "skills" is an array of ids from the SKILL VOCABULARY above, for
+  example ["impulse", "attention"]. Never write a word or a phrase there.
+- PRACTICAL — always fill "practical": at least "difficulty", "energyLevel",
+  "usage". "usage" is never empty.
+- Produce ONE extraction for the work, never one block per source.
+- STEPS — merge what the sources say into one walkthrough in playing order.
+  * Target four to six steps, never more than eight. Group related actions; a
+    step is a phase of the game, not a single sentence from a source.
+  * A rule stated by three sources appears once, not three times.
+  * Keep concrete details that differ between sources ("say the name of a
+    place", "clap twice") when they make the step clearer.
+- CONTRADICTION — when sources describe the same phase differently, the
+  rehearsal reading wins: the one a group can actually play with a leader and
+  players. The other reading becomes a VARIATION with a short name, so nothing
+  is lost and nothing is presented as fact twice.
+- VARIATIONS — only real variants: a source names them *and* says what
+  changes, or a source describes a different setting (stage vs. rehearsal,
+  audience vs. no audience). A bare list of other game names is not a
+  variations section — those are separate works, leave them out. Never invent a
+  variant by rewording a step.
+- TIPS — only advice a source actually gives. Never turn a permission ("you can
+  also …") into a rule, and never add taste judgements ("this is funny").
+- SOURCES — every claim must be supported by at least one source. Do not add
+  rules, materials or constraints that no source mentions.`;
+
+function buildWorkSystemPrompt(): string {
+  return buildSystemPrompt() + WORK_MERGE_RULES;
+}
+
+function buildWorkUserPrompt(sources: WorkSourceInput[]): string {
+  const language = sources[0].languageCode === "de" ? "German" : "English";
+  const blocks = sources
+    .map(
+      (source, index) => `=== SOURCE ${index + 1}: ${source.sourceName} — ${source.url} ===
+${source.content}`
+    )
+    .join("\n\n");
+
+  return `Work name: ${sources[0].name}
+OUTPUT LANGUAGE: ${language} — answer in ${language} only.
+Sources describing this work: ${sources.length}
+
+${blocks}`;
+}
+
 let _promptHash = "";
 export function getPromptHash(): string {
   if (!_promptHash) {
     _promptHash = createHash("md5").update(buildSystemPrompt()).digest("hex");
   }
   return _promptHash;
+}
+
+let _workPromptHash = "";
+/** Like `getPromptHash`, but for the merged-work extraction. */
+export function getWorkPromptHash(): string {
+  if (!_workPromptHash) {
+    _workPromptHash = createHash("md5").update(buildWorkSystemPrompt()).digest("hex");
+  }
+  return _workPromptHash;
 }
 
 const COMPLETENESS_CORRECTION = `
@@ -174,103 +255,141 @@ export function createOpencodeGoClient(
   if (!apiKey) console.warn("No OPENCODE_GO_API_KEY set — normalization will fail.");
 
   const systemPrompt = buildSystemPrompt();
+  const workSystemPrompt = buildWorkSystemPrompt();
+
+  /**
+   * One extraction: call the model, repair an incomplete answer once, and pick
+   * the better of two answers when the style rules are violated.
+   *
+   * Shared by the single-source and the merged-work extraction, so both get
+   * the same guarantees. The style check is what keeps "Frieren alle ein" from
+   * being stored as a step.
+   */
+  async function runExtraction(
+    prompt: string,
+    userPrompt: string,
+    languageCode: string,
+    label: string,
+    promptHash: string,
+  ): Promise<NormalizedElement | NormalizedElement[]> {
+    const first = await callApiDetailed(apiKey, modelList, prompt, userPrompt, 32000, 1, true);
+    if (process.env.DEBUG_EXTRACTION) {
+      const file = `output/debug-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${languageCode}.txt`;
+      await Bun.write(file, `PROMPT:\n${userPrompt}\n\n--- ANSWER ---\n${first.text}`);
+      console.log(`  DEBUG ${file}`);
+    }
+    let parsed = parseNormalizeResponse(first.text);
+    let model = first.model;
+
+    // A response that parses but carries no summary/description is a failed
+    // extraction (a glitch, a truncation, a refusal). Retry it once with an
+    // explicit correction; if it is still empty, throw so the caller keeps
+    // the previous answer instead of caching the failure.
+    if (!hasUsableExtraction(parsed)) {
+      console.warn(
+        `  INCOMPLETE ${label}: empty summary/description — retrying with a completeness correction`
+      );
+      const retry = await callApiDetailed(
+        apiKey,
+        modelList,
+        prompt,
+        userPrompt + COMPLETENESS_CORRECTION,
+        32000,
+        1,
+        true
+      );
+      parsed = parseNormalizeResponse(retry.text);
+      model = retry.model;
+      if (!hasUsableExtraction(parsed)) {
+        throw new Error(
+          "Incomplete extraction: the model returned no usable summary/description"
+        );
+      }
+    }
+
+    // Record which model and prompt produced this extraction. The values are
+    // written through by the caller, so cached entries stay auditable.
+    const withProvenance = (element: NormalizedElement): NormalizedElement => ({
+      ...element,
+      normalized: { ...element.normalized, model, promptHash },
+    });
+
+    // Style is checked after parsing because it is a property of the whole
+    // element (mixed voice) as well as of single steps (invalid imperative).
+    // One correction attempt: repeating the exact failing rules works better
+    // than resending the identical prompt, and two answers are enough to pick
+    // the better one. The retry is skipped when the first answer is already
+    // clean, which is the common case.
+    const firstViolations = collectStyleViolations(parsed, languageCode);
+    if (firstViolations.length === 0) {
+      return Array.isArray(parsed) ? parsed.map(withProvenance) : withProvenance(parsed);
+    }
+
+    console.warn(
+      `  STYLE ${label}: ${firstViolations.length} violation(s) [${[
+        ...new Set(firstViolations.map((v) => v.rule)),
+      ].join(", ")}] — retrying once`
+    );
+
+    let best = parsed;
+    let bestCount = firstViolations.length;
+    let bestModel = model;
+    try {
+      const retry = await callApiDetailed(
+        apiKey,
+        modelList,
+        prompt,
+        userPrompt + buildStyleCorrection(firstViolations),
+        32000,
+        1,
+        true
+      );
+      const retried = parseNormalizeResponse(retry.text);
+      const retryViolations = collectStyleViolations(retried, languageCode);
+      const retryCount = retryViolations.length;
+      if (retryCount < bestCount) {
+        best = retried;
+        bestCount = retryCount;
+        bestModel = retry.model;
+      }
+      if (retryCount > 0) {
+        console.warn(
+          `  STYLE ${label}: retry still has ${retryCount} violation(s) [${[
+            ...new Set(retryViolations.map((v) => v.rule)),
+          ].join(", ")}] — keeping the better answer`
+        );
+      }
+    } catch (err: any) {
+      // A failed retry must not lose the first answer.
+      console.warn(`  STYLE ${label}: retry failed (${err.message.slice(0, 80)}) — keeping the first answer`);
+    }
+
+    const withModel = (element: NormalizedElement): NormalizedElement => ({
+      ...withProvenance(element),
+      normalized: { ...element.normalized, model: bestModel, promptHash },
+    });
+    return Array.isArray(best) ? best.map(withModel) : withModel(best);
+  }
 
   return {
     async normalizeElement(name, htmlContent, languageCode, tags) {
-      const userPrompt = buildUserPrompt(name, languageCode, tags, htmlContent);
-      const first = await callApiDetailed(apiKey, modelList, systemPrompt, userPrompt, 32000, 1, true);
-      let parsed = parseNormalizeResponse(first.text);
-      let model = first.model;
-
-      // A response that parses but carries no summary/description is a failed
-      // extraction (a glitch, a truncation, a refusal). Retry it once with an
-      // explicit correction; if it is still empty, throw so the caller keeps
-      // the previous answer instead of caching the failure.
-      if (!hasUsableExtraction(parsed)) {
-        console.warn(
-          `  INCOMPLETE ${name}: empty summary/description — retrying with a completeness correction`
-        );
-        const retry = await callApiDetailed(
-          apiKey,
-          modelList,
-          systemPrompt,
-          userPrompt + COMPLETENESS_CORRECTION,
-          32000,
-          1,
-          true
-        );
-        parsed = parseNormalizeResponse(retry.text);
-        model = retry.model;
-        if (!hasUsableExtraction(parsed)) {
-          throw new Error(
-            "Incomplete extraction: the model returned no usable summary/description"
-          );
-        }
-      }
-
-      const promptHash = getPromptHash();
-      // Record which model and prompt produced this extraction. The values are
-      // written through by the caller, so cached entries stay auditable.
-      const withProvenance = (element: NormalizedElement): NormalizedElement => ({
-        ...element,
-        normalized: { ...element.normalized, model, promptHash },
-      });
-
-      // Style is checked after parsing because it is a property of the whole
-      // element (mixed voice) as well as of single steps (invalid imperative).
-      // One correction attempt: repeating the exact failing rules works better
-      // than resending the identical prompt, and two answers are enough to pick
-      // the better one. The retry is skipped when the first answer is already
-      // clean, which is the common case.
-      const firstViolations = collectStyleViolations(parsed, languageCode);
-      if (firstViolations.length === 0) {
-        return Array.isArray(parsed) ? parsed.map(withProvenance) : withProvenance(parsed);
-      }
-
-      console.warn(
-        `  STYLE ${name}: ${firstViolations.length} violation(s) [${[
-          ...new Set(firstViolations.map((v) => v.rule)),
-        ].join(", ")}] — retrying once`
+      return runExtraction(
+        systemPrompt,
+        buildUserPrompt(name, languageCode, tags, htmlContent),
+        languageCode,
+        name,
+        getPromptHash()
       );
+    },
 
-      let best = parsed;
-      let bestCount = firstViolations.length;
-      let bestModel = model;
-      try {
-        const retry = await callApiDetailed(
-          apiKey,
-          modelList,
-          systemPrompt,
-          userPrompt + buildStyleCorrection(firstViolations),
-          32000,
-          1,
-          true
-        );
-        const retried = parseNormalizeResponse(retry.text);
-        const retryViolations = collectStyleViolations(retried, languageCode);
-        const retryCount = retryViolations.length;
-        if (retryCount < bestCount) {
-          best = retried;
-          bestCount = retryCount;
-          bestModel = retry.model;
-        }
-        if (retryCount > 0) {
-          console.warn(
-            `  STYLE ${name}: retry still has ${retryCount} violation(s) [${[
-              ...new Set(retryViolations.map((v) => v.rule)),
-            ].join(", ")}] — keeping the better answer`
-          );
-        }
-      } catch (err: any) {
-        // A failed retry must not lose the first answer.
-        console.warn(`  STYLE ${name}: retry failed (${err.message.slice(0, 80)}) — keeping the first answer`);
-      }
-
-      const withModel = (element: NormalizedElement): NormalizedElement => ({
-        ...withProvenance(element),
-        normalized: { ...element.normalized, model: bestModel, promptHash },
-      });
-      return Array.isArray(best) ? best.map(withModel) : withModel(best);
+    async normalizeWork(sources) {
+      return runExtraction(
+        workSystemPrompt,
+        buildWorkUserPrompt(sources),
+        sources[0].languageCode,
+        sources[0].name,
+        getWorkPromptHash()
+      ) as Promise<NormalizedElement>;
     },
 
     async findCrossSourceMatches(sourceA, sourceB) {
@@ -431,6 +550,18 @@ function coerceElement(raw: any): NormalizedElement {
   const steps = (howToPlay?.steps ?? []).map(
     (step: { action: string }) => step.action
   );
+
+  // The model sometimes nests the sibling fields *inside* howToPlay:
+  // {"howToPlay": {"steps": [...], "tips": [...], "skills": [...], …}}.
+  // Coercion used to keep only the steps, which silently emptied tips,
+  // variations and practical. Read the nested object as a fallback, the top
+  // level always wins.
+  const nested =
+    raw.howToPlay && typeof raw.howToPlay === "object" && !Array.isArray(raw.howToPlay)
+      ? raw.howToPlay
+      : {};
+  const field = (key: string) => raw[key] ?? nested[key];
+
   return {
     identifier: "",
     name: String(raw.name || ""),
@@ -444,7 +575,7 @@ function coerceElement(raw: any): NormalizedElement {
       summary: String(raw.summary || raw.description || ""),
       description: String(raw.description || ""),
       howToPlay,
-      variations: (raw.variations || []).map((v: any) => ({
+      variations: (field("variations") || []).map((v: any) => ({
         name: String(v.name || ""),
         description: String(v.description || ""),
         differsBy: Array.isArray(v.differsBy) ? v.differsBy.map(String) : [],
@@ -453,20 +584,20 @@ function coerceElement(raw: any): NormalizedElement {
       // is stored, so the cache never holds a duplicate either.
       tips: dropRedundantTips(
         steps,
-        (raw.tips || []).map((t: any) => ({
+        (field("tips") || []).map((t: any) => ({
           text: typeof t === "string" ? t : String(t.text || ""),
           category: typeof t === "string" ? "general" : String(t.category || "general"),
         }))
       ),
-      referencedElements: (raw.referencedElements || []).map((r: any) => ({
+      referencedElements: (field("referencedElements") || []).map((r: any) => ({
         name: typeof r === "string" ? r : String(r.name || ""),
       })),
-      mechanics: (raw.mechanics || []).map((m: any) => ({
+      mechanics: (field("mechanics") || []).map((m: any) => ({
         name: typeof m === "string" ? m : String(m.name || ""),
         category: typeof m === "object" && m.category ? String(m.category) : undefined,
       })),
-      skills: sanitizeSkills(raw.skills),
-      practical: coercePractical(raw.practical),
+      skills: sanitizeSkills(field("skills")),
+      practical: coercePractical(field("practical")),
       contentHash: "",
       normalizedBy: "",
       extractedAt: new Date().toISOString(),
