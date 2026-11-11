@@ -3,7 +3,7 @@ import path from "path";
 import type { ElementType } from "../shared/element-type";
 import { fetchAndCacheWebsite } from "../shared/fetch-and-cache-website";
 import { loadExistingElements } from "../shared/load-existing-elements";
-import { mergeElements } from "../shared/merge-elements";
+import { dedupeElementsByUrl, mergeElements } from "../shared/merge-elements";
 import {
   buildSitemapMap,
   parseSitemapXml,
@@ -109,6 +109,13 @@ export async function scrapeLearnImprov(
   };
 
   mergeElements(output);
+
+  // A page whose title changed gets a second identifier for the same URL; keep
+  // one element per page before the raw layer is written (see merge-elements).
+  const sameUrlRemoved = dedupeElementsByUrl(output);
+  if (sameUrlRemoved > 0) {
+    console.log(`Merged ${sameUrlRemoved} elements that shared a URL`);
+  }
 
   console.log(`Total elements after merge: ${output.elements.length}`);
 

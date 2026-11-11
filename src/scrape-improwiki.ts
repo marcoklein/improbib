@@ -7,7 +7,7 @@ import { processImprowikiCardFields } from "./scraping/improwiki/process-improwi
 import type { ElementType } from "./scraping/shared/element-type";
 import { fetchAndCacheWebsite } from "./scraping/shared/fetch-and-cache-website";
 import { loadExistingElements } from "./scraping/shared/load-existing-elements";
-import { mergeElements } from "./scraping/shared/merge-elements";
+import { dedupeElementsByUrl, mergeElements } from "./scraping/shared/merge-elements";
 import {
   buildSitemapMap,
   parseSitemapXml,
@@ -137,6 +137,12 @@ export async function scrapeImprowiki(
   };
 
   mergeElements(output);
+  // A page whose title changed gets a second identifier for the same URL; keep
+  // one element per page before the raw layer is written (see merge-elements).
+  const sameUrlRemoved = dedupeElementsByUrl(output);
+  if (sameUrlRemoved > 0) {
+    console.log(`Merged ${sameUrlRemoved} elements that shared a URL`);
+  }
   await followTranslationLinksOfElement(baseUrl, output);
   mergeElements(output);
 

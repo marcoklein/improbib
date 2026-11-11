@@ -5,6 +5,7 @@ import { normalizedSourceSchema } from "./normalized-schema";
 import { jaccardWordSimilarity, seedTranslationPairs } from "./cross-source-matching";
 import { createOpencodeGoClient, callApi, extractJson } from "./llm-client";
 import { ACTIVE_SOURCES } from "../sources";
+import { normalizeSourceUrl } from "../scraping/shared/url-identity";
 
 interface SameAsRecord {
   canonical: string;
@@ -405,10 +406,236 @@ async function findEnhancedLLMMatches(
   return related;
 }
 
+/**
+ * Conservative identity key for a source URL. See
+ * `normalizeSourceUrl` in `src/scraping/shared/url-identity.ts`.
+ */
+export const normalizeElementUrl = normalizeSourceUrl;
+
+/**
+ * The published measure of how much content a source element carries.
+ *
+ * Elements loaded from `output/normalized` have no `markdown` (it is derived at
+ * assembly time); split children and raw elements do. The markdown length wins
+ * when it is there, otherwise the article HTML length is the closest available
+ * proxy for the same thing.
+ */
+export function elementContentLength(element: NormalizedElement): number {
+  const markdown = (element as NormalizedElement & { markdown?: unknown })
+    .markdown;
+  if (typeof markdown === "string") return markdown.length;
+  return element.htmlContent?.length ?? 0;
+}
+
+/**
+ * Picks the element that survives a same-page group.
+ *
+ * Rule: the element with the most content characters (markdown when present,
+ * otherwise the HTML length); ties are broken by the lowest identifier. Both
+ * parts are stable across runs, so the keeper never depends on input order or
+ * on a model.
+ */
+export function pickSameUrlKeeper(
+  group: NormalizedElement[]
+): NormalizedElement {
+  return [...group].sort((a, b) => {
+    const byLength = elementContentLength(b) - elementContentLength(a);
+    if (byLength !== 0) return byLength;
+    return a.identifier.localeCompare(b.identifier);
+  })[0];
+}
+
+export interface SameUrlGroup {
+  sourceName: string;
+  /** Normalized URL, i.e. the group key. */
+  url: string;
+  elements: NormalizedElement[];
+}
+
+/**
+ * Groups elements by `(sourceName, normalized url)`.
+ *
+ * Source-scoped on purpose: the same URL under two different sources stays
+ * with the normal (LLM) matching, because two sources can describe different
+ * games on a shared or migrated page.
+ */
+export function findSameUrlGroups(
+  elements: NormalizedElement[]
+): SameUrlGroup[] {
+  const groups = new Map<string, SameUrlGroup>();
+  for (const element of elements) {
+    const url = normalizeElementUrl(element.url);
+    const key = `${element.sourceName}\u0000${url}`;
+    const group = groups.get(key);
+    if (group) {
+      group.elements.push(element);
+    } else {
+      groups.set(key, {
+        sourceName: element.sourceName,
+        url,
+        elements: [element],
+      });
+    }
+  }
+  return [...groups.values()]
+    .filter((group) => group.elements.length > 1)
+    .sort(
+      (a, b) =>
+        a.sourceName.localeCompare(b.sourceName) || a.url.localeCompare(b.url)
+    );
+}
+
+export interface SameUrlMerge {
+  sourceName: string;
+  url: string;
+  keeper: NormalizedElement;
+  duplicates: NormalizedElement[];
+}
+
+type MetadataArrays = {
+  tags?: string[];
+  categories?: string[];
+  postTags?: string[];
+};
+
+const METADATA_ARRAY_FIELDS = ["tags", "categories", "postTags"] as const;
+
+/**
+ * Unions the source taxonomies into the keeper so nothing that was discovered
+ * through a second listing page (which supplies its own `addTags`) is lost.
+ */
+function unionMetadataArrays(target: MetadataArrays, source: MetadataArrays): void {
+  for (const field of METADATA_ARRAY_FIELDS) {
+    const extra = source[field];
+    if (!extra || extra.length === 0) continue;
+    target[field] = [...new Set([...(target[field] ?? []), ...extra])];
+  }
+}
+
+/**
+ * Collapses every same-page group into its keeper.
+ *
+ * The scraper derives an element identifier from `element;<name>;<url>`, so a
+ * page whose title changed is enqueued again under a new identifier while the
+ * previous element stays in place. Two entries for one URL are the same page,
+ * not a judgement call — the LLM matcher saw them in different runs and made
+ * two different calls, which is exactly the instability this pass removes.
+ *
+ * Content is not merged: the keeper is already the most complete extraction of
+ * that page, only the metadata arrays are unioned into it.
+ *
+ * Pure: returns the element list without the duplicates (input order kept) and
+ * a description of every merge for logging and write-back.
+ */
+export function mergeSameUrlDuplicates(elements: NormalizedElement[]): {
+  elements: NormalizedElement[];
+  merges: SameUrlMerge[];
+} {
+  const merges: SameUrlMerge[] = [];
+  const dropped = new Set<string>();
+
+  for (const group of findSameUrlGroups(elements)) {
+    const keeper = pickSameUrlKeeper(group.elements);
+    const duplicates = group.elements
+      .filter((element) => element.identifier !== keeper.identifier)
+      .sort((a, b) => a.identifier.localeCompare(b.identifier));
+
+    for (const duplicate of duplicates) {
+      unionMetadataArrays(keeper, duplicate);
+      dropped.add(duplicate.identifier);
+    }
+
+    merges.push({
+      sourceName: group.sourceName,
+      url: group.url,
+      keeper,
+      duplicates,
+    });
+  }
+
+  return {
+    elements: elements.filter((element) => !dropped.has(element.identifier)),
+    merges,
+  };
+}
+
+/**
+ * Removes the merged-away duplicates from both output layers.
+ *
+ * The normalized layer feeds matching and the graph; the raw layer feeds the
+ * published `elements` array. Cleaning only one of the two would leave the
+ * duplicate in the artifact (raw) or in the graph (normalized), so both are
+ * rewritten here — the dedup stage is the only place that decides what a
+ * duplicate is.
+ *
+ * The normalized files are written from the in-memory list, so the keeper
+ * keeps the metadata that was unioned into it.
+ */
+async function writeBackSameUrlMerge(
+  outDir: string,
+  rawDir: string,
+  sources: readonly string[],
+  merges: SameUrlMerge[],
+  keptBySource: Map<string, NormalizedElement[]>
+): Promise<void> {
+  const droppedIds = new Set(
+    merges.flatMap((merge) =>
+      merge.duplicates.map((duplicate) => duplicate.identifier)
+    )
+  );
+  const mergeByKeeperId = new Map(
+    merges.map((merge) => [merge.keeper.identifier, merge])
+  );
+
+  for (const source of sources) {
+    const normalizedPath = path.join(outDir, `${source}.json`);
+    const normalizedFile = Bun.file(normalizedPath);
+    const kept = keptBySource.get(source);
+    if (kept && (await normalizedFile.exists())) {
+      const data = await normalizedFile.json();
+      const before = (data.elements ?? []).length;
+      if (kept.length !== before) {
+        data.elements = kept;
+        const parsed = normalizedSourceSchema.safeParse(data);
+        await Bun.write(
+          normalizedPath,
+          JSON.stringify(parsed.success ? parsed.data : data, null, 2)
+        );
+        console.log(
+          `  Removed ${before - kept.length} duplicate(s) from normalized/${source}.json`
+        );
+      }
+    }
+
+    const rawPath = path.join(rawDir, `${source}.json`);
+    const rawFile = Bun.file(rawPath);
+    if (!(await rawFile.exists())) continue;
+    const raw = await rawFile.json();
+    const before = (raw.elements ?? []).length;
+    const keptRaw = (raw.elements ?? []).filter(
+      (element: { identifier: string }) => !droppedIds.has(element.identifier)
+    );
+    if (keptRaw.length === before) continue;
+    for (const element of keptRaw as MetadataArrays[]) {
+      const merge = mergeByKeeperId.get((element as { identifier: string }).identifier);
+      if (!merge) continue;
+      for (const duplicate of merge.duplicates) {
+        unionMetadataArrays(element, duplicate);
+      }
+    }
+    raw.elements = keptRaw;
+    await Bun.write(rawPath, JSON.stringify(raw, null, 2));
+    console.log(
+      `  Removed ${before - keptRaw.length} duplicate(s) from raw/${source}.json`
+    );
+  }
+}
+
 export async function dedupElements(): Promise<void> {
   const outDir = path.join(process.cwd(), "output", "normalized");
+  const rawDir = path.join(process.cwd(), "output", "raw");
   const allSources = [...ACTIVE_SOURCES];
-  const allElements: NormalizedElement[] = [];
+  let allElements: NormalizedElement[] = [];
 
   console.log("=== ELEMENT DEDUP ===\n");
 
@@ -428,6 +655,50 @@ export async function dedupElements(): Promise<void> {
   if (allElements.length === 0) {
     console.log("\nNo normalized elements found. Run Stage 1+3 first.");
     return;
+  }
+
+  // Deterministic same-page merge. Deliberately before the cache check and
+  // before any model call: two entries for one `(source, url)` are one page,
+  // and that must never depend on an LLM decision or on a cache state.
+  console.log("\n--- Deterministic Same-Page Merge ---");
+  const sameUrlMerge = mergeSameUrlDuplicates(allElements);
+  allElements = sameUrlMerge.elements;
+
+  if (sameUrlMerge.merges.length === 0) {
+    console.log("  No element shares a source and URL — nothing to merge");
+  } else {
+    for (const merge of sameUrlMerge.merges) {
+      console.log(`  ${merge.sourceName} | ${merge.url}`);
+      console.log(
+        `    keep ${merge.keeper.identifier} "${merge.keeper.name}" (${elementContentLength(merge.keeper)} chars)`
+      );
+      for (const duplicate of merge.duplicates) {
+        console.log(
+          `    drop ${duplicate.identifier} "${duplicate.name}" (${elementContentLength(duplicate)} chars)`
+        );
+      }
+    }
+    const droppedIds = new Set(
+      sameUrlMerge.merges.flatMap((merge) =>
+        merge.duplicates.map((duplicate) => duplicate.identifier)
+      )
+    );
+    const keptBySource = new Map<string, NormalizedElement[]>();
+    for (const element of allElements) {
+      const list = keptBySource.get(element.sourceName) ?? [];
+      list.push(element);
+      keptBySource.set(element.sourceName, list);
+    }
+    await writeBackSameUrlMerge(
+      outDir,
+      rawDir,
+      allSources,
+      sameUrlMerge.merges,
+      keptBySource
+    );
+    console.log(
+      `  Merged ${sameUrlMerge.merges.length} same-page group(s), dropped ${droppedIds.size} element(s)`
+    );
   }
 
   // Compute content hash for caching
