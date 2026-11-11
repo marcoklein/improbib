@@ -464,6 +464,14 @@ export async function normalizeAll(options?: { maxElements?: number; source?: st
   const allSources = [...ACTIVE_SOURCES];
   const sourceNames = options?.source ? [options.source] : allSources;
 
+  // Merged works own the content of their member pages, and the per-source
+  // stage skips those members. Without this stage first, a full run would drop
+  // them: no normalized block, no work, and a graph without their edges.
+  // Limited runs (a single source or a subset) leave the works file alone.
+  if (!options?.source && !options?.maxElements) {
+    await normalizeWorksStage();
+  }
+
   console.log("=== STAGE 1: LLM Extraction ===\n");
   const allElements: Map<string, NormalizedElement[]> = new Map();
   let anyElementChanged = false;
