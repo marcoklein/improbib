@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { getNormalizedBy, isUsableNormalization } from "./normalized-schema";
 import { createOpencodeGoClient } from "./llm-client";
+import { isForcedUnit, parseForceIds } from "./force-ids";
 import { ACTIVE_SOURCES } from "../sources";
 
 /**
@@ -179,6 +180,24 @@ export function isReusableWorkNormalization(
   );
 }
 
+/**
+ * The full cache decision of the works stage.
+ *
+ * `NORMALIZE_FORCE_IDS` wins over a matching hash: a listed member re-extracts
+ * the whole unit, which is how a single work is rebuilt after a prompt change
+ * without invalidating the global cache.
+ */
+export function shouldReuseWorkNormalization(
+  previous: { normalized: NormalizedElement["normalized"] } | undefined,
+  unitHash: string,
+  contractHash: string,
+  memberIds: readonly string[],
+  forceIds: ReadonlySet<string>
+): boolean {
+  if (isForcedUnit(memberIds, forceIds)) return false;
+  return isReusableWorkNormalization(previous, unitHash, contractHash);
+}
+
 async function readWorkNormalizationsFile(): Promise<
   WorkNormalizationsFile | undefined
 > {
@@ -296,13 +315,16 @@ export async function normalizeWorksStage(options?: {
     : allUnits;
   const previous = await loadPreviousWorkNormalizations();
   const contractHash = getNormalizedBy();
+  const forceIds = parseForceIds();
 
   if (options?.dryRun) {
     const cached = units.filter((unit) =>
-      isReusableWorkNormalization(
+      shouldReuseWorkNormalization(
         previous.get(unit.groupId),
         computeUnitHash(unit.members),
-        contractHash
+        contractHash,
+        unit.members.map((member) => member.identifier),
+        forceIds
       )
     ).length;
 
@@ -363,7 +385,15 @@ export async function normalizeWorksStage(options?: {
       const memberIds = unit.members.map((member) => member.identifier);
 
       const prev = previous.get(unit.groupId);
-      if (isReusableWorkNormalization(prev, unitHash, contractHash)) {
+      if (
+        shouldReuseWorkNormalization(
+          prev,
+          unitHash,
+          contractHash,
+          memberIds,
+          forceIds
+        )
+      ) {
         records.set(unit.groupId, {
           id: unit.groupId,
           languageCode: unit.languageCode,

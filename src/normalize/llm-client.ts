@@ -243,6 +243,27 @@ const API_ENDPOINT =
   process.env.NORMALIZE_API_ENDPOINT ||
   "https://opencode.ai/zen/v1/chat/completions";
 
+/**
+ * Request headers for the OpenAI-compatible gateway.
+ *
+ * The OpenCode Go subscription endpoint authenticates with an OAuth access
+ * token and additionally requires a session id in `x-opencode-session`. Other
+ * gateways (and every plain OpenAI-compatible server) neither need nor want
+ * that header, so it is sent only when `NORMALIZE_API_SESSION` is set.
+ */
+export function buildApiHeaders(
+  apiKey: string,
+  sessionId: string | undefined = process.env.NORMALIZE_API_SESSION
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  const session = sessionId?.trim();
+  if (session) headers["x-opencode-session"] = session;
+  return headers;
+}
+
 function parseModelList(envVal: string | undefined, defaults: string[]): string[] {
   if (!envVal || !envVal.trim()) return defaults;
   return envVal.split(",").map(s => s.trim()).filter(Boolean);
@@ -483,10 +504,7 @@ export async function callApiDetailed(
 
       const resp = await fetch(API_ENDPOINT, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: buildApiHeaders(apiKey),
         body: JSON.stringify({
           model,
           messages: [

@@ -14,6 +14,7 @@ import {
   loadWorkNormalizations,
   normalizeWorksStage,
 } from "./normalize-works";
+import { isForcedIdentifier, parseForceIds } from "./force-ids";
 import { ACTIVE_SOURCES } from "../sources";
 
 interface DroppedElement {
@@ -225,6 +226,9 @@ async function normalizeSource(
 
   const schemaHash = getNormalizedBy();
   const configuredModels = getConfiguredModels();
+  // Elements named in NORMALIZE_FORCE_IDS bypass the per-source cache after a
+  // prompt or quality change; the contract version stays untouched.
+  const forceIds = parseForceIds();
   // These pages are extracted once per work by `normalizeWorksStage`. Doing it
   // here as well would only create a second walkthrough to override.
   const mergedMemberIds = new Set((await loadWorkMergeGroups()).flat());
@@ -323,9 +327,12 @@ async function normalizeSource(
       }
 
       // Cache hit: same HTML content, same extraction contract, and a
-      // non-empty result.
+      // non-empty result — unless the element was explicitly forced.
       const prev = previous.get(el.identifier);
-      if (isReusableNormalization(prev, contentHash, schemaHash, configuredModels)) {
+      if (
+        !isForcedIdentifier(el.identifier, forceIds) &&
+        isReusableNormalization(prev, contentHash, schemaHash, configuredModels)
+      ) {
         normalizedMap.set(el.identifier, prev!);
         cached++;
         dispatched++;

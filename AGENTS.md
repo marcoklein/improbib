@@ -26,6 +26,18 @@ bun run src/review.ts --random <N>             # show N random canonical element
 bun test                   # run tests (bun:test)
 ```
 
+### Normalization environment
+
+- `NORMALIZE_API_ENDPOINT` — OpenAI-compatible chat-completions endpoint for the LLM stages. Defaults to `https://opencode.ai/zen/v1/chat/completions`; set it to switch gateways (same model name, different account) without a code change.
+- `NORMALIZE_API_SESSION` — OpenCode Go session id, sent as the `x-opencode-session` header. The Go subscription endpoint (`https://opencode.ai/zen/go/v1/chat/completions`) requires it; when the variable is unset the header is omitted, so other gateways never see it.
+- `NORMALIZE_FORCE_IDS` — maintenance hook: comma-separated element identifiers that bypass the cache and are re-extracted even when their content hash and contract still match. Use it to re-extract specific elements after a prompt or quality change. In the works stage one listed member re-extracts its whole merged unit; the contract version is not bumped.
+
+```sh
+NORMALIZE_API_ENDPOINT=https://opencode.ai/zen/go/v1/chat/completions \
+NORMALIZE_API_SESSION=ses_123 NORMALIZE_FORCE_IDS=abc,def \
+bun run src/normalize/normalize.ts
+```
+
 ## Architecture
 
 - `src/analyze.ts` — CLI entry point for the scraper

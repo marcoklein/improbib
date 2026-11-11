@@ -302,6 +302,7 @@ function languageSample(element: unknown): string {
         summary?: unknown;
         description?: unknown;
         howToPlay?: { steps?: Array<{ action?: unknown }> } | null;
+        variations?: Array<{ name?: unknown; description?: unknown }>;
         tips?: Array<{ text?: unknown }>;
       };
     }
@@ -314,21 +315,37 @@ function languageSample(element: unknown): string {
   for (const step of normalized.howToPlay?.steps ?? []) {
     parts.push(String(step?.action ?? ""));
   }
+  for (const variation of normalized.variations ?? []) {
+    parts.push(String(variation?.name ?? ""));
+    parts.push(String(variation?.description ?? ""));
+  }
   for (const tip of normalized.tips ?? []) {
     parts.push(String(tip?.text ?? ""));
   }
   return parts.join("\n");
 }
 
+/** Absolute floor: one quoted foreign term cannot trigger a retry. */
+const MIN_FOREIGN_STOP_WORDS = 5;
+
+/** Share of foreign stop words at which the sample counts as wrong-language. */
+const MIN_FOREIGN_SHARE = 0.4;
+
 /**
- * A whole answer written in the wrong language.
+ * A part of the answer written in the wrong language.
  *
  * The prompt names the output language, but the merged stage once returned
  * German for an English work. Stop-word counts make that visible without a
- * second model call: an element whose function words are 80 % the other
- * language is not a stray game term, it is the wrong language. The check stays
- * conservative (at least ten foreign hits) so one quoted word cannot trigger a
- * pointless retry.
+ * second model call. The whole element is checked, including variation names
+ * and descriptions: a real defect is an English work whose steps are English
+ * but whose variation descriptions are German.
+ *
+ * The threshold is deliberately looser than "the answer is mostly foreign",
+ * because the defect can hide in one field: at least five foreign stop words
+ * and at least a 40 % share of all German+English stop words in the sample.
+ * That keeps a German work that quotes an English game name ("Yes And") below
+ * the bar, while a fully German variation description clears it. One violation
+ * per element, so the correction can still name the rule once.
  */
 function findWrongLanguageViolation(
   element: unknown,
@@ -340,8 +357,8 @@ function findWrongLanguageViolation(
   const en = countStopWords(text, EN_STOP_WORDS);
   const target = languageCode === "de" ? en : de;
   const total = de + en;
-  if (target < 10 || total === 0) return undefined;
-  if (target / total < 0.8) return undefined;
+  if (target < MIN_FOREIGN_STOP_WORDS || total === 0) return undefined;
+  if (target / total < MIN_FOREIGN_SHARE) return undefined;
   return {
     rule: "wrong-language",
     language: languageCode === "de" ? "German" : "English",

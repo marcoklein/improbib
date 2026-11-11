@@ -5,6 +5,7 @@ import {
   buildWorkMember,
   computeUnitHash,
   isReusableWorkNormalization,
+  shouldReuseWorkNormalization,
 } from "../normalize-works";
 import type { RawSourceElement } from "../normalize-works";
 
@@ -124,6 +125,37 @@ describe("isReusableWorkNormalization", () => {
   test("a missing previous unit is a cache miss", () => {
     expect(
       isReusableWorkNormalization(undefined, "unit-hash", getNormalizedBy())
+    ).toBe(false);
+  });
+});
+
+describe("shouldReuseWorkNormalization", () => {
+  const cached = { normalized: normalized({ normalizedBy: getNormalizedBy() }) };
+  const memberIds = ["a".repeat(32), "b".repeat(32)];
+
+  test("reuses a cached unit when no member is forced", () => {
+    expect(
+      shouldReuseWorkNormalization(
+        cached,
+        "unit-hash",
+        getNormalizedBy(),
+        memberIds,
+        new Set()
+      )
+    ).toBe(true);
+  });
+
+  test("re-extracts a cached unit when any member is forced", () => {
+    // NORMALIZE_FORCE_IDS must win over a matching hash, otherwise a prompt fix
+    // would never reach an already-cached work.
+    expect(
+      shouldReuseWorkNormalization(
+        cached,
+        "unit-hash",
+        getNormalizedBy(),
+        memberIds,
+        new Set([memberIds[1]])
+      )
     ).toBe(false);
   });
 });

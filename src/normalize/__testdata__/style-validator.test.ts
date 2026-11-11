@@ -235,11 +235,12 @@ describe("findStyleViolations", () => {
 });
 
 describe("wrong-language", () => {
-  /** A complete element shape, so summary, description, steps and tips count. */
+  /** A complete element shape, so summary, description, steps, tips and variations count. */
   function fullElement(fields: {
     summary: string;
     description: string;
     steps?: string[];
+    variations?: Array<{ name: string; description: string }>;
     tips?: string[];
   }) {
     return {
@@ -250,6 +251,10 @@ describe("wrong-language", () => {
           fields.steps && fields.steps.length > 0
             ? { steps: fields.steps.map((action) => ({ action })) }
             : null,
+        variations: (fields.variations ?? []).map((variation) => ({
+          ...variation,
+          differsBy: [],
+        })),
         tips: (fields.tips ?? []).map((text) => ({ text })),
       },
     };
@@ -309,35 +314,86 @@ describe("wrong-language", () => {
     ).toEqual([]);
   });
 
-  test("fires at the 0.8 ratio boundary and not below it", () => {
-    // 12 German / 3 English = exactly 0.8.
+  test("fires at the 0.4 ratio boundary and not below it", () => {
+    // 10 German / 15 English = exactly 0.4.
     expect(
       findStyleViolations(
-        fullElement({ summary: "der ".repeat(12), description: "the and your" }),
+        fullElement({
+          summary: "der ".repeat(10),
+          description:
+            "the and your you with from that this are is to of in for on",
+        }),
         "en"
       ).map((v) => v.rule)
     ).toContain("wrong-language");
 
-    // 11 German / 4 English = 0.73.
+    // 9 German / 14 English = 0.39.
     expect(
       findStyleViolations(
         fullElement({
-          summary: "der ".repeat(11),
-          description: "the and your you",
+          summary: "der ".repeat(9),
+          description: "the and your you with from that this are is to of in for",
         }),
         "en"
       ).map((v) => v.rule)
     ).not.toContain("wrong-language");
   });
 
-  test("needs at least ten foreign stop words", () => {
-    // 9 German hits score 0.9 but are below the absolute threshold.
+  test("needs at least five foreign stop words", () => {
+    // 4 German hits score 1.0 but are below the absolute threshold.
     expect(
       findStyleViolations(
-        fullElement({ summary: "der ".repeat(9), description: "the" }),
+        fullElement({ summary: "der ".repeat(4), description: "the" }),
         "en"
       ).map((v) => v.rule)
     ).not.toContain("wrong-language");
+  });
+
+  test("flags an English element whose variation description is German", () => {
+    // The steps are English, so the old summary/description/steps sample looked
+    // clean. The defect lives in the variation.
+    const violations = findStyleViolations(
+      fullElement({
+        summary: "Pass a movement around the circle and freeze when it stops.",
+        description: "A warm-up for the whole group.",
+        steps: ["Form a circle.", "Copy the movement and pass it on."],
+        variations: [
+          {
+            name: "Circle Freeze",
+            description:
+              "Die Spieler stehen im Kreis und geben die Bewegung an den Nachbarn weiter, wenn die Musik stoppt, dann klatschen alle in die Hände und gehen einen Schritt nach vorne.",
+          },
+        ],
+      }),
+      "en"
+    );
+
+    expect(violations.filter((v) => v.rule === "wrong-language")).toHaveLength(1);
+  });
+
+  test("accepts a German element with an English variation name", () => {
+    // Quoting the English name of a game is not a language defect: the German
+    // text dominates and one English stop word cannot clear the floor.
+    const violations = findStyleViolations(
+      fullElement({
+        summary: "Die Gruppe steht im Kreis und gibt eine Bewegung weiter.",
+        description:
+          "Ein Warm-up, bei dem die Spieler eine Bewegung im Kreis weitergeben und alle sie aufnehmen.",
+        steps: [
+          "Stellt euch in einen Kreis und atmet einmal gemeinsam durch.",
+          "Gebt die Bewegung an euren Nachbarn weiter.",
+        ],
+        variations: [
+          {
+            name: "Yes And",
+            description: "Sagt immer 'Ja, und' und führt die Idee fort.",
+          },
+        ],
+      }),
+      "de"
+    );
+
+    expect(violations.map((v) => v.rule)).not.toContain("wrong-language");
   });
 
   test("names the target language in the correction", () => {
