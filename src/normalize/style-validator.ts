@@ -285,9 +285,22 @@ const EN_STOP_WORDS = [
   "to", "of", "in", "for", "on", "when", "then", "they", "their", "it",
 ];
 
+/**
+ * Shortest token that counts as language evidence.
+ *
+ * A single letter is almost never a function word: in German how-to-play texts
+ * "A" and "B" are player names ("Spieler A geht von A nach Z"), "C" is a third
+ * singer, and letters also label list items and alphabet games. Counting them
+ * would let a handful of such letters reach the foreign floor. The filter lives
+ * in the counting itself and applies to both word lists, so it does not depend
+ * on which single letters happen to be in either list.
+ */
+const MIN_STOP_WORD_LENGTH = 2;
+
 function countStopWords(text: string, words: readonly string[]): number {
   let count = 0;
   for (const word of words) {
+    if (word.length < MIN_STOP_WORD_LENGTH) continue;
     const matches = text.match(new RegExp(`\\b${word}\\b`, "gi"));
     if (matches) count += matches.length;
   }

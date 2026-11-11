@@ -396,6 +396,79 @@ describe("wrong-language", () => {
     expect(violations.map((v) => v.rule)).not.toContain("wrong-language");
   });
 
+  test("does not count single letters used as player names", () => {
+    // "Spieler A"/"Spieler B" are players, not English articles. Treating a
+    // lone "A" as a function word made a German element look foreign.
+    const violations = findStyleViolations(
+      fullElement({
+        summary:
+          "Ein Dialogspiel, bei dem jede Zeile mit dem nächsten Buchstaben des Alphabets beginnt.",
+        description:
+          "Zwei Spieler führen eine Szene, in der das erste Wort jeder Zeile dem Alphabet folgt.",
+        steps: [
+          "Wählt einen Startbuchstaben und beginnt zu zweit eine Szene.",
+          "Führt den Dialog abwechselnd weiter und geht pro Zeile einen Buchstaben vor.",
+        ],
+        variations: [
+          {
+            name: "ABC-Spiel über Kreuz",
+            description:
+              "Spieler A geht von A nach Z, während Spieler B gleichzeitig von Z nach A geht.",
+          },
+        ],
+      }),
+      "de"
+    );
+
+    expect(violations.map((v) => v.rule)).not.toContain("wrong-language");
+  });
+
+  test("does not count the single letters in a two-singer variation", () => {
+    const violations = findStyleViolations(
+      fullElement({
+        summary:
+          "Ein Gesangs-Improvisationsspiel, bei dem zwei Sänger abwechselnd Strophen erfinden.",
+        description:
+          "In fünf Stufen kommen eine gemeinsame Schlusszeile und eine gesungene Zwischensequenz hinzu.",
+        steps: [
+          "Stellt euch als zwei Sänger gegenüber und sucht Blickkontakt.",
+          "Singt als Sänger A eure vierzeilige Strophe.",
+        ],
+        variations: [
+          {
+            name: "Duett 4",
+            description: "B merkt sich die vierte Zeile von A.",
+          },
+        ],
+      }),
+      "de"
+    );
+
+    expect(violations.map((v) => v.rule)).not.toContain("wrong-language");
+  });
+
+  test("still flags a genuinely German variation in an English element", () => {
+    // The single-letter exemption must not weaken the real defect: an English
+    // work whose variation description is German still clears the threshold.
+    const violations = findStyleViolations(
+      fullElement({
+        summary: "Two players improvise a scene one letter at a time.",
+        description: "A dialogue game for the whole group.",
+        steps: ["Form a pair and start a scene."],
+        variations: [
+          {
+            name: "Yes And",
+            description:
+              "Die Antwort wird als klassisches „Yes And“ statt mit der So-I'll-Formel gegeben, wenn die Szene sonst nicht weitergeht und alle im Kreis stehen.",
+          },
+        ],
+      }),
+      "en"
+    );
+
+    expect(violations.filter((v) => v.rule === "wrong-language")).toHaveLength(1);
+  });
+
   test("names the target language in the correction", () => {
     const correction = buildStyleCorrection([
       { rule: "wrong-language", detail: "", language: "English" },
