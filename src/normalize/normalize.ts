@@ -7,6 +7,7 @@ import {
   getNormalizedBy,
   isUsableNormalization,
 } from "./normalized-schema";
+import { CredentialRefreshError } from "./api-credential";
 import { createOpencodeGoClient, getConfiguredModels, getPromptHash } from "./llm-client";
 import {
   buildWorkMember,
@@ -376,6 +377,10 @@ async function normalizeSource(
           normalizedMap.set(el.identifier, buildNormalizedElement(result, el, contentHash, schemaHash));
         }
       } catch (err: any) {
+        // An unusable credential must abort the run. Falling back to the
+        // previous answer here would keep serving stale data after the token
+        // expired, which is exactly what the refresh support exists to stop.
+        if (err instanceof CredentialRefreshError) throw err;
         console.warn(`  SKIP ${el.name}: ${err.message.slice(0, 150)}`);
         // Never keep a failed extraction alive: a previous answer that is
         // empty or truncated is no better than no answer at all.

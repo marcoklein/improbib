@@ -18,6 +18,9 @@ lerna-debug.log*
 .cache
 output
 
+# Rotated extraction credential (written next to the storage directory)
+.opencode-credential.json
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json

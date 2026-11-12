@@ -1,3 +1,9 @@
+import {
+  ApiCredential,
+  CredentialRefreshError,
+  getDefaultApiCredential,
+  isAuthenticationError,
+} from "./api-credential";
 import type { NormalizedElement } from "./normalized-schema";
 import {
   isUsableNormalization,
@@ -278,6 +284,8 @@ export function getConfiguredModels(): string[] {
 }
 
 export function getApiKey(): string {
+  const credential = getDefaultApiCredential();
+  if (credential?.accessToken) return credential.accessToken;
   return process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
 }
 
@@ -285,7 +293,8 @@ export function createOpencodeGoClient(
   models?: string[],
 ): LlmClient {
   const modelList = models ?? parseModelList(process.env.NORMALIZE_MODELS, DEFAULT_MODELS);
-  const apiKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY || "";
+  const credential = getDefaultApiCredential();
+  const apiKey = getApiKey();
   if (!apiKey) console.warn("No OPENCODE_GO_API_KEY set — normalization will fail.");
 
   const systemPrompt = buildSystemPrompt();
@@ -306,7 +315,17 @@ export function createOpencodeGoClient(
     label: string,
     promptHash: string,
   ): Promise<NormalizedElement | NormalizedElement[]> {
-    const first = await callApiDetailed(apiKey, modelList, prompt, userPrompt, 32000, 1, true);
+    const first = await callApiDetailed(
+      apiKey,
+      modelList,
+      prompt,
+      userPrompt,
+      32000,
+      1,
+      true,
+      true,
+      credential
+    );
     if (process.env.DEBUG_EXTRACTION) {
       const file = `output/debug-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${languageCode}.txt`;
       await Bun.write(file, `PROMPT:\n${userPrompt}\n\n--- ANSWER ---\n${first.text}`);
@@ -330,7 +349,9 @@ export function createOpencodeGoClient(
         userPrompt + COMPLETENESS_CORRECTION,
         32000,
         1,
-        true
+        true,
+        true,
+        credential
       );
       parsed = parseNormalizeResponse(retry.text);
       model = retry.model;
@@ -376,7 +397,9 @@ export function createOpencodeGoClient(
         userPrompt + buildStyleCorrection(firstViolations),
         32000,
         1,
-        true
+        true,
+        true,
+        credential
       );
       const retried = parseNormalizeResponse(retry.text);
       const retryViolations = collectStyleViolations(retried, languageCode);
@@ -437,13 +460,33 @@ export function createOpencodeGoClient(
 
     async findCrossSourceMatches(sourceA, sourceB) {
       const prompt = buildMatchPrompt(sourceA, sourceB);
-      const text = await callApi(apiKey, modelList, "You compare improv elements and return match pairs as JSON.", prompt, 16000, 2, true);
+      const text = await callApi(
+        apiKey,
+        modelList,
+        "You compare improv elements and return match pairs as JSON.",
+        prompt,
+        16000,
+        2,
+        true,
+        true,
+        credential
+      );
       return parseMatchResponse(text, sourceA, sourceB);
     },
 
     async normalizeVocabulary(terms) {
       const prompt = buildVocabularyPrompt(terms);
-      const text = await callApi(apiKey, modelList, "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.", prompt, 16000, 2, true, false);
+      const text = await callApi(
+        apiKey,
+        modelList,
+        "You cluster synonym terms from improvisation theatre into canonical forms. Always respond with JSON.",
+        prompt,
+        16000,
+        2,
+        true,
+        false,
+        credential
+      );
       return parseVocabularyResponse(text);
     },
   };
@@ -465,9 +508,10 @@ export async function callApi(
   retries: number = 3,
   retryEmpty: boolean = false,
   jsonFormat: boolean = true,
+  credential: ApiCredential | null = getDefaultApiCredential(),
 ): Promise<string> {
   const { text } = await callApiDetailed(
-    apiKey, models, systemMessage, userMessage, maxTokens, retries, retryEmpty, jsonFormat
+    apiKey, models, systemMessage, userMessage, maxTokens, retries, retryEmpty, jsonFormat, credential
   );
   return text;
 }
@@ -475,6 +519,12 @@ export async function callApi(
 /**
  * Like `callApi`, but also reports which model produced the answer. Needed for
  * provenance: a fallback model must not be recorded as the primary one.
+ *
+ * When a refreshable credential is configured, an expired access token is
+ * renewed before the first request, and an authentication failure triggers
+ * exactly one refresh followed by one retry. A failed refresh throws instead of
+ * returning stale data, so a nightly run cannot silently keep serving the
+ * cache with an expired credential.
  */
 export async function callApiDetailed(
   apiKey: string,
@@ -485,10 +535,24 @@ export async function callApiDetailed(
   retries: number = 3,
   retryEmpty: boolean = false,
   jsonFormat: boolean = true,
+  credential: ApiCredential | null = getDefaultApiCredential(),
 ): Promise<{ text: string; model: string }> {
   const promptChars = systemMessage.length + userMessage.length;
   const estTokens = Math.round(promptChars / 4);
   let lastError: Error | null = null;
+
+  // Prefer the credential's current token (it may already have been rotated),
+  // but keep the caller's key as the fallback for key-only gateways.
+  let activeKey = credential?.accessToken?.trim() ? credential.accessToken : apiKey;
+  const keyAtStart = activeKey;
+  let refreshUsed = false;
+
+  if (credential?.needsRefresh()) {
+    console.warn("  [api] access token expired — refreshing credential");
+    await credential.refresh();
+    activeKey = credential.accessToken;
+    refreshUsed = true;
+  }
 
   for (let modelIdx = 0; modelIdx < models.length; modelIdx++) {
     const model = models[modelIdx];
@@ -502,41 +566,74 @@ export async function callApiDetailed(
         await new Promise(r => setTimeout(r, delay));
       }
 
-      const resp = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: buildApiHeaders(apiKey),
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: systemMessage },
-            { role: "user", content: userMessage },
-          ],
-          ...(jsonFormat ? { response_format: { type: "json_object" } } : {}),
-          max_tokens: maxTokens,
-          temperature: 0,
-        }),
+      const body = JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemMessage },
+          { role: "user", content: userMessage },
+        ],
+        ...(jsonFormat ? { response_format: { type: "json_object" } } : {}),
+        max_tokens: maxTokens,
+        temperature: 0,
       });
 
+      const post = (key: string) =>
+        fetch(API_ENDPOINT, {
+          method: "POST",
+          headers: buildApiHeaders(key),
+          body,
+        });
+
+      let resp = await post(activeKey);
       if (!resp.ok) {
-        const err = await resp.text().catch(() => resp.statusText);
-        const msg = `API error ${resp.status}: ${err.slice(0, 400)}`;
+        let err = await resp.text().catch(() => resp.statusText);
 
-        if (isCreditExhausted(resp.status, err)) {
-          console.warn(`  ${label} HTTP ${resp.status} — model appears out of credits`);
-          if (modelIdx < models.length - 1) {
-            console.warn(`  Falling back to ${models[modelIdx + 1]}`);
+        // One refresh, one retry. Concurrent calls share the in-flight refresh,
+        // and a token already rotated by another call is reused as-is.
+        if (
+          isAuthenticationError(resp.status, err) &&
+          credential?.canRefresh() &&
+          !refreshUsed
+        ) {
+          refreshUsed = true;
+          console.warn(
+            `  ${label} HTTP ${resp.status} — authentication failed, refreshing credential once`
+          );
+          if (credential.accessToken === keyAtStart) {
+            await credential.refresh();
           }
-          lastError = new Error(msg);
-          break; // break retry loop → try next model
+          activeKey = credential.accessToken;
+          resp = await post(activeKey);
+          if (!resp.ok) err = await resp.text().catch(() => resp.statusText);
         }
 
-        if (resp.status === 503 || resp.status === 429) {
-          console.warn(`  ${label} HTTP ${resp.status} — retryable`);
-          lastError = new Error(msg);
-          if (attempt < retries) continue;
-        }
+        if (!resp.ok) {
+          const msg = `API error ${resp.status}: ${err.slice(0, 400)}`;
 
-        throw new Error(msg);
+          if (isAuthenticationError(resp.status, err) && refreshUsed) {
+            throw new CredentialRefreshError(
+              `${msg} — credential refresh did not restore access. ` +
+                "Re-authenticate with `opencode auth login` and update NORMALIZE_API_REFRESH_TOKEN."
+            );
+          }
+
+          if (isCreditExhausted(resp.status, err)) {
+            console.warn(`  ${label} HTTP ${resp.status} — model appears out of credits`);
+            if (modelIdx < models.length - 1) {
+              console.warn(`  Falling back to ${models[modelIdx + 1]}`);
+            }
+            lastError = new Error(msg);
+            break; // break retry loop → try next model
+          }
+
+          if (resp.status === 503 || resp.status === 429) {
+            console.warn(`  ${label} HTTP ${resp.status} — retryable`);
+            lastError = new Error(msg);
+            if (attempt < retries) continue;
+          }
+
+          throw new Error(msg);
+        }
       }
 
       const data = await resp.json();

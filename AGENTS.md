@@ -31,6 +31,12 @@ bun test                   # run tests (bun:test)
 - `NORMALIZE_API_ENDPOINT` — OpenAI-compatible chat-completions endpoint for the LLM stages. Defaults to `https://opencode.ai/zen/v1/chat/completions`; set it to switch gateways (same model name, different account) without a code change.
 - `NORMALIZE_API_SESSION` — OpenCode Go session id, sent as the `x-opencode-session` header. The Go subscription endpoint (`https://opencode.ai/zen/go/v1/chat/completions`) requires it; when the variable is unset the header is omitted, so other gateways never see it.
 - `NORMALIZE_FORCE_IDS` — maintenance hook: comma-separated element identifiers that bypass the cache and are re-extracted even when their content hash and contract still match. Use it to re-extract specific elements after a prompt or quality change. In the works stage one listed member re-extracts its whole merged unit; the contract version is not bumped.
+- `NORMALIZE_API_REFRESH_TOKEN` — OAuth refresh token for the extraction credential. When set, an expired or rejected access token is renewed automatically. Unset: no refresh is attempted, behaviour is unchanged.
+- `NORMALIZE_API_EXPIRES_AT` — optional epoch milliseconds at which the access token expires. When set and reached, the credential is refreshed before the first API call instead of waiting for a 401.
+- `NORMALIZE_API_REFRESH_ENDPOINT` — optional token endpoint. Defaults to `https://opencode.ai/console/auth/oauth/token` (discovered from `https://opencode.ai/console/.well-known/oauth-authorization-server`).
+- `NORMALIZE_API_CLIENT_ID` — optional public OAuth client id. Defaults to `https://opencode.ai/oauth/opencode/client.json`, the OpenCode CIMD document; no client secret is used.
+
+The credential is refreshed at most once per API call: proactively when `NORMALIZE_API_EXPIRES_AT` has passed, or after one authentication failure (401 / `api_key_expired`), followed by one retry. A failed refresh throws a clear error instead of returning stale cached data. Rotated credentials are written to `<storage>/.opencode-credential.json` (gitignored), which is preferred over the environment on start so a rotated refresh token survives a restart. A provider-side rotation can still invalidate the copy stored by the local CLI; if refresh starts returning `invalid_grant`, re-authenticate with `opencode auth login` and update `NORMALIZE_API_REFRESH_TOKEN`.
 
 ```sh
 NORMALIZE_API_ENDPOINT=https://opencode.ai/zen/go/v1/chat/completions \

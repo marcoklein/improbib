@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { mkdir } from "node:fs/promises";
 import type { NormalizedElement } from "./normalized-schema";
 import { getNormalizedBy, isUsableNormalization } from "./normalized-schema";
+import { CredentialRefreshError } from "./api-credential";
 import { createOpencodeGoClient } from "./llm-client";
 import { isForcedUnit, parseForceIds } from "./force-ids";
 import { ACTIVE_SOURCES } from "../sources";
@@ -430,6 +431,9 @@ export async function normalizeWorksStage(options?: {
           },
         });
       } catch (err: any) {
+        // A dead credential is not a per-work failure: abort instead of
+        // publishing a run whose merged units silently kept old content.
+        if (err instanceof CredentialRefreshError) throw err;
         // Do not store a half result. The missing unit means its members keep
         // no merged content, which the assembly step shows instead of hiding.
         console.warn(
