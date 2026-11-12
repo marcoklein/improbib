@@ -40,13 +40,20 @@ const METADATA_ARRAY_FIELDS = ["tags", "categories", "postTags"] as const;
  * wins; when timestamps are equal the one with more content wins, and the
  * identifier is the last tie-breaker. Everything is stable across runs.
  */
+/**
+ * Which element of a same-URL group survives.
+ *
+ * Same rule as `pickSameUrlKeeper` in the dedup stage: most content, then the
+ * lowest identifier. The two layers must agree — otherwise the keeper depends
+ * on which layer happens to see the duplicate first, and the same pipeline
+ * produces different element ids in different environments.
+ */
 function pickUrlKeeper(group: ElementType[]): ElementType {
+  const contentLength = (element: ElementType) =>
+    element.markdown?.length ?? element.htmlContent?.length ?? 0;
+
   return [...group].sort((a, b) => {
-    const byDate = (b.fetchedAt ?? "").localeCompare(a.fetchedAt ?? "");
-    if (byDate !== 0) return byDate;
-    const byLength =
-      (b.markdown?.length ?? b.htmlContent?.length ?? 0) -
-      (a.markdown?.length ?? a.htmlContent?.length ?? 0);
+    const byLength = contentLength(b) - contentLength(a);
     if (byLength !== 0) return byLength;
     return a.identifier.localeCompare(b.identifier);
   })[0];
@@ -59,7 +66,8 @@ function pickUrlKeeper(group: ElementType[]): ElementType {
  * title changed is stored a second time under a new identifier while the
  * previous element is kept by `loadExistingElements` — the same URL then has
  * two elements that `mergeElements` cannot collapse. This pass is the cheap
- * guard at the point of discovery: newest fetch wins, metadata arrays are
+ * guard at the point of discovery: the same keeper rule as the dedup stage
+ * applies (most content, then lowest identifier), and metadata arrays are
  * unioned so tags from a second listing page are not lost.
  *
  * @returns the number of elements that were merged away

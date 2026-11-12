@@ -109,3 +109,30 @@ describe("dedupeElementsByUrl", () => {
     expect(output.elements).toHaveLength(3);
   });
 });
+
+describe("dedupeElementsByUrl keeper rule", () => {
+  test("agrees with the dedup stage: more content beats a newer fetch", () => {
+    const output = {
+      elements: [
+        element({
+          identifier: "older-but-complete",
+          fetchedAt: "2026-10-01T00:00:00.000Z",
+          htmlContent: "<p>" + "x".repeat(500) + "</p>",
+        }),
+        element({
+          identifier: "newer-but-short",
+          fetchedAt: "2026-11-11T00:00:00.000Z",
+          htmlContent: "<p>short</p>",
+        }),
+      ],
+    };
+
+    dedupeElementsByUrl(output);
+
+    // The dedup stage would keep the longer one; the scraper must not decide
+    // differently just because it sees the duplicate first.
+    expect(output.elements.map((el) => el.identifier)).toEqual([
+      "older-but-complete".padEnd(32, "0"),
+    ]);
+  });
+});
