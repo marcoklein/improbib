@@ -24,6 +24,7 @@ bun run src/review.ts --hubs                   # show top skill/mechanic/tag hub
 bun run src/review.ts --element <name-or-id>   # show full element details
 bun run src/review.ts --random <N>             # show N random canonical elements
 bun test                   # run tests (bun:test)
+bun run gate               # run the nine quality gates, write output/run-report.json
 ```
 
 ### Normalization environment
@@ -43,6 +44,23 @@ NORMALIZE_API_ENDPOINT=https://opencode.ai/zen/go/v1/chat/completions \
 NORMALIZE_API_SESSION=ses_123 NORMALIZE_FORCE_IDS=abc,def \
 bun run src/normalize/normalize.ts
 ```
+
+### Quality gates
+
+`bun run gate` (`scripts/gate.ts`) runs the nine verification gates over
+`output/` and writes `output/run-report.json`:
+
+1. normalized works — work/member coverage against `work-merges.json`, non-empty summaries and descriptions
+2. per-source — element counts, merged members found per source, summary parity
+3. steps — p50/p95/max and no element over eight steps
+4. skills — only vocabulary ids, distribution, zero-skill count
+5. practical — usage/requires coverage and valid usage values
+6. languages — no work contradicts or mixes member languages
+7. artifact — element/work counts, every work has sources and a license, merged groups map to exactly one work
+8. duplicate hashes — duplicate normalized content hashes match the reviewed merge groups
+9. graph — node/edge counts and every edge endpoint exists
+
+The command exits non-zero when any gate fails. The report shape and numbers are the deployment contract; keep them stable when changing the gates.
 
 ## Architecture
 

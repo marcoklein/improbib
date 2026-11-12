@@ -9,6 +9,7 @@
     "dev": "bun --watch run src/serve.ts",
     "reparse": "bun src/reparse.ts",
     "test": "bun test",
+    "gate": "bun scripts/gate.ts",
     "assemble": "bun src/publish-artifact.ts",
     "backfill:attribution": "bun src/backfill-attribution.ts",
     "splits": "bun src/split/pipeline.ts"
