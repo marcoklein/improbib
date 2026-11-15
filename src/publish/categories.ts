@@ -1,5 +1,4 @@
-import type { NormalizedElement } from "../normalize/normalized-schema";
-import { deriveSuitableFor } from "../query/suitable-for";
+import { WARMUP_OVERRIDES } from "./warmup-overrides";
 
 /**
  * The category shown as the first badge on a work page.
@@ -8,12 +7,14 @@ import { deriveSuitableFor } from "../query/suitable-for";
  * is a format. They answer different questions ("where does it fit?" and
  * "what is it?"), so an array is the honest shape.
  *
- * The category is derived, never extracted. Two reasons:
+ * The category is derived from the source tags, never extracted. A source that
+ * calls a work a game gets `game`; a source that calls it a warm-up gets
+ * `warmup`. There is deliberately no "short + beginner = warm-up" heuristic:
+ * that rule turned every short beginner game into a warm-up, including games
+ * that need an audience suggestion and a genre list.
  *
- * - The source tags already carry it (`game`, `exercise`, `warmup`, `show`,
- *   `longform`, `icebreaker`, `askFor`, …).
- * - A derived value cannot drift from the tag it comes from, and a new
- *   category does not require another paid extraction.
+ * A small curated list (`warmup-overrides.ts`) covers classics that carry no
+ * warm-up tag. It is reviewed by hand and kept short.
  */
 export const WORK_CATEGORIES = [
   "warmup",
@@ -44,7 +45,7 @@ const FORMAT_TAGS = new Set([
 
 export function deriveCategories(
   tagIds: string[],
-  practical: NormalizedElement["normalized"]["practical"]
+  identifier?: string
 ): WorkCategory[] {
   const found = new Set<WorkCategory>();
 
@@ -64,18 +65,7 @@ export function deriveCategories(
     }
   }
 
-  // Not every warm-up is tagged as one — Freeze Tag only carries "game" and
-  // "chainGames", yet it is exactly what a group starts with. A short, simple,
-  // energetic work is a warm-up in practice, which is the rule the rehearsal
-  // planner already uses (`query/suitable-for.ts`).
-  if (
-    !found.has("warmup") &&
-    deriveSuitableFor(
-      practical.difficulty,
-      practical.typicalDurationMinutes,
-      practical.energyLevel
-    ) === "warmup"
-  ) {
+  if (identifier && WARMUP_OVERRIDES.has(identifier)) {
     found.add("warmup");
   }
 

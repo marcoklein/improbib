@@ -79,7 +79,8 @@ export interface PublishedArtifact {
 
 function toArtifactNormalized(
   normalized: NormalizedElement["normalized"],
-  tagIds: string[]
+  tagIds: string[],
+  identifier: string
 ): ArtifactNormalized | undefined {
   // A block without a summary is a failed extraction: consumers use the
   // summary as the element's one-line description. The other fields are
@@ -105,7 +106,7 @@ function toArtifactNormalized(
     practical: sanitizePractical(normalized.practical),
     mechanics: normalized.mechanics.map((mechanic) => mechanic.name),
     skills: sanitizeSkills(normalized.skills),
-    categories: deriveCategories(tagIds, normalized.practical),
+    categories: deriveCategories(tagIds, identifier),
     // Entries extracted before the tips rule existed can still contain a tip
     // that repeats a step. Filtering here cleans the old data too.
     tips: dropRedundantTips(
@@ -191,7 +192,11 @@ export function buildPublishedArtifact(params: {
     if (!work) continue;
 
     if (normalized) {
-      const published = toArtifactNormalized(normalized.normalized, element.tagIds ?? []);
+      const published = toArtifactNormalized(
+        normalized.normalized,
+        element.tagIds ?? [],
+        element.identifier
+      );
       if (published) {
         element.normalized = published;
       }

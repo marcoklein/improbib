@@ -1,19 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import { deriveCategories } from "./categories";
-import type { NormalizedElement } from "../normalize/normalized-schema";
-
-type Practical = NormalizedElement["normalized"]["practical"];
 
 describe("deriveCategories", () => {
   it("keeps the category the source tags state", () => {
-    expect(deriveCategories(["exercise"], {})).toEqual(["exercise"]);
-    expect(deriveCategories(["longform", "show"], {})).toEqual(["format"]);
-    expect(deriveCategories(["askFor"], {})).toEqual(["audienceQuestion"]);
-    expect(deriveCategories(["concept"], {})).toEqual(["concept"]);
+    expect(deriveCategories(["exercise"])).toEqual(["exercise"]);
+    expect(deriveCategories(["longform", "show"])).toEqual(["format"]);
+    expect(deriveCategories(["askFor"])).toEqual(["audienceQuestion"]);
+    expect(deriveCategories(["concept"])).toEqual(["concept"]);
   });
 
   it("returns the categories in a stable order", () => {
-    expect(deriveCategories(["game", "warmup", "exercise"], {})).toEqual([
+    expect(deriveCategories(["game", "warmup", "exercise"])).toEqual([
       "warmup",
       "exercise",
       "game",
@@ -21,48 +18,45 @@ describe("deriveCategories", () => {
   });
 
   it("treats name games and icebreakers as warm-ups", () => {
-    expect(deriveCategories(["nameGames", "game"], {})).toEqual([
+    expect(deriveCategories(["nameGames", "game"])).toEqual([
       "warmup",
       "game",
     ]);
-    expect(deriveCategories(["icebreaker", "game"], {})).toEqual([
-      "warmup",
-      "game",
-    ]);
-  });
-
-  it("falls back to no category when nothing provides one", () => {
-    expect(deriveCategories([], {})).toEqual([]);
-  });
-
-  it("adds the warm-up for a short, simple, energetic work", () => {
-    // Freeze Tag: beginner, energetic, no duration in the source.
-    const freezeTag: Practical = { difficulty: "beginner", energyLevel: "high" };
-    expect(deriveCategories(["game", "chainGames"], freezeTag)).toEqual([
+    expect(deriveCategories(["icebreaker", "game"])).toEqual([
       "warmup",
       "game",
     ]);
   });
 
-  it("does not add the warm-up to a calm, long or advanced work", () => {
+  it("does not infer a warm-up from a short beginner game", () => {
+    // Märchenreplay: the source calls it a game, not a warm-up. The old
+    // "beginner + short + energetic" heuristic added `warmup` here.
+    expect(deriveCategories(["game", "replay", "beginner"])).toEqual(["game"]);
+  });
+
+  it("keeps a curated warm-up that carries no warm-up tag", () => {
+    // Freeze Tag (de): a classic opener, but the source only tags it as a game.
     expect(
-      deriveCategories(["exercise"], { difficulty: "beginner", energyLevel: "low" })
-    ).toEqual(["exercise"]);
-    expect(
-      deriveCategories(["exercise"], {
-        difficulty: "beginner",
-        energyLevel: "high",
-        typicalDurationMinutes: 30,
-      })
-    ).toEqual(["exercise"]);
-    expect(
-      deriveCategories(["exercise"], { difficulty: "intermediate", energyLevel: "high" })
-    ).toEqual(["exercise"]);
+      deriveCategories(
+        ["game", "chainGames"],
+        "b495669fefdc338b2baa16f4bc3ba761"
+      )
+    ).toEqual(["warmup", "game"]);
+  });
+
+  it("ignores an unknown identifier", () => {
+    expect(deriveCategories(["game"], "not-a-known-identifier")).toEqual([
+      "game",
+    ]);
   });
 
   it("does not duplicate the warm-up when a tag already states it", () => {
-    expect(deriveCategories(["warmup"], { difficulty: "beginner", energyLevel: "high" })).toEqual([
-      "warmup",
-    ]);
+    expect(
+      deriveCategories(["warmup"], "b495669fefdc338b2baa16f4bc3ba761")
+    ).toEqual(["warmup"]);
+  });
+
+  it("falls back to no category when nothing provides one", () => {
+    expect(deriveCategories([])).toEqual([]);
   });
 });
