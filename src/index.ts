@@ -10,10 +10,21 @@ export class Improbib {
     await initLogging();
   }
 
-  async scrape(options?: { maxPagesPerListing?: number }) {
+  /**
+   * Scrape every active source without publishing.
+   *
+   * The daily pipeline scrapes first and normalizes afterwards. Assembling
+   * here would publish the raw elements if normalization fails — exactly what
+   * happened when the extraction credential expired.
+   */
+  async scrapeOnly(options?: { maxPagesPerListing?: number }) {
     await scrapeImprowiki(options);
     await scrapeLearnImprov(options);
     console.log("All active sources scraped.");
+  }
+
+  async scrape(options?: { maxPagesPerListing?: number }) {
+    await this.scrapeOnly(options);
     return await assemble();
   }
 
@@ -30,21 +41,13 @@ export class Improbib {
   }
 
   async normalizeAll(options?: { maxElements?: number; source?: string; stages?: number[] }) {
-    try {
-      const { normalizeAll } = await import("./normalize/normalize");
-      await normalizeAll(options);
-    } catch (err: any) {
-      console.error("Normalization failed:", err.message, err.stack);
-    }
+    const { normalizeAll } = await import("./normalize/normalize");
+    await normalizeAll(options);
   }
 
   async normalizeSource(source: string) {
-    try {
-      const { normalizeAll } = await import("./normalize/normalize");
-      await normalizeAll({ source });
-    } catch (err: any) {
-      console.error("Normalization failed:", err.message, err.stack);
-    }
+    const { normalizeAll } = await import("./normalize/normalize");
+    await normalizeAll({ source });
   }
 }
 

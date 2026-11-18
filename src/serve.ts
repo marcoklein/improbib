@@ -97,7 +97,7 @@ async function runScrape(force: boolean = false) {
   scrapeRunning = true;
   console.log(`[${new Date().toISOString()}] Starting scrape${force ? " (forced)" : ""}...`);
   try {
-    await scanner.scrape();
+    await scanner.scrapeOnly();
     console.log(`[${new Date().toISOString()}] Scrape complete.`);
     runNormalizationChain().catch((err) => {
       console.error(`[${new Date().toISOString()}] Normalization chain failed:`, err);
@@ -117,11 +117,21 @@ async function runNormalizationChain() {
   normalizeRunning = true;
   console.log(`[${new Date().toISOString()}] Starting normalization chain (Stages 1, 3, 4 + graph)...`);
 
+  let stage1Failed = false;
   try {
     await scanner.normalizeAll();
     console.log(`[${new Date().toISOString()}] Stage 1 (extraction) complete.`);
   } catch (err: any) {
+    stage1Failed = true;
     console.error(`[${new Date().toISOString()}] Stage 1 failed:`, err.message);
+  }
+
+  if (stage1Failed) {
+    normalizeRunning = false;
+    console.error(
+      `[${new Date().toISOString()}] Normalization chain aborted — keeping the previous artifact.`
+    );
+    return;
   }
 
   try {

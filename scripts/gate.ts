@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * The nine quality gates that decide whether a pipeline run may be published.
+ * The ten quality gates that decide whether a pipeline run may be published.
  *
  * Reads the artifacts under `output/`, writes `output/run-report.json` and
  * exits non-zero when any gate fails. The report shape and numbers are the
@@ -505,6 +505,32 @@ const gate9 = {
 };
 
 // ---------------------------------------------------------------------------
+// 10. normalized coverage
+// ---------------------------------------------------------------------------
+
+const elementsWithoutNormalized = elements.filter(
+  (element) => !element.normalized
+).length;
+const normalizedShare = elements.length
+  ? round4((elements.length - elementsWithoutNormalized) / elements.length)
+  : 0;
+
+/**
+ * A failed extraction run must not publish a half-normalized artifact.
+ *
+ * The last good artifact had zero elements without a normalized block. A 1 %
+ * margin tolerates a legacy entry, but fails a run like the 189-element
+ * regression from the expired extraction credential.
+ */
+const gate10Pass = normalizedShare >= 0.99;
+
+const gate10 = {
+  pass: gate10Pass,
+  normalizedShare,
+  elementsWithoutNormalized,
+};
+
+// ---------------------------------------------------------------------------
 // report
 // ---------------------------------------------------------------------------
 
@@ -518,6 +544,7 @@ const gatePasses = [
   gate7.pass,
   gate8Pass,
   gate9.pass,
+  gate10.pass,
 ];
 
 const report = {
@@ -534,6 +561,7 @@ const report = {
     "7_artifact": gate7,
     "8_duplicate_hashes": gate8,
     "9_graph": gate9,
+    "10_normalized": gate10,
   },
 };
 
