@@ -7,6 +7,13 @@ const MD5_LENGTH = 32;
 const artifactPracticalSchema = z.object({
   difficulty: z.enum(["beginner", "intermediate", "advanced"]).optional(),
   typicalDurationMinutes: z.number().positive().optional(),
+  /**
+   * Where `typicalDurationMinutes` comes from: `stated` when a source sentence
+   * names it, `inferred` when the extraction model guessed it. Present exactly
+   * when the number is present (enforced by `findWorkFitProblems`). Absent on
+   * artifacts assembled before the field existed.
+   */
+  durationSource: z.enum(["stated", "inferred"]).optional(),
   energyLevel: z.enum(["low", "medium", "high"]).optional(),
   groupSize: z
     .object({
@@ -119,6 +126,15 @@ export const artifactWorkSchema = z.object({
   translationId: z.string().nullable(),
   parentWorkId: z.string().nullable(),
   parentConfidence: z.number().nullable(),
+  /**
+   * The work's one duration and its provenance. `stated` means a source named
+   * the number; `inferred` means the extraction guessed it. Both are `null`
+   * together when no member names a duration. Always present since this field
+   * was added; the guard in `findWorkFitProblems` rejects a number without a
+   * source.
+   */
+  durationMinutes: z.number().positive().nullable(),
+  durationSource: z.enum(["stated", "inferred"]).nullable(),
   sources: z.array(artifactSourceSchema),
   variations: z.array(artifactVariationSchema),
 });

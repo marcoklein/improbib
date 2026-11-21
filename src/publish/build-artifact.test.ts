@@ -14,6 +14,7 @@ function makeRaw(input: {
   authors?: string[];
   licenseName?: string;
   tagIds?: string[];
+  markdown?: string;
 }): ElementType {
   return {
     identifier: input.identifier,
@@ -22,7 +23,7 @@ function makeRaw(input: {
     sourceName: input.sourceName,
     languageCode: input.languageCode ?? "en",
     tags: input.tagIds ?? ["game"],
-    markdown: "Some markdown content",
+    markdown: input.markdown ?? "Some markdown content",
     licenseName: input.licenseName ?? "CC BY-SA 4.0",
     licenseUrl: "https://example.com/license",
     licenseSpdxIdentifier: "CC-BY-SA-4.0",
@@ -38,6 +39,7 @@ function makeNormalized(input: {
   relatedIdentifiers?: { identifier: string; confidence: number }[];
   summary?: string;
   description?: string;
+  durationMinutes?: number;
 }): NormalizedElement {
   return {
     identifier: input.identifier,
@@ -57,7 +59,11 @@ function makeNormalized(input: {
       referencedElements: [],
       mechanics: [{ name: "freeze signal" }],
       skills: ["impulse"],
-      practical: { difficulty: "beginner", energyLevel: "high" },
+      practical: {
+        difficulty: "beginner",
+        energyLevel: "high",
+        typicalDurationMinutes: input.durationMinutes,
+      },
       contentHash: `hash-${input.identifier}`,
       extractedAt: "2026-01-01T00:00:00.000Z",
       normalizedBy: "test-model",
@@ -363,5 +369,150 @@ describe("buildPublishedArtifact", () => {
     });
 
     expect(artifact.elements[0].normalized).toBeUndefined();
+  });
+});
+
+describe("duration provenance", () => {
+  function publishOne(input: {
+    markdown: string;
+    durationMinutes?: number;
+    languageCode?: "de" | "en";
+  }) {
+    const id = "a".repeat(32);
+    const raw = makeRaw({
+      identifier: id,
+      name: "Verflixte Sieben",
+      sourceName: "improwiki",
+      languageCode: input.languageCode ?? "de",
+      markdown: input.markdown,
+    });
+    const norm = makeNormalized({
+      identifier: id,
+      name: "Verflixte Sieben",
+      sourceName: "improwiki",
+      languageCode: input.languageCode ?? "de",
+      durationMinutes: input.durationMinutes,
+    });
+    const artifact = buildPublishedArtifact({
+      elements: [raw],
+      normalized: [norm],
+      works: buildWorks([norm]),
+    });
+    return artifact;
+  }
+
+  test("labels a guessed number as inferred", () => {
+    const artifact = publishOne({
+      markdown:
+        "Ein Format für sechs Spieler. Jede Figur stellt sich kurz vor und die Szenen wechseln.",
+      durationMinutes: 60,
+    });
+
+    expect(artifact.works[0].durationMinutes).toBe(60);
+    expect(artifact.works[0].durationSource).toBe("inferred");
+    const practical = (artifact.elements[0].normalized as ArtifactNormalized)
+      .practical;
+    expect(practical.typicalDurationMinutes).toBe(60);
+    expect(practical.durationSource).toBe("inferred");
+  });
+
+  test("labels a number the source states as stated", () => {
+    const artifact = publishOne({
+      markdown: "**Dauer:** 10 Minuten\n\nEin kurzes Format für die Probe.",
+      durationMinutes: 10,
+    });
+
+    expect(artifact.works[0].durationMinutes).toBe(10);
+    expect(artifact.works[0].durationSource).toBe("stated");
+    const practical = (artifact.elements[0].normalized as ArtifactNormalized)
+      .practical;
+    expect(practical.durationSource).toBe("stated");
+  });
+
+  test("publishes both duration fields as null when no member names one", () => {
+    const artifact = publishOne({
+      markdown: "Ein Format ohne jede Zeitangabe.",
+    });
+
+    expect(artifact.works[0].durationMinutes).toBeNull();
+    expect(artifact.works[0].durationSource).toBeNull();
+    const practical = (artifact.elements[0].normalized as ArtifactNormalized)
+      .practical;
+    expect(practical.typicalDurationMinutes).toBeUndefined();
+    expect(practical.durationSource).toBeUndefined();
+  });
+
+  test("lets two sources of one work publish one number and one source", () => {
+    const canonicalId = "b".repeat(32);
+    const otherId = "c".repeat(32);
+    const rawA = makeRaw({
+      identifier: canonicalId,
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+      markdown: "Es dauert normalerweise ca. 10 Minuten.",
+    });
+    const rawB = makeRaw({
+      identifier: otherId,
+      name: "Freeze",
+      sourceName: "learnimprov",
+      markdown: "A guessing game with no number.",
+    });
+    const normA = makeNormalized({
+      identifier: canonicalId,
+      name: "Freeze Tag",
+      sourceName: "improwiki",
+      durationMinutes: 10,
+      relatedIdentifiers: [{ identifier: otherId, confidence: 1 }],
+    });
+    // The second source's model guessed a different number; the work keeps the
+    // canonical number and applies it to both members.
+    const normB = makeNormalized({
+      identifier: otherId,
+      name: "Freeze",
+      sourceName: "learnimprov",
+      durationMinutes: 20,
+      relatedIdentifiers: [{ identifier: canonicalId, confidence: 1 }],
+    });
+
+    const works = buildWorks([normA, normB]);
+    expect(works).toHaveLength(1);
+    const artifact = buildPublishedArtifact({
+      elements: [rawA, rawB],
+      normalized: [normA, normB],
+      works,
+    });
+
+    expect(artifact.works[0].durationMinutes).toBe(10);
+    expect(artifact.works[0].durationSource).toBe("stated");
+    for (const element of artifact.elements) {
+      const practical = (element.normalized as ArtifactNormalized).practical;
+      expect(practical.typicalDurationMinutes).toBe(10);
+      expect(practical.durationSource).toBe("stated");
+    }
+  });
+
+  test("never publishes a duration without a source", () => {
+    const artifact = publishOne({
+      markdown: "Ein Format mit geschätzter Dauer.",
+      durationMinutes: 25,
+    });
+    const none = publishOne({ markdown: "Ein Format ohne Dauer." });
+
+    const all = [artifact, none];
+    for (const current of all) {
+      for (const work of current.works) {
+        expect(work.durationSource === null).toBe(
+          work.durationMinutes === null
+        );
+      }
+      for (const element of current.elements) {
+        const practical = (element.normalized as ArtifactNormalized | undefined)
+          ?.practical;
+        if (!practical) continue;
+        expect(practical.durationSource === undefined).toBe(
+          practical.typicalDurationMinutes === undefined
+        );
+      }
+    }
   });
 });

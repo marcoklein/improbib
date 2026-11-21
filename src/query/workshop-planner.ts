@@ -9,6 +9,12 @@ export interface WorkshopConstraints {
   difficulty?: string;
   constraints?: string[];
   theme?: string;
+  /**
+   * Fit time only with works whose duration a source states. Inferred
+   * durations are ignored instead of filling the budget with guesses; a short
+   * plan plus a warning is preferable to a confident wrong one.
+   */
+  strictTime?: boolean;
 }
 
 export interface WorkshopPlan {
@@ -16,6 +22,12 @@ export interface WorkshopPlan {
   main: ElementResult[];
   closer: ElementResult[];
   totalDuration: number;
+  /**
+   * `stated` only when every planned work has a duration a source states.
+   * Category-default minutes (`|| 10`) and inferred durations make it
+   * `inferred`.
+   */
+  durationConfidence: "stated" | "inferred";
   fallbacks: Record<string, ElementResult[]>;
   warnings: string[];
 }
@@ -66,12 +78,27 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
     }
   }
 
-  const { results: allCanonicals } = queryElements({
+  const { results: queriedCanonicals } = queryElements({
     canonicalOnly: true,
     language: "en",
     excludeRequirements: excludeRequirements.length > 0 ? excludeRequirements : undefined,
     limit: 1000,
   });
+
+  // Strict time fits only consume durations the source states. Filtering the
+  // whole pool (not just the loop guard) keeps every fill branch — warm-up
+  // fallback, themed fallback, closer fill — from padding with guesses.
+  let allCanonicals = queriedCanonicals;
+  if (constraints.strictTime) {
+    allCanonicals = queriedCanonicals.filter(
+      (el) => el.durationSource === "stated" && el.typicalDurationMinutes !== undefined,
+    );
+    if (allCanonicals.length === 0) {
+      warnings.push(
+        "Strict time fit: no element has a source-stated duration — the plan cannot be filled",
+      );
+    }
+  }
 
   let candidates = allCanonicals;
 
@@ -348,12 +375,28 @@ export function planWorkshop(constraints: WorkshopConstraints): WorkshopPlan {
       `Planned duration (${totalDuration}min) is less than 50% of target (${targetDuration}min)`,
     );
   }
+  if (constraints.strictTime && totalDuration < targetDuration) {
+    warnings.push(
+      `Strict time fit: source-stated durations reach ${totalDuration}min of ${targetDuration}min`,
+    );
+  }
+
+  const planned = [...warmUp, ...main, ...closer];
+  const durationConfidence: "stated" | "inferred" =
+    planned.length > 0 &&
+    planned.every(
+      (el) =>
+        el.durationSource === "stated" && el.typicalDurationMinutes !== undefined,
+    )
+      ? "stated"
+      : "inferred";
 
   return {
     warmUp,
     main,
     closer,
     totalDuration,
+    durationConfidence,
     fallbacks,
     warnings,
   };

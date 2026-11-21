@@ -8,6 +8,7 @@ import { MIN_CLUSTER_CONFIDENCE } from "../normalize/cluster-config";
 import type { Override, OverrideStats } from "./overrides";
 import { deriveRequirements } from "./requirement-mapping";
 import { ACTIVE_SOURCES } from "../sources";
+import { hasStatedDuration } from "../publish/duration-evidence";
 
 export interface GraphNode {
   id: string;
@@ -33,6 +34,12 @@ export interface ElementNode extends GraphNode {
   sources?: SourceProvenance[];
   difficulty?: string;
   typicalDurationMinutes?: number;
+  /**
+   * Where `typicalDurationMinutes` comes from. Absent when the node has no
+   * duration. `stated` means a page names the number; `inferred` means the
+   * extraction guessed it. Only `stated` may drive a strict time fit.
+   */
+  durationSource?: "stated" | "inferred";
   energyLevel?: string;
   groupSize?: { min?: number; max?: number };
   playerCountMin?: number;
@@ -69,6 +76,23 @@ export interface KnowledgeGraph {
 
 function nodeId(prefix: string, name: string): string {
   return createHash("md5").update(`${prefix}:${name.toLowerCase()}`).digest("hex");
+}
+
+/**
+ * Where a node's duration comes from, using the same rule as the artifact.
+ *
+ * The graph is derived before the artifact is assembled, so it cannot read the
+ * published flag. It runs the evidence check on the page HTML instead. A
+ * canonical node is `stated` when any of its members names the number, which
+ * is exactly what `buildWorkFits` does for the work.
+ */
+function durationSourceOf(
+  elements: { htmlContent?: string }[],
+  minutes: number
+): "stated" | "inferred" {
+  return elements.some((el) => hasStatedDuration(el.htmlContent, minutes))
+    ? "stated"
+    : "inferred";
 }
 
 function buildVocabMap(vocab: VocabularyMap): {
@@ -388,7 +412,10 @@ function createCanonicalElement(
   (node as any)._skills = skills;
 
   if (difficulty) node.difficulty = difficulty;
-  if (typicalDurationMinutes) node.typicalDurationMinutes = typicalDurationMinutes;
+  if (typicalDurationMinutes) {
+    node.typicalDurationMinutes = typicalDurationMinutes;
+    node.durationSource = durationSourceOf(langMembers, typicalDurationMinutes);
+  }
   if (energyLevel) node.energyLevel = energyLevel;
   if (groupSizeMin !== undefined || groupSizeMax !== undefined) {
     node.groupSize = {
@@ -486,6 +513,7 @@ export function deriveGraph(
   for (const el of elements) idMap.set(el.identifier, el);
 
   for (const el of elements) {
+    const elementMinutes = el.normalized.practical?.typicalDurationMinutes;
     addNode({
       id: el.identifier,
       type: "Element",
@@ -498,7 +526,10 @@ export function deriveGraph(
       languageCode: el.languageCode,
       url: el.url,
       difficulty: el.normalized.practical?.difficulty,
-      typicalDurationMinutes: el.normalized.practical?.typicalDurationMinutes,
+      typicalDurationMinutes: elementMinutes,
+      durationSource: elementMinutes
+        ? durationSourceOf([el], elementMinutes)
+        : undefined,
       energyLevel: el.normalized.practical?.energyLevel,
       groupSize: el.normalized.practical?.groupSize,
       playerCountMin: el.playerCountMin,
