@@ -5,8 +5,25 @@ import type { SkillId } from "../normalize/skills";
 import { dropRedundantTips } from "../normalize/tip-redundancy";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { PublishedVariation, PublishedWork } from "./build-works";
+import {
+  deriveDuration,
+  type DurationProvenance,
+  type DurationSource,
+} from "./duration-evidence";
 import { deriveWorkFit, isPlayableKind, isVariantIndexPage } from "./work-fit";
 import type { WorkFit, WorkKind, WorkRole } from "./work-fit";
+
+/** The source card fields that can hold a duration (improwiki sidebar). */
+const DURATION_CARD_FIELDS = ["card_Dauer", "card_Duration", "card_Time"] as const;
+
+/**
+ * The published practical block. `durationSource` is added at publish time:
+ * it is not part of the stored normalization, because labeling a number is a
+ * publication decision, not an extraction result.
+ */
+export type ArtifactPractical = NormalizedElement["normalized"]["practical"] & {
+  durationSource?: DurationSource;
+};
 
 /**
  * The normalized subset that is published per source element.
@@ -19,7 +36,7 @@ export interface ArtifactNormalized {
   summary: string;
   description: string;
   howToPlay: NormalizedElement["normalized"]["howToPlay"];
-  practical: NormalizedElement["normalized"]["practical"];
+  practical: ArtifactPractical;
   mechanics: string[];
   skills: string[];
   /**
@@ -65,6 +82,14 @@ export interface ArtifactWork {
   translationId: string | null;
   parentWorkId: string | null;
   parentConfidence: number | null;
+  /**
+   * The one duration published for the work, `null` when no member names one.
+   * Always paired with `durationSource`; consumers must never treat a number
+   * without a source as measured.
+   */
+  durationMinutes: number | null;
+  /** `stated` (the source names it) or `inferred` (the extraction guessed). */
+  durationSource: "stated" | "inferred" | null;
   sources: ArtifactSource[];
   variations: PublishedVariation[];
 }
@@ -111,10 +136,14 @@ function toArtifactNormalized(
 
   // A concept has no difficulty, player count or "Einsatz". Publishing them
   // made a glossary entry look like a game (see the element-quality evidence).
+  // The duration is written from the work, not from this member, so two
+  // sources of the same work cannot publish contradictory numbers or sources.
   const practical = isPlayableKind(fit.kind)
     ? {
         ...sanitizePractical(normalized.practical),
         usage: fit.usage.length > 0 ? fit.usage : undefined,
+        typicalDurationMinutes: fit.duration?.minutes,
+        durationSource: fit.duration?.source,
       }
     : {};
 
@@ -141,6 +170,53 @@ function toArtifactNormalized(
     model: normalized.model,
     promptHash: normalized.promptHash,
   };
+}
+
+function durationEvidence(element: ElementType): (string | undefined)[] {
+  const values: (string | undefined)[] = [element.markdown];
+  for (const field of DURATION_CARD_FIELDS) {
+    const value = element[field];
+    if (typeof value === "string") values.push(value);
+  }
+  return values;
+}
+
+function memberDurationMinutes(
+  element: ElementType,
+  normalizedById: Map<string, NormalizedElement>
+): number | undefined {
+  const normalized = normalizedById.get(element.identifier);
+  if (!normalized) return undefined;
+  return sanitizePractical(normalized.normalized.practical).typicalDurationMinutes;
+}
+
+/**
+ * One number per work, then one provenance for it.
+ *
+ * The number is the canonical member's when present, otherwise the first
+ * member in the stable order. The evidence check runs over every member, so a
+ * translation that names the duration makes the work `stated` even when the
+ * canonical page does not.
+ */
+function pickWorkDuration(params: {
+  members: ElementType[];
+  canonical: ElementType;
+  normalizedById: Map<string, NormalizedElement>;
+}): DurationProvenance | null {
+  const canonicalMinutes = memberDurationMinutes(
+    params.canonical,
+    params.normalizedById
+  );
+  const minutes =
+    canonicalMinutes ??
+    params.members
+      .map((member) => memberDurationMinutes(member, params.normalizedById))
+      .find((value): value is number => typeof value === "number");
+
+  return deriveDuration({
+    minutes,
+    evidence: params.members.flatMap(durationEvidence),
+  });
 }
 
 /**
@@ -198,6 +274,11 @@ function buildWorkFits(params: {
         name: canonical.name,
         markdown: allIndexPages ? canonical.markdown ?? "" : "",
         usage: [...usage],
+        duration: pickWorkDuration({
+          members,
+          canonical,
+          normalizedById: params.normalizedById,
+        }),
       })
     );
   }
@@ -289,6 +370,11 @@ export function buildPublishedArtifact(params: {
           name: element.name,
           markdown: element.markdown ?? "",
           usage: sanitizePractical(normalized.normalized.practical).usage,
+          duration: pickWorkDuration({
+            members: [element],
+            canonical: element,
+            normalizedById,
+          }),
         });
       const published = toArtifactNormalized(normalized.normalized, fit);
       if (published) {
@@ -309,6 +395,7 @@ export function buildPublishedArtifact(params: {
         .map((id) => elementById.get(id))
         .filter((element): element is ElementType => Boolean(element));
       const canonical = elementById.get(work.canonicalElementId);
+      const duration = workFits.get(work.id)?.duration ?? null;
 
       return {
         id: work.id,
@@ -319,6 +406,8 @@ export function buildPublishedArtifact(params: {
         translationId: work.translationId,
         parentWorkId: work.parentWorkId,
         parentConfidence: work.parentConfidence,
+        durationMinutes: duration?.minutes ?? null,
+        durationSource: duration?.source ?? null,
         sources: members.map(toArtifactSource),
         variations: work.variations,
       } satisfies ArtifactWork;

@@ -89,6 +89,7 @@ export interface ElementResult {
   languageCode: string;
   difficulty?: string;
   typicalDurationMinutes?: number;
+  durationSource?: "stated" | "inferred";
   playerCountMin?: number;
   playerCountMax?: number;
   energyLevel?: string;
@@ -176,6 +177,7 @@ function elementToResult(idx: GraphIndex, el: ElementNode): ElementResult {
     languageCode: el.languageCode,
     difficulty: el.difficulty,
     typicalDurationMinutes: el.typicalDurationMinutes,
+    durationSource: el.durationSource,
     playerCountMin: el.playerCountMin,
     playerCountMax: el.playerCountMax,
     energyLevel: el.energyLevel,

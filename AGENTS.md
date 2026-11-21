@@ -56,7 +56,7 @@ bun run src/normalize/normalize.ts
 4. skills — only vocabulary ids, distribution, zero-skill count
 5. practical — usage/requires coverage and valid usage values
 6. languages — no work contradicts or mixes member languages
-7. artifact — element/work counts, every work has sources and a license, merged groups map to exactly one work, and work fit (kind present, no roles on non-playable kinds, no glossary work with show)
+7. artifact — element/work counts, every work has sources and a license, merged groups map to exactly one work, work fit (kind present, no roles on non-playable kinds, no glossary work with show, every duration carries its source, and a `stated` duration is backed by the source text)
 8. duplicate hashes — duplicate normalized content hashes match the reviewed merge groups
 9. graph — node/edge counts and every edge endpoint exists
 10. normalized — at least 99 % of elements have a normalized block
@@ -69,7 +69,8 @@ The command exits non-zero when any gate fails. The report shape and numbers are
 - `src/index.ts` — library entry (exports `Improbib` class, `readImprobibJson`)
 - Scraper pipeline in `src/scrape-improwiki.ts` scrapes improwiki.com, follows translation links, processes HTML→Markdown, and writes output
 - `src/publish/` is the published model: `build-works.ts` aggregates source elements into language-homogeneous works (canonical member, translation group, variant links) and `build-artifact.ts` joins them with normalized content
-- `src/publish/work-fit.ts` derives `kind` (format/game/exercise/collection/concept/audienceQuestion) and `roles` (warmup/show, strong/inferred) from tags and the page body; only playable kinds may carry roles (ADR-0016)
+- `src/publish/work-fit.ts` derives `kind` (format/game/exercise/collection/concept/audienceQuestion) and `roles` (warmup/show, strong/inferred) from tags and the page body; only playable kinds may carry roles (ADR-0016). It also owns the work's one duration and its `durationSource`
+- `src/publish/duration-evidence.ts` decides whether a work's number is `stated` (a source sentence names it) or `inferred` (the model guessed it); only `stated` may drive strict time fitting. The same check labels graph nodes, so the planner sees the flag
 - `src/assemble.ts` writes `output/improbib.json` (schemaVersion 2: `elements` + `works` + `collections`)
 - The artifact ships the skill vocabulary as top-level `skills[]` (`id`, `de`, `en`, `definitionDe`, `definitionEn`), sourced from `src/normalize/skills.ts`
 - `src/split/` detects pages that describe several independent games: LLM audit, deterministic guards for version/category headings, children in `output/splits/*.json`, normalized children in `output/normalized-splits/*.json` (ADR-0015)

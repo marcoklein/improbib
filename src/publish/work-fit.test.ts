@@ -223,6 +223,25 @@ describe("deriveWorkFit", () => {
     expect(fit.roles).toEqual([]);
     expect(fit.usage).toEqual([]);
   });
+
+  test("keeps the work duration on a playable work and drops it on a concept", () => {
+    const duration = { minutes: 10, source: "stated" as const };
+    expect(
+      deriveWorkFit({ tagIds: ["game"], name: "Spiel", markdown: "x", duration })
+        .duration
+    ).toEqual(duration);
+    expect(
+      deriveWorkFit({
+        tagIds: ["game", "glossary"],
+        name: "Tabu",
+        markdown: "x",
+        duration,
+      }).duration
+    ).toBeNull();
+    expect(
+      deriveWorkFit({ tagIds: ["game"], name: "Spiel", markdown: "x" }).duration
+    ).toBeNull();
+  });
 });
 
 describe("buildPublishedArtifact work fit", () => {
@@ -406,7 +425,7 @@ describe("findWorkFitProblems", () => {  const base = {
           },
         },
       ],
-      [{ canonicalElementId: base.identifier, memberIds: [base.identifier] }]
+      [{ canonicalElementId: base.identifier, memberIds: [base.identifier], durationMinutes: null, durationSource: null }]
     );
     expect(problems.map((problem) => problem.problem)).toContain(
       "work tagged glossary carries the show role"
@@ -429,6 +448,92 @@ describe("findWorkFitProblems", () => {  const base = {
       "collection is published as game"
     );
   });
+
+  test("flags an element duration without provenance, and provenance without a duration", () => {
+    const withoutSource = findWorkFitProblems([
+      {
+        ...base,
+        normalized: {
+          ...base.normalized,
+          practical: { typicalDurationMinutes: 10 },
+        },
+      },
+    ]);
+    expect(withoutSource.map((problem) => problem.problem)).toContain(
+      "publishes a duration without durationSource"
+    );
+
+    const withoutMinutes = findWorkFitProblems([
+      {
+        ...base,
+        normalized: {
+          ...base.normalized,
+          practical: { durationSource: "stated" },
+        },
+      },
+    ]);
+    expect(withoutMinutes.map((problem) => problem.problem)).toContain(
+      "publishes durationSource without a duration"
+    );
+  });
+
+  test("flags a work that is missing its duration provenance fields", () => {
+    const problems = findWorkFitProblems(
+      [{ ...base, normalized: { ...base.normalized } }],
+      [{ canonicalElementId: base.identifier, memberIds: [base.identifier] }]
+    );
+    expect(problems.map((problem) => problem.problem)).toContain(
+      "work is missing its duration provenance"
+    );
+  });
+
+  test("flags a work duration that disagrees with its canonical element", () => {
+    const element = {
+      ...base,
+      normalized: {
+        ...base.normalized,
+        kind: "game",
+        categories: ["game"],
+        practical: { typicalDurationMinutes: 10, durationSource: "inferred" as const },
+      },
+    };
+    const problems = findWorkFitProblems([element], [
+      {
+        canonicalElementId: base.identifier,
+        memberIds: [base.identifier],
+        durationMinutes: 20,
+        durationSource: "inferred",
+      },
+    ]);
+    expect(problems.map((problem) => problem.problem)).toContain(
+      "work duration disagrees with its canonical element"
+    );
+  });
+
+  test("flags a stated work whose sources never state the number", () => {
+    const element = {
+      ...base,
+      markdown: "Ein Spiel ohne Dauerangabe. Spielt 2 Minuten als Aufwärmen.",
+      normalized: {
+        ...base.normalized,
+        kind: "game",
+        categories: ["game"],
+        practical: { typicalDurationMinutes: 10, durationSource: "stated" as const },
+      },
+    };
+    const work = {
+      canonicalElementId: base.identifier,
+      memberIds: [base.identifier],
+      durationMinutes: 10,
+      durationSource: "stated" as const,
+    };
+    expect(
+      findWorkFitProblems([element], [work]).map((problem) => problem.problem)
+    ).toContain("work is stated but no source states its duration");
+
+    const stated = { ...element, markdown: "Es dauert normalerweise ca. 10 Minuten." };
+    expect(findWorkFitProblems([stated], [work])).toEqual([]);
+  });
 });
 
 const artifactPath = join(process.cwd(), "output", "improbib.json");
@@ -447,5 +552,28 @@ describe.skipIf(!existsSync(artifactPath))("published artifact", () => {
     );
     expect(problems.slice(0, 10)).toEqual([]);
     expect(problems).toHaveLength(0);
+  });
+
+  test("never publishes a duration without a provenance (AC3)", async () => {
+    const artifact = await Bun.file(artifactPath).json();
+    const worksWithBareDuration = (artifact.works ?? []).filter(
+      (work: any) =>
+        (work.durationMinutes != null) !== (work.durationSource != null)
+    );
+    expect(worksWithBareDuration.slice(0, 10)).toEqual([]);
+    expect(worksWithBareDuration).toHaveLength(0);
+
+    const elementsWithBareDuration = (artifact.elements ?? []).filter(
+      (element: any) => {
+        const practical = element.normalized?.practical;
+        if (!practical) return false;
+        return (
+          (practical.typicalDurationMinutes != null) !==
+          (practical.durationSource != null)
+        );
+      }
+    );
+    expect(elementsWithBareDuration.slice(0, 10)).toEqual([]);
+    expect(elementsWithBareDuration).toHaveLength(0);
   });
 });

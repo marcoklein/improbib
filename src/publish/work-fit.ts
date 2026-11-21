@@ -1,4 +1,9 @@
 import { deriveCategories, FORMAT_TAGS } from "./categories";
+import {
+  isStatedDurationValue,
+  type DurationProvenance,
+  type DurationSource,
+} from "./duration-evidence";
 import { WARMUP_OVERRIDES } from "./warmup-overrides";
 
 /**
@@ -211,6 +216,12 @@ export interface WorkFit {
   categories: string[];
   /** Empty for non-playable kinds: a concept has no "Einsatz". */
   usage: ("rehearsal" | "show")[];
+  /**
+   * The one duration published for this work, or `null` when no member names
+   * one. A non-playable work publishes no duration even when a member has
+   * one: a concept has no practical fields.
+   */
+  duration: DurationProvenance | null;
 }
 
 export function deriveWorkFit(input: {
@@ -219,6 +230,8 @@ export function deriveWorkFit(input: {
   name: string;
   markdown: string;
   usage?: readonly string[];
+  /** Derived by `buildWorkFits` from the members and their page bodies. */
+  duration?: DurationProvenance | null;
 }): WorkFit {
   const kind = deriveKind(
     input.tagIds,
@@ -244,6 +257,7 @@ export function deriveWorkFit(input: {
       memberIds: input.memberIds,
     }),
     usage: [...usage],
+    duration: isPlayableKind(kind) ? (input.duration ?? null) : null,
   };
 }
 
@@ -257,17 +271,40 @@ interface ArtifactElementLike {
   identifier: string;
   name?: string;
   tagIds?: string[];
+  markdown?: string;
+  card_Dauer?: unknown;
+  card_Duration?: unknown;
+  card_Time?: unknown;
   normalized?: {
     kind?: string;
     roles?: { id: string; confidence?: string }[];
     categories?: string[];
-    practical?: { usage?: string[] };
+    practical?: {
+      usage?: string[];
+      typicalDurationMinutes?: number;
+      durationSource?: DurationSource;
+    };
   };
 }
 
 interface ArtifactWorkLike {
   canonicalElementId: string;
   memberIds: string[];
+  durationMinutes?: number | null;
+  durationSource?: DurationSource | null;
+}
+
+/** The card fields that can hold a source's duration. */
+const DURATION_CARD_FIELDS = ["card_Dauer", "card_Duration", "card_Time"] as const;
+
+function durationEvidenceTexts(element: ArtifactElementLike): string[] {
+  const texts: string[] = [];
+  if (typeof element.markdown === "string") texts.push(element.markdown);
+  for (const field of DURATION_CARD_FIELDS) {
+    const value = element[field];
+    if (typeof value === "string") texts.push(value);
+  }
+  return texts;
 }
 
 /**
@@ -300,6 +337,23 @@ export function findWorkFitProblems(
 
     const roles = normalized.roles ?? [];
     const usage = normalized.practical?.usage ?? [];
+    const minutes = normalized.practical?.typicalDurationMinutes;
+    const durationSource = normalized.practical?.durationSource;
+
+    if (typeof minutes === "number" && !durationSource) {
+      problems.push({
+        elementId: element.identifier,
+        name,
+        problem: "publishes a duration without durationSource",
+      });
+    }
+    if (durationSource && typeof minutes !== "number") {
+      problems.push({
+        elementId: element.identifier,
+        name,
+        problem: "publishes durationSource without a duration",
+      });
+    }
 
     if (!isPlayableKind(kind) && roles.length > 0) {
       problems.push({
@@ -334,17 +388,89 @@ export function findWorkFitProblems(
     const hasGlossary = members.some((member) =>
       (member.tagIds ?? []).includes("glossary")
     );
-    if (!hasGlossary) continue;
+    if (hasGlossary) {
+      const carriesShow = members.some((member) =>
+        (member.normalized?.practical?.usage ?? []).includes("show")
+      );
+      if (carriesShow) {
+        const canonical = elementById.get(work.canonicalElementId);
+        problems.push({
+          elementId: work.canonicalElementId,
+          name: canonical?.name ?? work.canonicalElementId,
+          problem: "work tagged glossary carries the show role",
+        });
+      }
+    }
 
-    const carriesShow = members.some((member) =>
-      (member.normalized?.practical?.usage ?? []).includes("show")
-    );
-    if (carriesShow) {
-      const canonical = elementById.get(work.canonicalElementId);
+    const minutes = work.durationMinutes;
+    const source = work.durationSource;
+    const canonical = elementById.get(work.canonicalElementId);
+
+    if (minutes === undefined || source === undefined) {
       problems.push({
         elementId: work.canonicalElementId,
         name: canonical?.name ?? work.canonicalElementId,
-        problem: "work tagged glossary carries the show role",
+        problem: "work is missing its duration provenance",
+      });
+      continue;
+    }
+
+    const hasMinutes = typeof minutes === "number";
+
+    if (hasMinutes !== Boolean(source)) {
+      problems.push({
+        elementId: work.canonicalElementId,
+        name: canonical?.name ?? work.canonicalElementId,
+        problem: hasMinutes
+          ? "work publishes a duration without durationSource"
+          : "work publishes durationSource without a duration",
+      });
+      continue;
+    }
+
+    if (hasMinutes) {
+      const published = canonical?.normalized?.practical;
+      if (!published) {
+        problems.push({
+          elementId: work.canonicalElementId,
+          name: canonical?.name ?? work.canonicalElementId,
+          problem: "work publishes a duration its canonical element does not show",
+        });
+      } else if (
+        published.typicalDurationMinutes !== minutes ||
+        published.durationSource !== source
+      ) {
+        problems.push({
+          elementId: work.canonicalElementId,
+          name: canonical?.name ?? work.canonicalElementId,
+          problem: "work duration disagrees with its canonical element",
+        });
+      }
+
+      // A `stated` label is a promise about the source. Verify it with the
+      // same rule that produced it, so a hand edit or a stale artifact cannot
+      // claim a measurement the pages do not support.
+      if (
+        source === "stated" &&
+        !members.some((member) =>
+          durationEvidenceTexts(member).some((text) =>
+            isStatedDurationValue(text, minutes as number)
+          )
+        )
+      ) {
+        problems.push({
+          elementId: work.canonicalElementId,
+          name: canonical?.name ?? work.canonicalElementId,
+          problem: "work is stated but no source states its duration",
+        });
+      }
+    } else if (
+      typeof canonical?.normalized?.practical?.typicalDurationMinutes === "number"
+    ) {
+      problems.push({
+        elementId: work.canonicalElementId,
+        name: canonical?.name ?? work.canonicalElementId,
+        problem: "work duration disagrees with its canonical element",
       });
     }
   }
