@@ -13,6 +13,7 @@ function makeRaw(input: {
   languageCode?: "de" | "en";
   authors?: string[];
   licenseName?: string;
+  tagIds?: string[];
 }): ElementType {
   return {
     identifier: input.identifier,
@@ -20,7 +21,7 @@ function makeRaw(input: {
     url: `https://example.com/${input.identifier}`,
     sourceName: input.sourceName,
     languageCode: input.languageCode ?? "en",
-    tags: [],
+    tags: input.tagIds ?? ["game"],
     markdown: "Some markdown content",
     licenseName: input.licenseName ?? "CC BY-SA 4.0",
     licenseUrl: "https://example.com/license",

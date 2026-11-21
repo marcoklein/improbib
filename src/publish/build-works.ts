@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 import type { NormalizedElement } from "../normalize/normalized-schema";
+import { resolveTagIds } from "../scraping/shared/tag-vocabulary";
+import { isConceptEntry } from "./work-fit";
 
 export { MIN_CLUSTER_CONFIDENCE } from "../normalize/cluster-config";
 import { MIN_CLUSTER_CONFIDENCE } from "../normalize/cluster-config";
@@ -165,6 +167,17 @@ function buildSameLanguageClusters(
   const byId = new Map(elements.map((element) => [element.identifier, element]));
   const unionFind = createUnionFind(byId.keys());
 
+  // The normalized layer stores the raw source labels; resolve them once so
+  // the concept/playable guard below compares canonical concepts.
+  const conceptById = new Map<string, boolean>();
+  const isConcept = (element: NormalizedElement): boolean => {
+    const cached = conceptById.get(element.identifier);
+    if (cached !== undefined) return cached;
+    const value = isConceptEntry(resolveTagIds(element.tags ?? []).ids);
+    conceptById.set(element.identifier, value);
+    return value;
+  };
+
   // Curated merge decisions seed the clustering: the reviewed pages are one
   // work even when their dedup confidence would keep them apart. The language
   // guard is still applied, so a bad entry cannot collapse a DE/EN pair.
@@ -188,6 +201,11 @@ function buildSameLanguageClusters(
       if (!other) continue;
       // Works are language-homogeneous; translations are a separate relation.
       if (other.languageCode !== element.languageCode) continue;
+      // A glossary entry and a playable page with the same name are different
+      // works even when the dedup confidence is high: the glossary page has no
+      // instructions, the playable page has. Merging them published the
+      // glossary entry with the playable page's roles.
+      if (isConcept(element) !== isConcept(other)) continue;
 
       unionFind.union(element.identifier, relation.identifier);
     }

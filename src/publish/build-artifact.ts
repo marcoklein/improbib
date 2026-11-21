@@ -2,10 +2,11 @@ import type { NormalizedElement } from "../normalize/normalized-schema";
 import { sanitizePractical, sanitizeSkills } from "../normalize/normalized-schema";
 import { SKILLS } from "../normalize/skills";
 import type { SkillId } from "../normalize/skills";
-import { deriveCategories } from "./categories";
 import { dropRedundantTips } from "../normalize/tip-redundancy";
 import type { ElementType } from "../scraping/shared/element-type";
 import type { PublishedVariation, PublishedWork } from "./build-works";
+import { deriveWorkFit, isPlayableKind, isVariantIndexPage } from "./work-fit";
+import type { WorkFit, WorkKind, WorkRole } from "./work-fit";
 
 /**
  * The normalized subset that is published per source element.
@@ -21,7 +22,17 @@ export interface ArtifactNormalized {
   practical: NormalizedElement["normalized"]["practical"];
   mechanics: string[];
   skills: string[];
-  /** Derived from the tags and the practical data, see `categories.ts`. */
+  /**
+   * What the work is, derived from the source tags and the page body. See
+   * `work-fit.ts` and `product/features/work-fit-taxonomy.md`.
+   */
+  kind: WorkKind;
+  /** Where a playable work fits. Empty for concepts and collections. */
+  roles: WorkRole[];
+  /**
+   * Derived for the app's category badges. Kept as the display fallback while
+   * consumers move to `kind`/`roles`.
+   */
   categories: string[];
   tips: NormalizedElement["normalized"]["tips"];
   referencedElements: NormalizedElement["normalized"]["referencedElements"];
@@ -79,8 +90,7 @@ export interface PublishedArtifact {
 
 function toArtifactNormalized(
   normalized: NormalizedElement["normalized"],
-  tagIds: string[],
-  identifier: string
+  fit: WorkFit
 ): ArtifactNormalized | undefined {
   // A block without a summary is a failed extraction: consumers use the
   // summary as the element's one-line description. The other fields are
@@ -99,14 +109,25 @@ function toArtifactNormalized(
     return undefined;
   }
 
+  // A concept has no difficulty, player count or "Einsatz". Publishing them
+  // made a glossary entry look like a game (see the element-quality evidence).
+  const practical = isPlayableKind(fit.kind)
+    ? {
+        ...sanitizePractical(normalized.practical),
+        usage: fit.usage.length > 0 ? fit.usage : undefined,
+      }
+    : {};
+
   return {
     summary: normalized.summary,
     description: normalized.description,
     howToPlay: normalized.howToPlay,
-    practical: sanitizePractical(normalized.practical),
+    practical,
     mechanics: normalized.mechanics.map((mechanic) => mechanic.name),
     skills: sanitizeSkills(normalized.skills),
-    categories: deriveCategories(tagIds, identifier),
+    kind: fit.kind,
+    roles: fit.roles,
+    categories: fit.categories,
     // Entries extracted before the tips rule existed can still contain a tip
     // that repeats a step. Filtering here cleans the old data too.
     tips: dropRedundantTips(
@@ -120,6 +141,68 @@ function toArtifactNormalized(
     model: normalized.model,
     promptHash: normalized.promptHash,
   };
+}
+
+/**
+ * Derive the taxonomy once per work and apply it to every member, so two
+ * sources of the same work cannot publish contradictory kinds or roles.
+ *
+ * Tags are pooled: a glossary page merged with an exercise page is an
+ * exercise, because one source states a playable identity. The markdown of an
+ * index page stays link-only, which is how `collection` is detected.
+ */
+function buildWorkFits(params: {
+  elements: ElementType[];
+  normalizedById: Map<string, NormalizedElement>;
+  works: PublishedWork[];
+}): Map<string, WorkFit> {
+  const elementById = new Map(
+    params.elements.map((element) => [element.identifier, element])
+  );
+  const fits = new Map<string, WorkFit>();
+
+  for (const work of params.works) {
+    const members = work.memberIds
+      .map((id) => elementById.get(id))
+      .filter((element): element is ElementType => Boolean(element));
+    if (members.length === 0) continue;
+
+    const canonical =
+      elementById.get(work.canonicalElementId) ?? members[0];
+    const tagIds = [
+      ...new Set(
+        members.flatMap((member) => member.tagIds ?? member.tags ?? [])
+      ),
+    ].sort();
+
+    const usage = new Set<"rehearsal" | "show">();
+    for (const member of members) {
+      const normalized = params.normalizedById.get(member.identifier);
+      const sanitized = normalized
+        ? sanitizePractical(normalized.normalized.practical).usage
+        : undefined;
+      for (const value of sanitized ?? []) usage.add(value);
+    }
+
+    // Only a work whose members are all link-only index pages is a collection;
+    // an index page merged with a playable page keeps the playable content.
+    const allIndexPages = members.every((member) =>
+      isVariantIndexPage(member.name, member.markdown ?? "")
+    );
+
+    fits.set(
+      work.id,
+      deriveWorkFit({
+        tagIds,
+        memberIds: work.memberIds,
+        name: canonical.name,
+        markdown: allIndexPages ? canonical.markdown ?? "" : "",
+        usage: [...usage],
+      })
+    );
+  }
+
+  return fits;
 }
 
 function toArtifactSource(element: {
@@ -186,17 +269,28 @@ export function buildPublishedArtifact(params: {
     }
   }
 
+  const workFits = buildWorkFits({
+    elements: params.elements,
+    normalizedById,
+    works: params.works,
+  });
+
   for (const element of params.elements) {
     const normalized = normalizedById.get(element.identifier);
     const work = workByMember.get(element.identifier);
     if (!work) continue;
 
     if (normalized) {
-      const published = toArtifactNormalized(
-        normalized.normalized,
-        element.tagIds ?? [],
-        element.identifier
-      );
+      const fit =
+        workFits.get(work.id) ??
+        deriveWorkFit({
+          tagIds: element.tagIds ?? element.tags ?? [],
+          memberIds: work.memberIds,
+          name: element.name,
+          markdown: element.markdown ?? "",
+          usage: sanitizePractical(normalized.normalized.practical).usage,
+        });
+      const published = toArtifactNormalized(normalized.normalized, fit);
       if (published) {
         element.normalized = published;
       }

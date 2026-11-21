@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { findWorkFitProblems } from "../src/publish/work-fit";
 
 /**
  * The ten quality gates that decide whether a pipeline run may be published.
@@ -416,11 +417,19 @@ for (const group of mergeGroups) {
   }
 }
 
+/**
+ * The taxonomy invariants: every element carries a kind, non-playable kinds
+ * carry no roles and no show, and a page that only links to its variants is a
+ * collection. See `src/publish/work-fit.ts`.
+ */
+const workFitProblems = findWorkFitProblems(elements, artifactWorks);
+
 const gate7 = {
   pass:
     worksWithZeroSources === 0 &&
     worksMissingLicense === 0 &&
-    mergedProblems.length === 0,
+    mergedProblems.length === 0 &&
+    workFitProblems.length === 0,
   elementCount: elements.length,
   workCount: artifactWorks.length,
   worksWithZeroSources,
@@ -428,6 +437,8 @@ const gate7 = {
   missingLicenseSamples,
   mergedGroupsNotExactlyOneWork: mergedProblems.length,
   mergedProblems,
+  workFitProblems: workFitProblems.length,
+  workFitSamples: workFitProblems.slice(0, 5),
 };
 
 // ---------------------------------------------------------------------------
