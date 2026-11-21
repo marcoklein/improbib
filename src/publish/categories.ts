@@ -31,7 +31,7 @@ export type WorkCategory = (typeof WORK_CATEGORIES)[number];
  * Tags that make a work a show format. `show` alone is the tag a performance
  * page carries; the others name a concrete long or short form structure.
  */
-const FORMAT_TAGS = new Set([
+export const FORMAT_TAGS = new Set([
   "show",
   "longform",
   "improvForms",

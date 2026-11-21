@@ -40,6 +40,30 @@ export const artifactNormalizedSchema = z.object({
   practical: artifactPracticalSchema,
   mechanics: z.array(z.string()),
   skills: z.array(z.enum(SKILL_IDS)),
+  /**
+   * What the work is. Derived from the source tags and page body; only
+   * `format`, `game` and `exercise` are playable. Present on every element
+   * published by the current pipeline (absent in older artifacts).
+   */
+  kind: z
+    .enum([
+      "format",
+      "game",
+      "exercise",
+      "collection",
+      "concept",
+      "audienceQuestion",
+    ])
+    .optional(),
+  /** Where a playable work fits. Always empty for concepts and collections. */
+  roles: z
+    .array(
+      z.object({
+        id: z.enum(["warmup", "show"]),
+        confidence: z.enum(["strong", "inferred"]),
+      })
+    )
+    .optional(),
   categories: z.array(
     z.enum(["warmup", "exercise", "game", "format", "concept", "audienceQuestion"])
   ),
