@@ -282,7 +282,8 @@ function renderPlan(plan) {
     html += '<div class="warnings"><ul>' + plan.warnings.map(w => `<li>${esc(w)}</li>`).join("") + "</ul></div>";
   }
 
-  html += `<div class="total-duration">Planned total: ${plan.totalDuration} min</div>`;
+  const estimated = plan.durationConfidence !== "stated";
+  html += `<div class="total-duration"${estimated ? ' title="Some durations are estimated by the extraction model, not stated by the source."' : ""}>Planned total: ${estimated ? "ca. " : ""}${plan.totalDuration} min</div>`;
 
   html += renderSection("Warm-up", plan.warmUp, plan.fallbacks, "warmUp");
   html += renderSection("Main Exercises", plan.main, plan.fallbacks, "main");
